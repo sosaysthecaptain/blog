@@ -195,3 +195,15 @@ line-height: 22px;
 
 
 /* ****** */
+.rotate90 {
+    -webkit-transform: rotate(90deg);
+    -moz-transform: rotate(90deg);
+    -o-transform: rotate(90deg);
+    -ms-transform: rotate(90deg);
+    transform: rotate(90deg);
+}
+
+.extraPadding {
+    padding-left: 10px;
+    padding-right: 10px;
+}

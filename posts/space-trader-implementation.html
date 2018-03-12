@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="FDM Startup, Print Bed, Dynamic Bed Leveling`">
+    <title>Space Trader: Gameplay & Implementation | Marc Auger</title>
+    <link type="text/css" rel="stylesheet" href="../css/stylesheet.css" />
+    <link rel="icon" href="../globalAssets/favicon/favicon.ico" type="image/x-icon">
+
+</head>
+
+<body>
+
+    <div class="header">
+
+        <div class="logo">
+            <a href="index.html">
+                <img src="../globalAssets/logo.svg" width="200"> </a>
+        </div>
+
+        <!-- nav bar -->
+        <div class="navBar">
+            <a href="profilometer.html">Optical Profilometer</a>
+            <a href="space-trader.html">Space Trader</a>
+            <a href="fdm-startup.html">FDM Startup</a>
+            <a href="about.html">About</a>
+        </div>
+    </div>
+
+
+    <div class="pageBody">
+
+        <div class="blogTitle">
+            <p>Space Trader: Gameplay & Implementation</a>
+                </br>
+                <span class="blogDate">Feb 25, 2018</span>
+            </p>
+        </div>
+
+        <div class="pageText">
+            <!-- BODY HTML BEGINS HERE -->
+
+
+            <h3>Gameplay Overview</h3>
+            <p>Gameplay is broken into two main categories, events that happen on the planet, and those that happen in transit
+                between one planet and another. The on-planet portion of the game takes place within a five part tab view
+                controller. The parts are as follows:</p>
+            <ul.browserDefault>
+                <li>System, which orients the user upon his arrival to a new star system. This screen shows him any quests that
+                    might be available, and gives him a chance to refuel and repair his ship.</li>
+                <li>Sell: where he can sell the cargo he currently has on hand. Profit/loss per unit is displayed.</li>
+                <li>Buy, where he can purchase goods to trade. He can rifle through the other star systems in range, seeing local
+                    price differences, so as to identify trade opportunities.</li>
+                <li>Shipyard, where the player can shop for ships and equipment.</li>
+                <li>Warp, where the player can consult local and galactic charts, choose a destination, and initiate a warp.</li>
+            </ul.browserDefault>
+            <p>During a warp journey, the player experiences a sequence of encounters, with pirates and officers of the law,
+                who will attempt to plunder his cargo and enforce prohibitions against the trade of contraband, respectively.
+                He may fight or flee, potentially disabling and plundering or destroying his opponents, and earning a reputation
+                in the process.</p>
+
+            <!-- tab view controller 1 -->
+
+                <img src="./space-trader-implementation/systemInfo.png" class="extraPadding" title="System Info"
+                alt="System Info" />
+                <img src="./space-trader-implementation/sellCargo.png" class="extraPadding" title="Sell Cargo"
+                alt="Sell Cargo" />
+                <img src="./space-trader-implementation/buyCargo.png" class="extraPadding" title="Buy Cargo"
+                alt="Buy Cargo" />
+
+            <p>In the interest of recreating the feel of the original, text-based game, the buy and sell screens are made with
+                grids of manually arranged subclasses of UIButtons and UILabels. By switching classes, elements can be made
+                to appear, disappear, and change text size and color. Everything is included within a scrollView, to handle
+                the case of the 4” screen, which is too small to display the entire table at once.</p>
+
+            <!-- tab view controller 2 -->
+            <img src="./space-trader-implementation/shipyard.png" class="extraPadding" title="Shipyard"
+                alt="Shipyard" />
+                <img src="./space-trader-implementation/warp.png" class="extraPadding" title="Warp"
+                alt="Warp" />
+                <img src="./space-trader-implementation/galacticChart.png" class="extraPadding" title="Galactic Chart"
+                alt="Galactic Chart" />
+
+            <p>The navigation charts were accomplished with custom UIView objects, in which draw functions are used to render
+                planets from the galaxy class, as well as crosshairs indicating selection, and a range circle indicating
+                the distance the player can travel.</p>
+
+
+
+            <h3>Data Structure</h3>
+            <p>Game data is contained in instances of two classes, Commander, which contains all data pertaining to the player,
+                and Galaxy, which stores everything about the automatically generated galaxy, including planet locations
+                and market conditions. Additional classes, such as Ship, CrewMember, Gadget, HighScore, Journey, Newspaper,
+                PoliticsType, SavedGame, Shield, SpecialEvent, StarSystem, TradeItem, and UniversalGadget, are used to structure
+                other aspects of gameplay.</p>
+
+            <!-- BODY HTML ENDS HERE -->
+        </div>
+    </div>
+    </div>
+
+    <!-- END BODY -->
+
+    <div class="footer">
+        <p>Copyright ©
+            <script> document.write(new Date().getFullYear()) </script> Marc Auger</p>
+        <a href="archive.html">Archive</a>
+        <a href="profilometer.html">Optical Profilometer</a>
+        <a href="space-trader.html">Space Trader</a>
+        <a href="fdm-startup.html">FDM Startup</a>
+        <a href="about.html">About</a>
+
+        </b>
+    </div>
+
+    </div>
+
+</body>

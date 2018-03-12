@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="FDM Startup, Print Bed, Dynamic Bed Leveling`">
+    <title>Linear Systems | Marc Auger</title>
+    <link type="text/css" rel="stylesheet" href="../css/stylesheet.css" />
+    <link rel="icon" href="../globalAssets/favicon/favicon.ico" type="image/x-icon">
+
+</head>
+
+<body>
+
+    <div class="header">
+
+        <div class="logo">
+            <a href="index.html">
+                <img src="../globalAssets/logo.svg" width="200"> </a>
+        </div>
+
+        <!-- nav bar -->
+        <div class="navBar">
+            <a href="profilometer.html">Optical Profilometer</a>
+            <a href="space-trader.html">Space Trader</a>
+            <a href="fdm-startup.html">FDM Startup</a>
+            <a href="about.html">About</a>
+        </div>
+    </div>
+
+
+    <div class="pageBody">
+
+        <div class="blogTitle">
+            <p>Linear Systems</a>
+                </br>
+                <span class="blogDate">Feb 25, 2018</span>
+            </p>
+        </div>
+
+        <div class="pageText">
+            <!-- BODY HTML BEGINS HERE -->
+            <img src="./fdm-linear-systems/layerStacking.jpg" width="800" alt="layer stacking, good and bad" title="layer stacking, good and bad"
+            />
+            <p>
+                One of the most obvious determiners of print quality in an FDM system is the quality of the linear systems on which the axes
+                move. A good linear system is repeatable enough to achieve excellent layer stacking and rigid enough to allow
+                adequate speed. It is inexpensive, low friction, quiet, and allows carriage mass to be minimized. We spent
+                more time on the choice of a linear system than on almost any other aspect of our design, trying about a
+                dozen options before returning to a rod system very similar to the one we started with, but with one key
+                difference. Shortly after we finished this new rod system, a new product appeared on the market that was
+                head and shoulders better than anything we had tried. Committed to a redesign for the sake of our new printhead,
+                we decided to use it.</p>
+
+            <p>We learned a lot in the process, did a lot of rigorous, empirical comparison, and wore out our welcome with the
+                Igus sales rep who kindly send us free samples after free samples as we kept finding fault with each product.
+                Doing it again, we could have done a lot less work.</p>
+
+            <h3>Rods, and the linear rails fad</h3>
+            <p>If you take apart most any consumer product that involves linear motion—an inkjet printer, for example, or even
+                an optical drive—you’ll see very simple linear systems based on rods, on which smooth bushings slide. Rods
+                offer a very simple and economical option, becoming problematic only when distances become long or loads
+                become heavy. Early consumer FDM printers almost all used rods, though none had particularly well implemented
+                systems. Bearings were seldom good and alignment of the rods was difficult, leading to binding of the axes.</p>
+
+            <!-- testing linear rails -->
+            <img src="./fdm-linear-systems/linearTesting.jpg" width="500" alt="testing linear rails" title="Testing linear rails" />
+
+            <p>We approached the problem by ordering a whole bunch of different options, designing them into test rigs, and
+                running a lot of prints. We were surprised to see that we were getting quite poor results from the linear
+                rails, even the expensive ones. All seemed to have too much slop to achieve good layer stacking. Our methods
+                of measuring became more sophisticated and quantitative as we continued, but however we measured, the evidence
+                kept stacking up against linear rails.</p>
+
+            <h3>Solving the binding problem</h3>
+            <p>Becoming disillusioned with rails, we turned our attention back to rods, determined to address the binding problem
+                once and for all. Though binding plagued all our implementations, we managed to source an inexpensive pairing
+                of rods and bearings that by themselves did not exhibit slop. There seemed to be little—perhaps even inverse—correlation
+                between cost and performance. Sophisticated offerings from linear motion companies didn’t perform so well
+                in our trials, but simple precision ground stainless rod from McMaster Carr, along with tight fitting, teflon-filled
+                Delrin bushings worked nicely.</p>
+
+            <!-- z spring -->
+            <img src="./fdm-linear-systems/zSpring.jpg" width="500" alt="z spring" title="Z wobble absorbtion spring. By floating the Z leadscrew nut in the XY plane, while keeping it rigid in Z, we were able to eliminate the vertical banding that resulted from the procession of the leadscrew."
+            />
+            <p>
+                We floated the Z leadscrew nut with this spring arrangement, giving it play in X and Y but not Z, and thus eliminated binding
+                problems. We employed a similar strategy with the linear bearings themselves. The problem was that a rod
+                based system required two rods, and there was no way to keep them aligned well enough to guarantee smooth
+                movement. We finally figured out that by floating one of the bearings—giving it a few hundreds of microns
+                of play over the length of the axis—we could achieve truly smooth motion. More surprisingly, this local lack
+                of rigidity did not seem to hurt our print quality a bit. It would have been a wholly unsuitable arrangement
+                for a machine like a mill, which dealt with cutting forces, but FDM printheads experience very little resistance.
+                We implemented the system, and washed our hands of the problem.
+            </p>
+
+
+            <!-- Isis One, Mk. I- the rods design -->
+            <img src="./fdm-linear-systems/mk1Rods.png" width="500" alt="Isis One mk. I, with rods" title="Mk. I design, with rods" />
+            <h3>V-slot</h3>
+            <p>As fate would have it, our rod design didn’t last long. A new product called V-slot appeared on the market, which
+                offered what was in retrospect a delightfully obvious solution to the linear motion problem. It consisted
+                of an aluminum extrusion almost identical to the 80/20 extrusions that we made our frame of, except that
+                the slots had beveled edges. Delrin V-wheels rode these tracks, tensioned with eccentric spacers. The extrusions
+                themselves were no more expensive than the stock 80/20 we were already using, and the wheels were almost
+                trivially cheap. Further, they could be installed in inexpensive aluminum plates that made up the carriages
+                we were already using on the Y axis. We ordered samples, implemented a test rig, and were blown away by the
+                quality.</p>
+
+            <p>We learned a lot from the linear system project. It taught us that crowds are frequently wrong, that price and
+                quality often show stunningly little correlation, and that often there exists low hanging fruit that few
+                seem to notice. It taught us that one’s own empirical data is essential to getting to the bottom of what
+                works best. It also taught us that sometimes a massive research project is made entirely irrelevant by new
+                developments. Under such circumstances the best thing to do is to swallow your pride, eat your sunken costs,
+                implement the new solution, and move on.</p>
+
+            <img src="./fdm-linear-systems/mk2rails.png" width="500" alt="Isis One mk. II, with rails" title="Mk. II design, with V-Slot rails"
+            />
+
+
+            <!-- BODY HTML ENDS HERE -->
+        </div>
+    </div>
+    </div>
+
+    <!-- END BODY -->
+
+    <div class="footer">
+        <p>Copyright ©
+            <script> document.write(new Date().getFullYear()) </script> Marc Auger</p>
+        <a href="archive.html">Archive</a>
+        <a href="profilometer.html">Optical Profilometer</a>
+        <a href="space-trader.html">Space Trader</a>
+        <a href="fdm-startup.html">FDM Startup</a>
+        <a href="about.html">About</a>
+
+        </b>
+    </div>
+
+    </div>
+
+</body>
