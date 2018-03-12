@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <!-- <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css"> -->
+    <!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.4.2/css/bulma.css"> -->
+    <link rel="stylesheet" href="../css/stylesheet.css">
+    <title>Marc Auger - software & hardware engineer</title>
+</head>
+
+<body>
+    <!-- NAVBAR -->
+    <nav class="nav has-shadow" id="top">
+        <div class="container">
+            <div class="nav-left">
+                <a class="nav-item is-tab">
+                    <h1 class="title is-4">Marc Auger</h1>
+                    <!-- <h2 class="title is-6">hardware & software engineer</h2> -->
+                </a>
+            </div>
+            <span class="nav-toggle">
+                <span></span>
+                <span></span>
+                <span></span>
+            </span>
+            <div class="nav-right nav-menu">
+                <a class="nav-item is-tab">
+                    Optical Profilometer
+                </a>
+                <a class="nav-item is-tab">
+                    Space Trader
+                </a>
+                <a class="nav-item is-tab">
+                    FDM Startup
+                </a>
+                <a class="nav-item is-tab">
+                    About
+                </a>
+            </div>
+        </div>
+    </nav>
+    <!-- END NAVBAR -->
+
+    <!-- BODY -->
+
+    <div class="container">
+        <div class="column is-offset-2 is-8">
+            <div class="section">
+                <h1 class="title is-1">FDM Startup</h1>
+                <!-- <h2 class="subtitle is-6">March 8, 2018</h2> -->
+                <br>
+
+                <!-- BODY HTML BEGINS HERE -->
+
+                <!-- IMAGE -->
+                <br>
+                <div class="columns is-centered">
+                    <figure class="image">
+                        <img src="./fdm-startup/gyroid.jpg">
+                    </figure>
+                </div>
+                <br>
+                <!-- /IMAGE -->
+
+                <p>From 2012 to 2014, I cofounded and led engineering at a startup that produced an FDM 3D printer, one of the
+                    first on the prosumer market to achieve reliability and professional print quality, and to feature soluble
+                    support. Our original website, preserved for posterity, can be seen here. (Regarding the name: it seemed
+                    fantastic in 2012: short, and relevant to making things. We had no idea of the world events that would
+                    soon unfold.)</p>
+                    <br>
+
+                <p>Though it has become a poster child for undeserved hype, 3D printing looked in 2012 like a technology with
+                    fundamentally transformative potential. We believed (and still do), that additive manufacturing would
+                    play a major role in the world economy by making it possible to produce highly complex physical objects
+                    very cheaply. To realize this, either the cost of the high-quality commercial machines (e.g. Stratasys)
+                    would have to dramatically decrease, or the quality of the hobbyist machines (e.g. MakerBot) would have
+                    to dramatically increase. The former seemed unlikely, but we didn’t perceive a reason for the latter
+                    not to happen quickly.</p><br>
+
+                <!-- IMAGE -->
+                <br>
+                <div class="columns is-centered">
+                    <figure class="image">
+                        <img src="./fdm-startup/isisOneDual.jpg">
+                    </figure>
+                </div>
+                <br>
+                <!-- /IMAGE -->
+
+                <p>We decided to begin at the consumer end, where the 3D printers of the day were notoriously unreliable—prints
+                    required constant babysitting and still failed more often than not. If they did succeed, they weren’t
+                    good for much of anything: resolution was low, only one material could be used at a time, and unsupported
+                    features were impossible. The printers of 2012 were toys and little more.</p><br>
+
+                <p>Most great pieces of tech started life as toys, though, and we decided to start playing. With a college friend
+                    (who became my cofounder) I build a RepRap—a MendelMax 1.5—which we ended up modifying heavily to get
+                    it to work. After a few months of tinkering and improving, it was clear to us that a significant improvement
+                    was possible on the state of the art.</p><br>
+
+                <p>The new design we set out to create, first and foremost, had to be useful as something more than a toy. This
+                    meant several things:</p><br>
+                <ol.browserDefault>
+                    <li>It had to be able to produce useful engineering prototypes, with fit and finish suitable for meaningful
+                        design work.</li>
+                    <li>It had to be able to produce any geometry. This meant that soluble support was essential.</li>
+                    <li>It had to be reliable. If a print could not be counted on to go to completion, nothing else it did mattered.</li>
+                    We figured we’d aim at the print quality of Stratasys and target the prosumer market, hoping to pick up the high end of the
+                    hobby market and the low end of the engineering market at a price point around $3,000. (This niche was
+                    ultimately won—deservedly and soundly—by Formlabs, with Stereolithography rather than FDM.)
+                </ol><br>
+
+                 <!-- IMAGE -->
+                 <br>
+                 <div class="columns is-centered">
+                    <figure class="image">
+                        <img src="./fdm-startup/printhead.jpg">
+                    </figure>
+                </div>
+                <br>
+                <!-- /IMAGE -->
+
+                <p>Beginning with what we’d learned on our MendelMax test bed, we created a clean-slate design, the Isis One.
+                    We achieved good layer stacking by rigorously testing over a dozen different linear systems. We designed
+                    a rigid but adjustable heated borosilicate print bed, and implemented an automatic bed level compensation
+                    algorithm called dynamic bed leveling. A similar system is now used on most high-end consumer FDM machines,
+                    but ours was the first in the space. Finally, to bring soluble support online, we created a robust dual-extruder
+                    printhead, advancing the state of the art of both the filament drive and hotend portions.</p><br>
+
+                <p>Though the startup ultimately failed in manufacturing, the Isis One was a radical improvement in the usefulness
+                    of consumer FDM. Its design is open source; files can be found here. The more detailed story of its creation
+                    is told below:</p><br>
+
+                <ul.browserDefault>
+                    <li>The print bed</li>
+                    <li>Linear systems</li>
+                    <li>Software settings</li>
+                    <li>The printhead & soluble support</li>
+                </ul>
+                <br>
+                <!-- BODY HTML ENDS HERE -->
+            </div>
+        </div>
+    </div>
+
+    <!-- END BODY -->
+
+    <!-- FOOTER -->
+    <footer class="footer">
+        <div class="container">
+            <div class="content has-text-centered">
+                <p>
+                    © Marc Auger 2018
+                </p>
+            </div>
+        </div>
+    </footer>
+    <!-- END FOOTER -->
+
+</body>
+
+</html>
+

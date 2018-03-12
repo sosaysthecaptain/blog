@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="FDM Startup, Print Bed, Dynamic Bed Leveling">
+    <title>FDM Startup | Marc Auger</title>
+    <link type="text/css" rel="stylesheet" href="../css/stylesheet.css" />
+    <link rel="icon" href="../globalAssets/favicon/favicon.ico" type="image/x-icon">
+
+</head>
+
+<body>
+
+    <div class="header">
+
+        <div class="logo">
+            <a href="index.html">
+                <img src="../globalAssets/logo.svg" width="200"> </a>
+        </div>
+
+        <!-- nav bar -->
+        <div class="navBar">
+            <a href="profilometer.html">Optical Profilometer</a>
+            <a href="space-trader.html">Space Trader</a>
+            <a href="fdm-startup.html">FDM Startup</a>
+            <a href="about.html">About</a>
+        </div>
+    </div>
+
+
+    <div class="pageBody">
+
+        <div class="blogTitle">
+            <p>The Print Bed</a>
+                </br>
+                <span class="blogDate">Feb 25, 2018</span>
+            </p>
+        </div>
+
+        <div class="pageText">
+            <!-- BODY HTML BEGINS HERE -->
+            <img src="./fdm-print-bed/firstLayerGears.jpg" width="500" alt="first layer gears" title="Testing first layers." />
+            <h3>Adhesion</h3>
+            <p>The first and most vexing problem to solve to make FDM work was that of the first layer. For an FDM print to
+                succeed, it must stay well adhered throughout the duration of the print, but then come off the bed with a
+                minimum of effort and force. Stratasys solved this problem with a two-part strategy of printing on a raft
+                of soluble support material, which itself stuck forcefully (and permanently) to a replaceable ABS print bed.
+                Although we wanted ultimately to add soluble support, it was important that our process not rely on it, and
+                further important that our print surface be indefinitely reusable, so this solution was definitely out.</p>
+            <p>The internet had a great deal to say about the adhesion problem. A theme that we would quickly notice was that
+                the large and lively open source community of the RepRap world had no shortage of suggestions, but there
+                was no system for testing one against another and little interest in getting to the bottom of things. We
+                realized that our role was largely to aggregate ideas and subject them to a level of rigorous side-by-side
+                testing that no one else seemed willing to do, setting a high standard for acceptability.</p>
+
+            <p>We ran dozens of tests on our initial prototype printer, trying surfaces made out of different kinds of glass
+                and plastic, heated to different temperatures, and treated with various substances. Some combinations we
+                tried failed outright, but many worked well enough for prints to go to completion some of the time, but not
+                reliably. After a lot of hours of printing, we figured out that PLA stuck reliably well to borosilicate glass
+                at 50℃, if it was treated with AquaNet hairspray. We greatly appreciate the community’s help on this one—the
+                hairspray we definitely wouldn’t have come up with on our own!</p>
+
+            <h3>Bed levelness and rigidity</h3>
+
+            <p>Given a suitable material and thermal situation, the bed still must be perfectly level relative to the plane
+                of travel of the extruder. Moreover, the vertical offset between the two must be 100 ± 25 microns to achieve
+                a good first layer. Getting the correct settings dialed in usually required about five false starts, and
+                the force of popping a completed print off the bed was all it took to throw it all out of kilter, requiring
+                the user to repeat the process for the next print.</p>
+
+            <p>Clearly, we needed a very rigid print bed with a robust leveling system. Our bed also served as the printer’s
+                Y axis, so the bed had to be lightweight to avoid exacting a penalty allowable acceleration. We ended up
+                with a double-decker design, in which an aluminum undercarriage was supported on two widely-spaced linear
+                rails and connected to the borosilicate bed by four polycarbonate corner blocks, themselves glued to the
+                glass. The corner blocks sat on neoprene washers, such that by tightening the screws that held them to the
+                carriage, the washers could be variably compressed. It was thus possible to adjust the relative height of
+                each corner individually.</p>
+            <img src="./fdm-print-bed/bedHeater.png" width="500" alt="kapton bed heater" title="Borosilicate bed, painted, with Kapton heater and glued feet." />
+
+            <p>The notion of gluing directly to the back of the borosilicate, ridiculous though this sounds, was novel at the
+                time. The heaters commonly used in 2012 were made from (fiberglass) PCBs, and expanded at a different rate
+                than glass. If they were glued to the glass, this differential expansion caused a disasterous warping effect.
+                Consequently, the leading design practice was to eschew any kind of adhesive and hold the whole stack together
+                with binder clips on the corners, an expedient that clearly minimized the repeatability of the entire arrangement
+                and also cut into the available print area. We replaced the PCB heater with a custom high-wattage Kapton
+                heater, sourced from Alibaba. Thin and flexible, and attached with a flexible adhesive, this solved the warping
+                problem and made the glued foot design work.</p>
+            <p>We finished our bed design with an adjustable endstop calibration screw for the Z axis to control the absolute
+                vertical offset. Leveling the bed was still an arduous process, but it could now be done once and hold indefinitely.
+            </p>
+
+            <img src="./fdm-print-bed/luxo-1.jpg" width="500" alt="luxo lamp print" title="Lots of parts, all at once." />
+
+            <h3>Dynamic bed leveling</h3>
+
+            <p>We declared victory over the bed leveling situation and carried on, but as the hours of printing racked up, we
+                realized we were still unsatisfied with first layers. Having a full one-foot-square print bed was an important
+                design spec of the Isis One. Most printers on the market at the time had small print volumes, and in any
+                case lacked the reliability to print more than one or two items at a time. It was important to us to be able
+                to run very long prints of many parts at a time. No matter how assiduously we leveled the bed, first layer
+                height was never reliably right at the margins. We needed to do better still.</p>
+
+            <p>The notion of dynamic bed leveling—measuring the actual offset of the bed at a number of points, and using the
+                printer’s vertical axis to compensate in real time—was implemented by Stratasys, but had not yet made it
+                to the consumer market. We decided to bite the bullet and implement this as well.</p>
+
+            <p>The software implementation was comparatively easy, but installing a reliable, low-cost, and lightweight actuator
+                to lower a probe proved more difficult. We ended up with a design based on an RC servo and, after troubleshooting
+                a bizarre issue by which electrical noise from the stepper wiring induced a signal in the servo’s signal
+                line causing it to jitter manically, had a workable system. Now at last you could load up the entire volume
+                with parts, hit print, and walk away with confidence that bed adhesion issues would not cause your print
+                to fail.</p>
+
+                <img src="./fdm-print-bed/gears.png" width="500" alt="bed full of gears" title="Edge to edge!" />
+
+
+            <!-- <img src="./fdm-startup/isisOneDual.jpg" width="500" alt="Isis One" /> -->
+
+            <!-- BODY HTML ENDS HERE -->
+        </div>
+    </div>
+    </div>
+
+    <!-- END BODY -->
+
+    <div class="footer">
+        <p>Copyright ©
+            <script> document.write(new Date().getFullYear()) </script> Marc Auger</p>
+        <a href="archive.html">Archive</a>
+        <a href="profilometer.html">Optical Profilometer</a>
+        <a href="space-trader.html">Space Trader</a>
+        <a href="fdm-startup.html">FDM Startup</a>
+        <a href="about.html">About</a>
+
+        </b>
+    </div>
+
+    </div>
+
+</body>
