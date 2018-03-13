@@ -7,14 +7,14 @@ body {
 	margin: auto;
     margin-top: 20px;
     margin-bottom: 50px;
-    font-color: #5e5f5f; 
+    /* font-color: #5e5f5f;  */
     font-family: 'Lucida Grande', 'Lucida Sans Unicode', 'Lucida Sans', 'Lucida', 'Helvetica', 'Arial', sans-serif;
     text-align: left;
 }
 
 .header {
     height: 106px;
-    width: 970pxpx;
+    width: 970px;
     margin: auto;
     border: none;
 }
