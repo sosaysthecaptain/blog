@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="description" content="FDM Startup, Print Bed, Dynamic Bed Leveling`">
+    <meta name="description" content="optical profilometer">
     <title>Optical Profilometer | Marc Auger</title>
     <link type="text/css" rel="stylesheet" href="../css/stylesheet.css" />
     <link rel="icon" href="../globalAssets/favicon/favicon.ico" type="image/x-icon">
@@ -33,15 +33,69 @@
     <div class="pageBody">
 
         <div class="blogTitle">
-                <p>Optical Profilometer</a>
+            <p>Optical Profilometer</a>
                 </br>
-                <span class="blogDate">Feb 25, 2018</span>
+                <span class="blogDate">March 14, 2018</span>
             </p>
         </div>
 
         <div class="pageText">
             <!-- BODY HTML BEGINS HERE -->
-            <p>(coming soon)</p>
+            <p>I’m building an optical profilometer. Made with a microscope, a projector, a camera, and a computer vision algorithm,
+                it will measure the three dimensional topography of a sample by repeatedly imaging the sample at different
+                heights, and measuring when each region of the sample crosses the microscope’s focal plane.</p>
+
+            <p>The idea is this: </p>
+            <ul>
+                <li>Begin with a fluorescence microscope, with a camera and a motorized stage. Remove the light source, and in
+                    its place, add a DLP projector, such that it can project an image onto the substrate. </li>
+                <li>Use the projector to project a grid of crosshatches onto a tiny region of the substrate. Each one will correspond
+                    to a vertical pixel in the ultimate 3D image.</li>
+                <li>Step the stage of the microscope up through all its possible Z values, capturing an image each time.</li>
+                <li>Dice the image into squares, each corresponding to one of the hashmarks, a single XY pixel. Run each segment
+                    of each image through a computer vision algorithm, and assign it a score according to how in focus it
+                    is.</li>
+                <li>For each pixel choose the Z value corresponding to the layer with the highest in-focus score. You now have
+                    X, Y, and Z values for the pixel.</li>
+                <li>Do this process on a step-and-repeat basis over the entire area you want to image.</li>
+                <li>Create a 3D mesh from all the pixels.</li>
+            </ul>
+
+            <img src="./profilometer/profilometerOverview.png" width="700" alt="overview: microscope is hooked up to projector, camera, motors, all controlled by a Tinkerboard"
+                title="overview: microscope is hooked up to projector, camera, motors, all controlled by a Tinkerboard" />
+
+            <h3>The hardware stack</h3>
+            <p>The machine will be built around a metallurgical fluorescence microscope such as <a href="https://www.amazon.com/AmScope-40x-800x-Polarizing-Metallurgical-Microscope/dp/B01E0GSKZ6/ref=sr_1_1_sspa?ie=UTF8&qid=1521049317&sr=8-1-spons&keywords=amscope+metallurgical+microscope&psc=1">this one</a>, which features a UV
+                source, a camera, and a high-precision XYZ stage. The UV source will be replaced with an <a href="https://www.amazon.com/Projector-ELEPHAS-Brightness-Backyard-Black-Silver/dp/B077VHX5BN/ref=sr_1_6?ie=UTF8&qid=1521049564&sr=8-6&keywords=pico+dlp&dpID=41G2Dc1PvdL&preST=_SY300_QL70_&dpSrc=srch">   inexpensive low-resolution
+                    pico DLP projector</a>, interface optics TBD. Since motorized microscope stages are super expensive, I’ll mechanize
+                the stage on the microscope with NEMA 17 stepper motors, which I’ll hook up using GT2 belts and custom designed
+                and printed pulleys. These will be controlled by a custom board, using the A4988 stepper drivers familliar
+                to the 3D printer world.</p>
+
+            <p>All of this will be driven by a <a href="https://www.asus.com/us/Single-Board-Computer/Tinker-Board/">Tinkerboard</a>, a souped-up RasPi clone with a bit more processing and graphics
+                oomph. Its GPIO will drive the motors, the camera will connect by USB, and it will interact with the outside
+                world through WiFi.</p>
+
+            <h3>The software stack</h3>
+            <p>The software will consist of three basic parts, beginning with an electron app, running on Linux on the Tinkerboard,
+                which will do most of the work. It will handle the basic operations of the machine—graphics output, image
+                capture, motor control—as well as higher level functionality, such as machine vision, constructing the final
+                mesh, and executing the program that runs through the entire imaging process. A simple firebase backend will
+                connect this to an Angular web app with which the user will control the machine via the internet. </p>
+
+            <h3>Progress so far</h3>
+            <ul>
+                <li><a href="./profilometer-architecture.html">Software architecture</a></li>
+                <li><a href="./profilometer-board.html">Circuit board</a></li>
+            </ul>
+
+            <h3>Open source</h3>
+            <ul>
+                <li><a href="https://github.com/sosaysthecaptain/profilometerSoftware">Tinkerboard app repo</a></li>
+                <li><a href="https://github.com/sosaysthecaptain/profilometerFrontend">Frontend repo</a></li>
+                <li>Circuit board—<a href="https://upverter.com/sosaysthecaptain/c649f4e56e6368c8/Optical-Profilometer-electronics-v10/">Upverter link</a>, <a href="./profilometer-board/profilometerBoard1.0Schematic.pdf">schematic (pdf)</a>, <a href="./profilometer-board/profilometerBoard1.0Gerber.zip">Gerber files (zip)</a></li>
+                <li>(CAD files & bill of materials will be added in the future)</li>
+            </ul>
 
             <!-- BODY HTML ENDS HERE -->
         </div>

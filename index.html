@@ -41,12 +41,56 @@
         <div class="pageText">
             <!-- BODY HTML BEGINS HERE -->
             <div class="blogTitle">
-                <p><a href="./posts/profilometer.html">Optical Profilometer</a></a></br>
-                <span class="blogDate">March 13, 2018</span></p>
+                <p><a href="./posts/profilometer-board.html">Profilometer - the circuit board</a></a></br>
+                <span class="blogDate">March 15, 2018</span></p>
             </div> 
+            <img src="./posts/profilometer-board/routedBoard.png" width="500" alt="routed board"
+                title="routed board" />
+
+                <p>I designed and ordered the circuit board for the profilometer today. The core functionality is simple—all we’re doing is driving three stepper motors off the Tinkerboard’s GPIO pins, and taking input from three corresponding endstops. This leaves us with an awful lot of spare pins, however, so I added an additional three stepper drivers and six MOSFETs, leaving four pins to spare. If I want to elaborate on this project in the future, I’ll be all set.</p>
+
+                <a href="./posts/profilometer-board.html">Read more...</a>
+
+                <div class="blogTitle">
+                    <p><a href="./posts/profilometer-architecture.html">Profilometer - software architecture</a></a></br>
+                    <span class="blogDate">March 15, 2018</span></p>
+                </div> 
+                
+                <img src="./posts/profilometer-architecture/uiSpitballing.png" width="700"/>
+                <p>The software needed to run the optical profilometer has fundamental components: one to run on the Tinkerboard and do most of the work, and a user interface. This could all be rolled into one, but for the sake of ease of use, stability, my curiosity about web apps, and the Tinkerboard’s single graphics output channel, we’ll build this out as two separate applications.</p>
+
+
+                <p>Although there are a number of precidents for machine control software of this nature using a direct USB or ethernet connection to the machine in question, I think the link ought to be accomplished by WiFi and a server. Endless, frustrating 3D printer experience has given me strong feelings about this. The machine is run by a full-blown computer that is more than up to the task, and ought to be able to stand alone. Besides, I want to build a system that more closely resembles one that would be found in a commercial product.</p>
+    
+                    <a href="./posts/profilometer-architecture.html">Read more...</a>
+            
+            
+            <div class="blogTitle">
+                <p><a href="./posts/profilometer.html">Optical Profilometer</a></a></br>
+                <span class="blogDate">March 14, 2018</span></p>
+            </div> 
+            <p>I’m building an optical profilometer. Made with a microscope, a projector, a camera, and a computer vision algorithm,
+                it will measure the three dimensional topography of a sample by repeatedly imaging the sample at different
+                heights, and measuring when each region of the sample crosses the microscope’s focal plane.</p>
+
+            <p>The idea is this: </p>
             <ul>
-                <li>(coming soon)</li>
+                <li>Begin with a fluorescence microscope, with a camera and a motorized stage. Remove the light source, and in
+                    its place, add a DLP projector, such that it can project an image onto the substrate. </li>
+                <li>Use the projector to project a grid of crosshatches onto a tiny region of the substrate. Each one will correspond
+                    to a vertical pixel in the ultimate 3D image.</li>
+                <li>Step the stage of the microscope up through all its possible Z values, capturing an image each time.</li>
+                <li>Dice the image into squares, each corresponding to one of the hashmarks, a single XY pixel. Run each segment
+                    of each image through a computer vision algorithm, and assign it a score according to how in focus it
+                    is.</li>
+                <li>For each pixel choose the Z value corresponding to the layer with the highest in-focus score. You now have
+                    X, Y, and Z values for the pixel.</li>
+                <li>Do this process on a step-and-repeat basis over the entire area you want to image.</li>
+                <li>Create a 3D mesh from all the pixels.</li>
             </ul>
+
+            <!-- <img src="./posts/profilometer/profilometerOverview.png" width="700" alt="overview: microscope is hooked up to projector, camera, motors, all controlled by a Tinkerboard"
+                title="overview: microscope is hooked up to projector, camera, motors, all controlled by a Tinkerboard" /> -->
             <a href="./posts/profilometer.html">Read more...</a>
 
             <div class="blogTitle">
