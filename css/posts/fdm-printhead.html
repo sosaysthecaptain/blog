@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="FDM Startup, Print Bed, Dynamic Bed Leveling`">
+    <title>Printhead | Marc Auger</title>
+    <link type="text/css" rel="stylesheet" href="../css/stylesheet.css" />
+    <link rel="icon" href="../globalAssets/favicon/favicon.ico" type="image/x-icon">
+
+</head>
+
+<body>
+
+    <div class="header">
+
+        <div class="logo">
+            <a href="../index.html">
+                <img src="../globalAssets/logo.svg" width="200"> </a>
+        </div>
+
+        <!-- nav bar -->
+        <div class="navBar">
+            <a href="profilometer.html">Optical Profilometer</a>
+            <a href="space-trader.html">Space Trader</a>
+            <a href="fdm-startup.html">FDM Startup</a>
+            <a href="about.html">About</a>
+        </div>
+    </div>
+
+
+    <div class="pageBody">
+
+        <div class="blogTitle">
+            <p>Printhead</a>
+                </br>
+                <span class="blogDate">Feb 25, 2018</span>
+            </p>
+        </div>
+
+        <div class="pageText">
+            <!-- BODY HTML BEGINS HERE -->
+            <img src="./fdm-printhead/printheadFront.jpg" alt="new printhead, front view" title="" />
+            <img src="./fdm-printhead/printheadPerspective.jpg" width="275" alt="new printhead, perspective view" title="" />
+
+            <p>One of the most important design objectives of the Isis One was soluble support, a feature that would facilitate
+                truly geometry agnostic printing, and that had so far (and has since) eluded the commercial market. Implemented
+                originally by Stratasys, the soluble support technique involved using a second extruder to deposit software-generated
+                support structures of a dissolvable plastic, upon which layers of the part could be printed. Soluble support
+                would open the door to the ability to print meaningfully useful engineering parts.</p>
+
+            <!-- breakaway support -->
+            <img src="./fdm-printhead/breakaway-collage.png" alt="breakaway support" title="Breakaway support makes possible complex geometries, but support removal is extremely labor intensive, and the result leaves a lot to be desired."
+            />
+
+            <h3>Design considerations</h3>
+            <p>In addition to solving the nozzle level problem, we had a few other objectives in our new printhead design. We
+                had to reduce the mass of the printhead by a factor of two since there would be two of them on the carriage.
+                We also needed a design that would allow the two nozzles to be within 15 mm or so of each other to maximize
+                travel along the axis and thus print volume. Further, we were unhappy with the extrusion characteristics
+                of our old printhead. Overall throughput was too low, which limited speed. The melt chamber was too large,
+                causing undue amounts of dribbling on retract and necessitating larger retract moves than we wanted. Finally,
+                the feed wheel arrangement needed to be more robust. The old arrangement used an idler that was manually
+                tightened against the feed wheel. The motor would jam if the idler was overtightened, and the wheel would
+                slip if wasn’t tightened enough. Both led to failed prints.</p>
+
+            <!-- printhead prototype -->
+            <img src="./fdm-printhead/printheadPrototype.png" width="600" alt="printhead prototype" title="a prototype of the new printhead"
+            />
+
+            <h3>The new design</h3>
+            <p>The new design centered around a compact, lightweight arrangement that delivered a great deal of torque, administered
+                to the filament through the action of two driven feedwheels at once. The feedwheels were driven by a custom
+                gearbox mechanism supported between two metal plates on the face of a NEMA 17 stepper. This massive driving
+                force on the filament solved our jamming problem and allowed the use of a very small melt chamber. A steep
+                heat gradient was facilitated by a very thin barrel, machined from stainless steel (rather than aluminum)
+                so as to achieve the necessary mechanical strength while being very thin. We solved the problem of nozzles
+                interfering with each other by making it easy to perfectly level the two nozzles with a captive nut adjustment
+                mechanism.</p>
+
+            <!-- new design cross section -->
+            <img src="./fdm-printhead/printheadCutaway.jpg" width="400" alt="cutaway view" title="The new design centered around a gearbox, which drove dual feedwheels. Cutaway view reveals the feedwheels and the thin-walled, teflon-lined barrel."
+            />
+
+            <p>The design came together more painlessly than we expected. The only major difficult had to do with heat gradients—heat
+                would travel up the barrel too aggressively, causing the not-yet-melted filament in the upper portion of
+                the barrel to swell, jamming the extruder. Some airflow, diverted from the print cooling fan to the bottom
+                of the barrel, in conjunction with a teflon barrel liner, solved the problem.</p>
+
+            <!-- heat gradient test rig -->
+            <img src="./fdm-printhead/heatGradientRig.jpg" width="500" alt="heat gradient test rig" title="test rig for working out heat gradient problems"
+            />
+
+            <h3>Getting parts machined</h3>
+            <p>The actual manufacturing process, on the other hand, was far from smooth. Much of the design of the Isis One
+                had been accomplished with plastic parts designed to be printed on our in-house farm of Isis Ones, and metal
+                parts were either simple aluminum plates, or else extrusions cut to length. For the new printhead, however,
+                there was no getting around significant custom machining.</p>
+
+            <p>One of the major lessons of this project is that, whatever horror stories you may have heard, they’re rather
+                good at manufacturing in China. After very expensive and time consuming dalliances first in Chicago and then
+                in Utah (the first shop strung us along for a while, and then declared that they couldn’t make our parts,
+                the second made them, eventually, for $200/set), we eventually landed with a shop in Shenzhen. They were
+                extremely professional, responsive, fast, and they came through with excellent parts for less than a quarter
+                the cost of the American shop. It had never occured to us that working with the Chinese shop would be a smoother
+                process than with the American shop, nor that the result would be better. Live and learn.</p>
+
+
+            <!-- hobbing -->
+            <img src="./fdm-printhead/feedWheel.jpg" alt="feedwheel" title="" />
+            <img src="./fdm-printhead/cuttingFeedWheel.jpg" alt="cutting the feedwheel" title="The feedwheel was manufactured by a specialized hobbing operation, impossible to specify in an ordinary drawing. Manufacturing parts like these required a lot of back-and-forth with the machine shop."
+            />
+
+            <h3>Assembly</h3>
+            <p>Assembling our printheads proved to be a monstrous ordeal. The spacers that held the plates apart proved to be
+                ridiculously fiddly—differences of 100um in their length was the difference between the extruder printing
+                and its gears jamming hopelessly. We ended up remaking the spacers manually, using an improvised dremel-chop-saw
+                device with a fiberglass wheel, and filing the resulting centimeter-long bits of brass tubing to their extremely
+                specific critical dimension.</p>
+
+            <p>The wiring harness also proved to be a time consuming mess, that we ended up solving manually at the cost of
+                a lot of hours. Once again here, the long term answer proved to be China—Alibaba came through with an excellent
+                shop that produced wiring harnesses for a lot less money than we thought possible.</p>
+
+            <h3>Soluble support with the new printhead</h3>
+            <p>Despite the difficulty of getting it into production, our new printhead fundamentally achieved all its design
+                objectives. We got a dual extruder working, increased our print speed to 150 mm/s, almost completely eliminated
+                stringing problems, and made a very significant improvement in overall reliability. Using polyvinyl alcohol
+                support material, we got soluble support to work, though we never got adhesion between support material and
+                the print quite as good as we wanted.</p>
+
+            <!-- soluble support adhesion testing -->
+            <img src="./fdm-printhead/solubleTesting.jpg" width="700"  alt="soluble support testing" title="testing adhesion with soluble support"
+            />
+
+            <p>The printhead was fundamentally what made the Isis One design what it was—it got us the speed, reliability, and
+                soluble support that set the printer apart. Interestingly, I haven’t seen another dual driven feedwheel design
+                on the market since.</p>
+
+            <img src="./fdm-printhead/injectionMould.png" alt="injection mould prototype" title="soluble support enabled the creation of useful injection mould prototypes such as this one"
+            />
+
+
+            <!-- BODY HTML ENDS HERE -->
+        </div>
+    </div>
+    </div>
+
+    <!-- END BODY -->
+
+    <div class="footer">
+        <p>Copyright ©
+            <script> document.write(new Date().getFullYear()) </script> Marc Auger</p>
+        <a href="archive.html">Archive</a>
+        <a href="profilometer.html">Optical Profilometer</a>
+        <a href="space-trader.html">Space Trader</a>
+        <a href="fdm-startup.html">FDM Startup</a>
+        <a href="about.html">About</a>
+
+        </b>
+    </div>
+
+    </div>
+
+</body>

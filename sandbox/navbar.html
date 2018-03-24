@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+
+    <link rel="stylesheet" href="./sandboxStyle.css">
+
+    <title>Hello, world!</title>
+  </head>
+  <body>
+    <nav class="navbar navbar-expand-sm navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">Marc Auger</a>
+            <ul class="navbar-nav">
+                <li class="nav-item">
+                    <a class="nav-link" id="blue" href="#">Optical Profilometer</a>
+                </li>
+                <li class="nav-item"
+                    ><a class="nav-link" id="pink" href="#">Space Trader</a
+                ></li>
+                <li class="nav-item">
+                    <a class="nav-link" id="yellow" href="#">FDM Startup</a>
+                </li>
+                <li class="nav-item">
+                        <a class="nav-link" id="teal" href="#">About</a>
+                </li>
+            </ul>
+
+        </div>
+    </nav>
+
+    <!-- ACTUAL BODY HERE -->
+    <div class="pageBody">
+
+        <div class="blogTitle">
+            <p>Profilometer - the circuit board</a>
+                </br>
+                <span class="blogDate">March 15, 2018</span>
+            </p>
+        </div>
+
+        <div class="pageText">
+            
+            <img src="../posts/profilometer-board/routedBoard.png" width="500" alt="routed board"
+                title="routed board" />
+
+                <p>I designed and ordered the circuit board for the profilometer today. The core functionality is simple—all we’re doing is driving three stepper motors off the Tinkerboard’s GPIO pins, and taking input from three corresponding endstops. This leaves us with an awful lot of spare pins, however, so I added an additional three stepper drivers and six MOSFETs, leaving four pins to spare. If I want to elaborate on this project in the future, I’ll be all set.</p>
+
+                <h3>Stepper Drivers</h3>
+                <p>The stepper drivers are <a href="https://www.pololu.com/product/1182">A4988s</a>, which are super common and familiar to anyone who’s ever assembled a 3D printer. They cost two or three bucks, can *theoretically* drive up to 2A with enough cooling, and are rated to 35v. They are packaged as small circuit boards with two rows of eight headers, that fit in in sockets on your board. They take input from two pins, step and direction, as well as a stepper enable pin, which can shut the whole thing off. Each pulse delivered to the step pin causes the motor to move one step. Three pins allow you to define the degree of microstepping you want—we’re using 1/16th step microstepping, which improves resolution and smoothness.</p>
+                
+                <p>The A4988s are hooked up like this:</p>
+                <img src="../posts/profilometer-board/a4988Scematic.png" alt="A4988 connection schematic"
+                title="A4988 connection schematic" />
+                
+                <h3>MOSFETs</h3>
+                <p>For the MOSFETs, we’re using the PHT4NQ10LT, a surface mount SOT-23 N-Channel MOSFET capable of 100v and 3.5A. It’s a logic level device, meaning it can be driven directly off of TTL from the Tinkerboard. I found ten of these on eBay for $7. Everything in this project is surface mount, by the way—I got a hot air gun, a tube of solder paste, and a few trays of standard value resistors/capacitors/LEDs/etc in 1206 footprint a year ago, and found SMT boards to be super easy to make.</p>
+
+                <img src="../posts/profilometer-board/mosfetSchematic.png"  alt="MOSFET connection schematic"
+                title="MOSFET connection schematic" />
+                
+                <p>The LED here serves as a visual indicator of whether the LED is on, and R3 helps with shutoff. MOSFET gates have a certain amount of parasitic capacitance, which in some cases is enough to keep the transistor on even when the pin goes low. A high value resistor between gate and ground pulls this down.</p>
+                
+                <h3>Designing the board</h3>
+                <p>I designed this board in <a href="http://www.upverter.com">Upverter</a>, an online e-CAD package competitive with Eagle. It runs in a browser, and when I first encountered it a year ago, fresh off the high I’d gotten from discovering Onshape and brimming with enthusiasm for browser-based CAD, it seemed like a vastly better system. My enthusiasm is somewhat tempered now, largely by its total lack of component alignment tools and the miserable process that it is to do a pour. I might be back to Eagle before too long…</p>
+                
+                <p>At any rate, the process of designing the board consists of creating the schematic, beginning with the ribbon cable coming in from the Tinkerboard. Add each of the pieces of functionality, and lay them out on the board as you go. When it’s all there, route, beginning with important signals traveling a long distance, moving on to power, and ending with local connections. Do a ground pour and it’s done. Export the gerbers.</p>
+                
+                <h3>Getting the board manufactured</h3>
+                <p>Apparently getting PCBs made used to suck. I wouldn’t know. The best place to get simple boards made is <a href="http://www.seeedstudio.com">SeeedStudio</a>—$5 for 10x two layer boards up to 100x100mm. Plus shipping from China, but even then, the order comes in under $25. Turnaround, including shipping, is better than two weeks.</p>
+                
+                <p>That’s all for now. I’ll put my board together when it comes, along about the beginning of April.</p>
+                
+                <h3>Files</h3>
+                <p>All files associated with this project are also available on the main project page.</p>
+               <ul>
+                    <li><a href="https://upverter.com/sosaysthecaptain/c649f4e56e6368c8/Optical-Profilometer-electronics-v10/">Upverter link</a></li>
+                    <li><a href="../posts/profilometer-board/profilometerBoard1.0Schematic.pdf">Schematic (pdf)</a></li>
+                    <li><a href="../posts/profilometer-board/profilometerBoard1.0Gerber.zip">Gerbers (zip)</a></li>
+               </ul>
+            
+
+            <!-- BODY HTML ENDS HERE -->
+        </div>
+    </div>
+    </div>
+    <!-- END BODY -->
+
+
+    <!-- Optional JavaScript -->
+    <!-- jQuery first, then Popper.js, then Bootstrap JS -->
+    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
+  </body>
+</html>

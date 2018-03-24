@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="FDM Startup, Print Bed, Dynamic Bed Leveling`">
+    <title>Space Trader: Encounters | Marc Auger</title>
+    <link type="text/css" rel="stylesheet" href="../css/stylesheet.css" />
+    <link rel="icon" href="../globalAssets/favicon/favicon.ico" type="image/x-icon">
+
+</head>
+
+<body>
+
+    <div class="header">
+
+        <div class="logo">
+            <a href="../index.html">
+                <img src="../globalAssets/logo.svg" width="200"> </a>
+        </div>
+
+        <!-- nav bar -->
+        <div class="navBar">
+            <a href="profilometer.html">Optical Profilometer</a>
+            <a href="space-trader.html">Space Trader</a>
+            <a href="fdm-startup.html">FDM Startup</a>
+            <a href="about.html">About</a>
+        </div>
+    </div>
+
+
+    <div class="pageBody">
+
+        <div class="blogTitle">
+            <p>Space Trader: Encounters</a>
+                </br>
+                <span class="blogDate">Feb 25, 2018</span>
+            </p>
+        </div>
+
+        <div class="pageText">
+            <!-- BODY HTML BEGINS HERE -->
+            <p>The series of encounters a player experiences during the journey from one system to another presented a considerable challenge, in the handling of control flow and information between view controllers and the data model. The encounters of a journey begin once the player has dropped out of hyperspace, on his final 20 clicks in to his destination planet. Each click represents an opportunity for an encounter.</p>
+
+            <!-- Encounter screen -->
+            <img src="./space-trader-encounters/encounter.png" title="Encounter screen"
+                alt="encounter screen" />
+            
+            <p>The logic works as such:</p>
+            <ul>
+                <li>When the player presses the warp button, a local function in the WarpVC, after verifying that debts or fuel conditions don’t prevent his journey, calls the warp function in the Galaxy class</li>
+                <li>Galaxy.warp() performs further verification, and then instantiates an instance of a Journey, within Galaxy, and calls its beginJourney() method</li>
+                <li>A NSNotification tells the WarpVC to fire a segue to WarpViewVC, which is a blank starfield background against which encounter modals appear</li>
+                <li>The journey.resumeJourney() method calls journey.executeClick(), which runs the logic to determine if an encounter is to happen this click, and if so, which one.</li>
+                <li>When it is time for an encounter:</li>
+                <ul>
+                    <li>When it is time for an encounter, journey.executeClick() instantiates an instance of the Encounter class, and calls its beginEncounter() method, which uses an NSNotification to tell WarpViewVC to fire a segue, launching the encounter modal itself, EncounterVC.</li>
+                    <li>EncounterVC contains imageViews, labels, and four buttons, which draw their content from the current Encounter instance. Buttons themselves take on the appropriate text, and if they are not needed, disappear. When the player selects his move and taps one of the buttons, a switch statement on its label calls the appropriate function in Encounter.</li>
+                   <li> Subsequent stages of the encounter (You fired! You missed! The pirate ship is still in pursuit!) happen within the same EncounterVC; no segue is fired. NSNotifications are used to redraw the screen, loading the updated text from the the current Encounter object, and redrawing the image overlays indicating hull and shield damage to both player and opponent ships.</li>
+                    <li>When the encounter concludes, an alert informs the player. Upon conclusion of an encounter, EncounterVC is pulled from the stack.</li>
+                </ul>
+                <li>When clicks remaining reaches zero, journey.completeJourney() resets the current planet within Galaxy, and uses an NSNotification to dismiss WarpViewVC, returning the player to the original tabViewController.</li>
+            </ul>
+
+            <!-- BODY HTML ENDS HERE -->
+        </div>
+    </div>
+    </div>
+
+    <!-- END BODY -->
+
+    <div class="footer">
+        <p>Copyright ©
+            <script> document.write(new Date().getFullYear()) </script> Marc Auger</p>
+        <a href="archive.html">Archive</a>
+        <a href="profilometer.html">Optical Profilometer</a>
+        <a href="space-trader.html">Space Trader</a>
+        <a href="fdm-startup.html">FDM Startup</a>
+        <a href="about.html">About</a>
+
+        </b>
+    </div>
+
+    </div>
+
+</body>

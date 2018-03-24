@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="FDM Startup, Print Bed, Dynamic Bed Leveling`">
+    <title>Space Trader: Quests, Data Persistence, Debugging | Marc Auger</title>
+    <link type="text/css" rel="stylesheet" href="../css/stylesheet.css" />
+    <link rel="icon" href="../globalAssets/favicon/favicon.ico" type="image/x-icon">
+
+</head>
+
+<body>
+
+    <div class="header">
+
+        <div class="logo">
+            <a href="../index.html">
+                <img src="../globalAssets/logo.svg" width="200"> </a>
+        </div>
+
+        <!-- nav bar -->
+        <div class="navBar">
+            <a href="profilometer.html">Optical Profilometer</a>
+            <a href="space-trader.html">Space Trader</a>
+            <a href="fdm-startup.html">FDM Startup</a>
+            <a href="about.html">About</a>
+        </div>
+    </div>
+
+
+    <div class="pageBody">
+
+        <div class="blogTitle">
+            <p>Space Trader: Quests, Data Persistence, Debugging</a>
+                </br>
+                <span class="blogDate">Feb 25, 2018</span>
+            </p>
+        </div>
+
+        <div class="pageText">
+            <!-- BODY HTML BEGINS HERE -->
+            <h3>Quests and Special Events</h3>
+            <p>As the player travels the galaxy, he occasionally sees a button called “Special”, which enables him to begin
+                a quest. Quests typically involve long journeys, wild goose chases, encounters with special opponents, and
+                people to take home. Implementing quests was a complicated manner, because quests involve a great deal of
+                functionality spread out through the game.</p>
+            <p>The basic implementation was simple enough. A specialEventID could be assigned to a system in the galaxy, causing
+                the “Special” button to appear and load a view controller, SpecialVC, that displayed the appropriate text
+                and button text based on the specialEventID. When the player accepted the quest, the information was logged
+                to the specialEvent class inside player. This way data could be stored and counters implemented, causing
+                further events as the quest progressed. Immediate actions—adding crewmembers or equipment to the player’s
+                ship, or placing subsequent specialEvents, could be done directly from the SpecialVC.</p>
+            <p>The main difficulty came in implementing a number of notifications, interactions, and alerts that happened through
+                the game—for instance, when the player gets a tribble infestation, tribbles have to eat the food he’s carrying,
+                cause his ship to be devalued at the spaceport, cause him to receive fine warnings from the spaceport inspector,
+                and die of radiation poisoning if he’s also taking on the unstable reactor quest. Unfortunately, all of these
+                had to be manually coded throughout the game, an effortful process that scattered quest-related material
+                through the codebase and made maintenance difficult.</p>
+            <h3>Data Persistance</h3>
+            <p>Save game functionality, both available from the menu and as the autosave used when the player leaves the game,
+                presented an additional challenge. After exploring CoreData, I opted to use NSCoding encode and decode methods
+                on each class. Ultimately, a game can be wrapped up by encoding the Commander and Galaxy classes, which enclose
+                all others. Both deliberately and autosaved games are stored in a global array. AppDelegate handles the loading
+                and unloading of these arrays from a plist, on applicationWillResignActive() and applicationWillBecomeActive().
+                High scores, which are also stored in a global array, are stored and loaded in the same manner.</p>
+            <h3>Debugging</h3>
+            <p>Launching Space Trader immediately brought to light a host of things wrong with it. In addition to a number of
+                untied ends, easy enough to patch up, there were a number of problems pertaining to scrollView controllers
+                on phones with 4″ screens.</p>
+            <p>By far the most vexing bug, however, was one that caused increasing lags during the encounter sequence, and particularly
+                at the end of it. It seemed to happen only intermittently, but odds of it happening seemed to increase the
+                longer you played, in effect targeting people who were actually getting into the game. When it got bad enough,
+                it crashed the app, losing the user’s game. I received a number of complaints about this, and spent a good
+                deal of time figuring it out. The problem turned out to be related to the conclusion of the encounter sequence.
+                Instead of dismissing the WarpViewVC to return to the tabView, the app instead fired a segue to it, effectively
+                putting another copy of it on top of WarpViewVC. The stack grew ever higher as the app continued to run.
+                Dismissing WarpViewVC, instead of firing the segue, solved the problem.</p>
+            <!-- BODY HTML ENDS HERE -->
+        </div>
+    </div>
+    </div>
+
+    <!-- END BODY -->
+
+    <div class="footer">
+        <p>Copyright ©
+            <script> document.write(new Date().getFullYear()) </script> Marc Auger</p>
+        <a href="archive.html">Archive</a>
+        <a href="profilometer.html">Optical Profilometer</a>
+        <a href="space-trader.html">Space Trader</a>
+        <a href="fdm-startup.html">FDM Startup</a>
+        <a href="about.html">About</a>
+
+        </b>
+    </div>
+
+    </div>
+
+</body>

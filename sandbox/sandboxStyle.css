@@ -1,0 +1,57 @@
+#blue { 
+    color: rgb(62,143,209);
+}
+
+#pink {
+    color: rgb(199,113,145);
+}
+
+#yellow {
+    color: rgb(254,204,125);
+}
+
+#teal {
+    color: rgb(176,223,218);
+}
+
+/* from old CSS */
+.pageBody{
+    width: 925px;
+    margin: auto;
+}
+
+.blogBody {
+    width: 600px;
+}
+
+.blogTitle {
+    height: 45px;
+    line-height: 20px;
+    font-size: 20px;
+    border-bottom: 1px solid #d8d6d6;
+    color: #569e50;
+    margin: 30px 0px 15px 0px;
+    clear: both;
+}
+
+.blogDate {
+    font-size: 12px;
+    height: 14px;
+    color: #ababa8;
+    clear: both;
+}
+
+/* .pageText {
+    font-size: 13px;
+    color: #333333;
+    line-height: 19px;
+    margin-bottom: 50px;
+    margin-left: 0px;
+    margin-right: 20px;
+    margin-top: 0px;
+    display: block;
+    clear: both;
+    width: 600px;
+} */
+
+
