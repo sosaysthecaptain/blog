@@ -3,33 +3,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useState, useEffect, useCallback } from "react";
-
-const projects = [
-  {
-    slug: "fdm-startup",
-    title: "FDM Startup",
-    description: "Dual-extruder 3D printer with soluble support",
-  },
-  {
-    slug: "profilometer",
-    title: "Optical Profilometer",
-    description: "DIY 3D surface measurement via focus stacking",
-  },
-  {
-    slug: "space-trader",
-    title: "Space Trader",
-    description: "iOS remake of the classic Palm Pilot game",
-  },
-];
-
-// All top-level posts (projects + blog posts, excluding sub-posts)
-const allPosts = [
-  { slug: "hello-world", title: "Hello World", date: "2026-01-08" },
-  { slug: "building-this-site", title: "Building This Site", date: "2026-01-07" },
-  { slug: "profilometer", title: "Optical Profilometer", date: "2018-03-14", isProject: true },
-  { slug: "fdm-startup", title: "FDM Startup", date: "2018-02-25", isProject: true },
-  { slug: "space-trader", title: "Space Trader", date: "2018-02-25", isProject: true },
-];
+import { getPublishedPosts, getProjects, Post } from "@/lib/firestore";
+import { getAllPosts as getFallbackPosts, getProjects as getFallbackProjects } from "@/lib/posts";
 
 const carouselImages = [
   {
@@ -52,6 +27,9 @@ const carouselImages = [
 
 export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [projects, setProjects] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const nextSlide = useCallback(() => {
     setCurrentSlide((prev) => (prev + 1) % carouselImages.length);
@@ -65,6 +43,41 @@ export default function Home() {
     const timer = setInterval(nextSlide, 5000);
     return () => clearInterval(timer);
   }, [nextSlide]);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [firestorePosts, firestoreProjects] = await Promise.all([
+          getPublishedPosts(),
+          getProjects(),
+        ]);
+
+        if (firestorePosts.length > 0) {
+          // Filter to only top-level posts (no parent)
+          const topLevelPosts = firestorePosts.filter((p) => !p.parent);
+          setPosts(topLevelPosts);
+          setProjects(firestoreProjects);
+        } else {
+          // Fall back to hardcoded
+          const fallbackList = getFallbackPosts();
+          const fallbackProj = getFallbackProjects();
+          setPosts(fallbackList.map((p) => ({ ...p, status: "published" as const } as Post)));
+          setProjects(fallbackProj.map((p) => ({ ...p, status: "published" as const } as Post)));
+        }
+      } catch (error) {
+        console.error("Error loading posts:", error);
+        // Fall back to hardcoded on error
+        const fallbackList = getFallbackPosts();
+        const fallbackProj = getFallbackProjects();
+        setPosts(fallbackList.map((p) => ({ ...p, status: "published" as const } as Post)));
+        setProjects(fallbackProj.map((p) => ({ ...p, status: "published" as const } as Post)));
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadData();
+  }, []);
 
   return (
     <div className="min-h-screen bg-[--background]">
@@ -134,20 +147,22 @@ export default function Home() {
         {/* Projects */}
         <section className="mb-10">
           <h2 className="text-[--muted] text-sm mb-4 uppercase tracking-wide">Projects</h2>
-          <div className="space-y-1">
-            {projects.map((project, i) => (
-              <div key={project.slug} className="flex flex-wrap">
-                <span className="text-[--muted] mr-2">
-                  {i === projects.length - 1 ? "└─" : "├─"}
-                </span>
-                <Link href={`/blog/${project.slug}`} className="hover:underline">
-                  {project.title}
-                </Link>
-                <span className="text-[--muted] mx-2">─</span>
-                <span className="text-[--muted] text-sm">{project.description}</span>
-              </div>
-            ))}
-          </div>
+          {loading ? (
+            <p className="text-[--muted]">Loading...</p>
+          ) : (
+            <div className="space-y-1">
+              {projects.map((project, i) => (
+                <div key={project.slug} className="flex flex-wrap">
+                  <span className="text-[--muted] mr-2">
+                    {i === projects.length - 1 ? "└─" : "├─"}
+                  </span>
+                  <Link href={`/blog/${project.slug}`} className="hover:underline">
+                    {project.title}
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* Links */}
@@ -171,19 +186,23 @@ export default function Home() {
         {/* All Posts */}
         <section className="mb-10">
           <h2 className="text-[--muted] text-sm mb-4 uppercase tracking-wide">Posts</h2>
-          <div className="space-y-2">
-            {allPosts.map((post) => (
-              <div key={post.slug} className="flex items-baseline">
-                <span className="text-[--muted] w-28 shrink-0 text-sm">{post.date}</span>
-                <Link href={`/blog/${post.slug}`} className="hover:underline">
-                  {post.title}
-                </Link>
-                {post.isProject && (
-                  <span className="text-[--muted] text-xs ml-2">[project]</span>
-                )}
-              </div>
-            ))}
-          </div>
+          {loading ? (
+            <p className="text-[--muted]">Loading...</p>
+          ) : (
+            <div className="space-y-2">
+              {posts.map((post) => (
+                <div key={post.slug} className="flex items-baseline">
+                  <span className="text-[--muted] w-28 shrink-0 text-sm">{post.date}</span>
+                  <Link href={`/blog/${post.slug}`} className="hover:underline">
+                    {post.title}
+                  </Link>
+                  {post.isProject && (
+                    <span className="text-[--muted] text-xs ml-2">[project]</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* Footer */}
