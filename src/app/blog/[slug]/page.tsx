@@ -2,95 +2,10 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { useParams } from "next/navigation";
+import ReactMarkdown from "react-markdown";
 import { getPostBySlug, Post } from "@/lib/firestore";
 import { posts as fallbackPosts } from "@/lib/posts";
-
-// Parse markdown links [text](url) into JSX
-function parseLinks(text: string): (string | JSX.Element)[] {
-  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
-  const parts: (string | JSX.Element)[] = [];
-  let lastIndex = 0;
-  let match;
-  let keyIndex = 0;
-
-  while ((match = linkRegex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push(text.slice(lastIndex, match.index));
-    }
-    const [, linkText, url] = match;
-    const isInternal = url.startsWith("/");
-    if (isInternal) {
-      parts.push(
-        <Link key={keyIndex++} href={url} className="text-[--accent] hover:underline">
-          {linkText}
-        </Link>
-      );
-    } else {
-      parts.push(
-        <a
-          key={keyIndex++}
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-[--accent] hover:underline"
-        >
-          {linkText}
-        </a>
-      );
-    }
-    lastIndex = match.index + match[0].length;
-  }
-
-  if (lastIndex < text.length) {
-    parts.push(text.slice(lastIndex));
-  }
-
-  return parts.length > 0 ? parts : [text];
-}
-
-// Parse markdown images ![alt](url) into JSX
-function parseImages(text: string): (string | JSX.Element)[] {
-  const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-  const parts: (string | JSX.Element)[] = [];
-  let lastIndex = 0;
-  let match;
-  let keyIndex = 0;
-
-  while ((match = imageRegex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push(text.slice(lastIndex, match.index));
-    }
-    const [, alt, url] = match;
-    parts.push(
-      <figure key={keyIndex++} className="my-8">
-        <div className="relative w-full border border-[--border]">
-          <Image
-            src={url}
-            alt={alt}
-            width={800}
-            height={500}
-            className="w-full h-auto"
-            unoptimized={url.startsWith("http")}
-          />
-        </div>
-        {alt && (
-          <figcaption className="text-sm text-[--muted] mt-2 text-center">
-            {alt}
-          </figcaption>
-        )}
-      </figure>
-    );
-    lastIndex = match.index + match[0].length;
-  }
-
-  if (lastIndex < text.length) {
-    parts.push(text.slice(lastIndex));
-  }
-
-  return parts.length > 0 ? parts : [text];
-}
 
 export default function BlogPost() {
   const params = useParams();
@@ -167,56 +82,6 @@ export default function BlogPost() {
     loadPost();
   }, [slug]);
 
-  const renderContent = () => {
-    if (!post) return null;
-
-    // First parse images, then for text parts parse links
-    const parts = parseImages(post.content);
-
-    return parts.map((part, i) => {
-      if (typeof part !== "string") {
-        return part; // Already a JSX element (image)
-      }
-
-      return part.split("\n\n").map((paragraph, j) => {
-        if (!paragraph.trim()) return null;
-
-        if (paragraph.startsWith("## ")) {
-          return (
-            <h2 key={`${i}-${j}`} className="text-[--foreground] font-bold mt-8 mb-4 text-lg">
-              {paragraph.replace("## ", "")}
-            </h2>
-          );
-        }
-        if (paragraph.startsWith("├─") || paragraph.startsWith("└─") || paragraph.startsWith("│")) {
-          const lines = paragraph.split("\n");
-          return (
-            <pre key={`${i}-${j}`} className="text-[--foreground] my-1 whitespace-pre-wrap">
-              {lines.map((line, k) => (
-                <span key={k}>
-                  {parseLinks(line)}
-                  {k < lines.length - 1 && "\n"}
-                </span>
-              ))}
-            </pre>
-          );
-        }
-        if (paragraph.match(/^\d+\./)) {
-          return (
-            <p key={`${i}-${j}`} className="text-[--foreground] my-2 pl-4">
-              {parseLinks(paragraph)}
-            </p>
-          );
-        }
-        return (
-          <p key={`${i}-${j}`} className="text-[--foreground] my-4 leading-relaxed">
-            {parseLinks(paragraph)}
-          </p>
-        );
-      });
-    });
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-[--background] flex items-center justify-center">
@@ -260,7 +125,81 @@ export default function BlogPost() {
           </header>
 
           <div className="prose-terminal">
-            {renderContent()}
+            <ReactMarkdown
+              components={{
+                h1: ({ children }) => (
+                  <h1 className="text-2xl font-bold text-[--foreground] mt-8 mb-4">{children}</h1>
+                ),
+                h2: ({ children }) => (
+                  <h2 className="text-xl font-bold text-[--foreground] mt-8 mb-4">{children}</h2>
+                ),
+                h3: ({ children }) => (
+                  <h3 className="text-lg font-bold text-[--foreground] mt-6 mb-3">{children}</h3>
+                ),
+                p: ({ children }) => (
+                  <p className="text-[--foreground] my-4 leading-relaxed">{children}</p>
+                ),
+                a: ({ href, children }) => {
+                  const isInternal = href?.startsWith("/");
+                  if (isInternal) {
+                    return (
+                      <Link href={href || "/"} className="text-[--accent] hover:underline">
+                        {children}
+                      </Link>
+                    );
+                  }
+                  return (
+                    <a href={href} target="_blank" rel="noopener noreferrer" className="text-[--accent] hover:underline">
+                      {children}
+                    </a>
+                  );
+                },
+                strong: ({ children }) => (
+                  <strong className="font-bold">{children}</strong>
+                ),
+                em: ({ children }) => (
+                  <em className="italic">{children}</em>
+                ),
+                code: ({ children }) => (
+                  <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono">{children}</code>
+                ),
+                pre: ({ children }) => (
+                  <pre className="bg-gray-100 p-4 rounded overflow-x-auto my-4 text-sm">{children}</pre>
+                ),
+                ul: ({ children }) => (
+                  <ul className="list-disc list-inside my-4 space-y-1 text-[--foreground]">{children}</ul>
+                ),
+                ol: ({ children }) => (
+                  <ol className="list-decimal list-inside my-4 space-y-1 text-[--foreground]">{children}</ol>
+                ),
+                li: ({ children }) => (
+                  <li className="text-[--foreground]">{children}</li>
+                ),
+                blockquote: ({ children }) => (
+                  <blockquote className="border-l-4 border-[--accent] pl-4 my-4 italic text-[--muted]">{children}</blockquote>
+                ),
+                img: ({ src, alt }) => (
+                  <figure className="my-6">
+                    <img
+                      src={src}
+                      alt={alt || ""}
+                      className="max-w-full h-auto border border-[--border] rounded"
+                      style={{ width: 'auto', maxWidth: '100%' }}
+                    />
+                    {alt && (
+                      <figcaption className="text-sm text-[--muted] mt-2 text-center">
+                        {alt}
+                      </figcaption>
+                    )}
+                  </figure>
+                ),
+                hr: () => (
+                  <hr className="my-8 border-[--border]" />
+                ),
+              }}
+            >
+              {post.content}
+            </ReactMarkdown>
           </div>
         </article>
 

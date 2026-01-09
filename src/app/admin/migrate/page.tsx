@@ -61,15 +61,18 @@ export default function MigratePage() {
           });
         }
 
-        await createPost({
+        // Build post data, excluding undefined fields
+        const postData: Record<string, unknown> = {
           slug: post.slug,
           title: post.title,
           date: post.date || new Date().toISOString().split("T")[0],
           content,
-          isProject: post.isProject,
-          parent: post.parent,
-          status: post.date ? "published" : "draft", // About page has no date
-        });
+          status: post.date ? "published" : "draft",
+        };
+        if (post.isProject) postData.isProject = true;
+        if (post.parent) postData.parent = post.parent;
+
+        await createPost(postData as Parameters<typeof createPost>[0]);
       }
 
       setStatus(`Successfully migrated ${postsToMigrate.length} posts!`);

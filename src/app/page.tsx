@@ -6,6 +6,8 @@ import { useState, useEffect, useCallback } from "react";
 import { getPublishedPosts, getProjects, Post } from "@/lib/firestore";
 import { getAllPosts as getFallbackPosts, getProjects as getFallbackProjects } from "@/lib/posts";
 
+const POSTS_PER_PAGE = 10;
+
 const carouselImages = [
   {
     src: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200&h=600&fit=crop",
@@ -30,6 +32,7 @@ export default function Home() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [projects, setProjects] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const nextSlide = useCallback(() => {
     setCurrentSlide((prev) => (prev + 1) % carouselImages.length);
@@ -188,20 +191,49 @@ export default function Home() {
           <h2 className="text-[--muted] text-sm mb-4 uppercase tracking-wide">Posts</h2>
           {loading ? (
             <p className="text-[--muted]">Loading...</p>
+          ) : posts.length === 0 ? (
+            <p className="text-[--muted]">No posts yet.</p>
           ) : (
-            <div className="space-y-2">
-              {posts.map((post) => (
-                <div key={post.slug} className="flex items-baseline">
-                  <span className="text-[--muted] w-28 shrink-0 text-sm">{post.date}</span>
-                  <Link href={`/blog/${post.slug}`} className="hover:underline">
-                    {post.title}
-                  </Link>
-                  {post.isProject && (
-                    <span className="text-[--muted] text-xs ml-2">[project]</span>
-                  )}
+            <>
+              <div className="space-y-2">
+                {posts
+                  .slice((currentPage - 1) * POSTS_PER_PAGE, currentPage * POSTS_PER_PAGE)
+                  .map((post) => (
+                    <div key={post.slug} className="flex items-baseline">
+                      <span className="text-[--muted] w-28 shrink-0 text-sm">{post.date}</span>
+                      <Link href={`/blog/${post.slug}`} className="hover:underline">
+                        {post.title}
+                      </Link>
+                      {post.isProject && (
+                        <span className="text-[--muted] text-xs ml-2">[project]</span>
+                      )}
+                    </div>
+                  ))}
+              </div>
+
+              {/* Pagination */}
+              {posts.length > POSTS_PER_PAGE && (
+                <div className="flex items-center gap-4 mt-6 pt-4 border-t border-[--border]">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="text-sm text-[--muted] hover:text-[--foreground] disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    ← Newer
+                  </button>
+                  <span className="text-sm text-[--muted]">
+                    Page {currentPage} of {Math.ceil(posts.length / POSTS_PER_PAGE)}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(Math.ceil(posts.length / POSTS_PER_PAGE), p + 1))}
+                    disabled={currentPage >= Math.ceil(posts.length / POSTS_PER_PAGE)}
+                    className="text-sm text-[--muted] hover:text-[--foreground] disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    Older →
+                  </button>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </section>
 

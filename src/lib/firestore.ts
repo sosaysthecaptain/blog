@@ -39,18 +39,20 @@ const POSTS_COLLECTION = "posts";
 export async function getPublishedPosts(): Promise<Post[]> {
   const q = query(
     collection(db, POSTS_COLLECTION),
-    where("status", "==", "published"),
-    orderBy("date", "desc")
+    where("status", "==", "published")
   );
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Post));
+  const posts = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Post));
+  // Sort by date descending in JavaScript to avoid needing a composite index
+  return posts.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 }
 
 // Get all posts (for admin)
 export async function getAllPosts(): Promise<Post[]> {
-  const q = query(collection(db, POSTS_COLLECTION), orderBy("updatedAt", "desc"));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Post));
+  const snapshot = await getDocs(collection(db, POSTS_COLLECTION));
+  const posts = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Post));
+  // Sort by date descending (chronological, newest first)
+  return posts.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 }
 
 // Get single post by slug (for public site)
@@ -107,14 +109,16 @@ export async function deletePost(id: string): Promise<void> {
 
 // Get projects only
 export async function getProjects(): Promise<Post[]> {
+  // Fetch published posts and filter by isProject in JavaScript to avoid composite index
   const q = query(
     collection(db, POSTS_COLLECTION),
-    where("status", "==", "published"),
-    where("isProject", "==", true),
-    orderBy("date", "desc")
+    where("status", "==", "published")
   );
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Post));
+  const posts = snapshot.docs
+    .map((doc) => ({ id: doc.id, ...doc.data() } as Post))
+    .filter((p) => p.isProject === true);
+  return posts.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 }
 
 // Check if slug exists
