@@ -11,10 +11,55 @@ export interface Post {
   content: string;
   images?: PostImage[];
   parent?: string;
+  isProject?: boolean;
 }
 
 export const posts: Record<string, Post> = {
-  // About page
+  // ============ SAMPLE BLOG POSTS ============
+  "hello-world": {
+    slug: "hello-world",
+    title: "Hello World",
+    date: "2026-01-08",
+    content: `This is the first post on my new blog. I've migrated from a static HTML site to Next.js with Firebase.
+
+## What's New
+
+The site now features:
+
+├─ Next.js for static generation
+├─ Firebase for hosting and future CMS
+├─ Monospace aesthetic throughout
+└─ All my old project writeups, preserved
+
+## What's Next
+
+I'll be adding new posts about current projects and experiments. Stay tuned.`,
+  },
+
+  "building-this-site": {
+    slug: "building-this-site",
+    title: "Building This Site",
+    date: "2026-01-07",
+    content: `A quick note on how this site was built.
+
+## Stack
+
+├─ Next.js 16 with App Router
+├─ TypeScript
+├─ Tailwind CSS
+├─ Firebase (hosting, future Firestore for posts)
+└─ JetBrains Mono font
+
+## Design
+
+I wanted something that felt like a terminal or engineering notebook. Monospace fonts, box-drawing characters for lists, minimal color. The aesthetic was inspired by sites like owickstrom.github.io/the-monospace-web and hyperturing.com.
+
+## Content
+
+All posts are currently hardcoded in a TypeScript file. Eventually I'll wire up Firestore so I can add posts through an admin UI, but for now this works.`,
+  },
+
+  // ============ ABOUT ============
   about: {
     slug: "about",
     title: "About",
@@ -25,16 +70,17 @@ I have a background in JavaScript (Angular, Node/Express, Mongo, Electron), Swif
 
 ## Links
 
-├─ GitHub: github.com/sosaysthecaptain
-├─ LinkedIn: linkedin.com/in/marc-auger-3481a4104
-└─ App Store: Space Trader 2018`,
+├─ [GitHub](https://github.com/sosaysthecaptain)
+├─ [LinkedIn](https://linkedin.com/in/marc-auger-3481a4104)
+└─ [Space Trader on App Store](https://itunes.apple.com/us/app/space-trader-2018/id1106932709?mt=8)`,
   },
 
-  // FDM STARTUP - Main
+  // ============ FDM STARTUP ============
   "fdm-startup": {
     slug: "fdm-startup",
     title: "FDM Startup",
     date: "2018-02-25",
+    isProject: true,
     images: [
       { src: "/images/fdm-startup/gyroid.jpg", alt: "Gyroid printed with soluble support", caption: "Gyroid, printed with soluble support" },
       { src: "/images/fdm-startup/isisOneDual.jpg", alt: "Isis One 3D Printer", caption: "The Isis One" },
@@ -42,7 +88,7 @@ I have a background in JavaScript (Angular, Node/Express, Mongo, Electron), Swif
     ],
     content: `From 2012 to 2014, I cofounded and led engineering at a startup that produced an FDM 3D printer, one of the first on the prosumer market to achieve reliability and professional print quality, and to feature soluble support.
 
-Our original website, preserved for posterity, can be seen at isis3d.net. (Regarding the name: it seemed fantastic in 2012: short, and relevant to making things. We had no idea of the world events that would soon unfold.)
+Our original website, preserved for posterity, can be seen at [isis3d.net](http://www.isis3d.net). (Regarding the name: it seemed fantastic in 2012: short, and relevant to making things. We had no idea of the world events that would soon unfold.)
 
 [IMAGE:0]
 
@@ -64,13 +110,12 @@ We created the Isis One, achieving good layer stacking by testing over a dozen l
 
 ## Related Posts
 
-├─ The Print Bed
-├─ Linear Systems
-├─ Software Settings
-└─ The Printhead`,
+├─ [The Print Bed](/blog/fdm-print-bed)
+├─ [Linear Systems](/blog/fdm-linear-systems)
+├─ [Software Settings](/blog/fdm-software-settings)
+└─ [The Printhead](/blog/fdm-printhead)`,
   },
 
-  // FDM STARTUP - Print Bed
   "fdm-print-bed": {
     slug: "fdm-print-bed",
     title: "The Print Bed",
@@ -109,7 +154,6 @@ No matter how assiduously we leveled, first layer height was never reliable at t
 [IMAGE:3]`,
   },
 
-  // FDM STARTUP - Linear Systems
   "fdm-linear-systems": {
     slug: "fdm-linear-systems",
     title: "Linear Systems",
@@ -151,7 +195,6 @@ A new product called V-slot appeared: aluminum extrusion with beveled slot edges
 We learned that crowds are frequently wrong, price and quality often show little correlation, and one's own empirical data is essential.`,
   },
 
-  // FDM STARTUP - Software Settings
   "fdm-software-settings": {
     slug: "fdm-software-settings",
     title: "Software Settings",
@@ -185,7 +228,6 @@ FDM printers are surprisingly capable of overhangs with good cooling. Judicious 
 Stringing—spiderweb-like fibers during crossing moves—is solved by retracting filament. We had good luck with small, jerky retracts and wiping the extruder across the finished region. Combined with printhead improvements, we almost entirely eliminated stringing.`,
   },
 
-  // FDM STARTUP - Printhead
   "fdm-printhead": {
     slug: "fdm-printhead",
     title: "The Printhead",
@@ -238,11 +280,12 @@ We got a dual extruder working at 150 mm/s with almost no stringing. Using PVA s
 [IMAGE:7]`,
   },
 
-  // PROFILOMETER - Main
+  // ============ PROFILOMETER ============
   profilometer: {
     slug: "profilometer",
     title: "Optical Profilometer",
     date: "2018-03-14",
+    isProject: true,
     images: [
       { src: "/images/profilometer/profilometerOverview.png", alt: "Profilometer overview", caption: "System overview" },
     ],
@@ -267,11 +310,10 @@ Everything runs on a Tinkerboard (souped-up RasPi clone).
 
 ## Related Posts
 
-├─ Software Architecture
-└─ Circuit Board`,
+├─ [Software Architecture](/blog/profilometer-architecture)
+└─ [Circuit Board](/blog/profilometer-board)`,
   },
 
-  // PROFILOMETER - Architecture
   "profilometer-architecture": {
     slug: "profilometer-architecture",
     title: "Software Architecture",
@@ -299,14 +341,13 @@ The frontend allows manual commands, initiating scans, and viewing output.
 
 ## Tech Stack
 
-Firebase handles everything—realtime Firestore for communications, file storage for images and meshes.
+[Firebase](https://firebase.google.com/) handles everything—realtime Firestore for communications, file storage for images and meshes.
 
 Frontend in Angular. The Tinkerboard app uses Angular/Electron, connecting to Firebase via a service.
 
-Machine vision will use OpenCV, probably in Python.`,
+Machine vision will use [OpenCV](https://opencv.org/), probably in Python.`,
   },
 
-  // PROFILOMETER - Board
   "profilometer-board": {
     slug: "profilometer-board",
     title: "Circuit Board",
@@ -325,7 +366,7 @@ I designed the circuit board for the profilometer. Core functionality: driving t
 
 [IMAGE:1]
 
-A4988s—super common, familiar to anyone who's assembled a 3D printer. They cost $2-3, drive up to 2A with cooling, rated to 35V. Two input pins (step and direction) plus stepper enable. We're using 1/16th microstepping.
+[A4988s](https://www.pololu.com/product/1182)—super common, familiar to anyone who's assembled a 3D printer. They cost $2-3, drive up to 2A with cooling, rated to 35V. Two input pins (step and direction) plus stepper enable. We're using 1/16th microstepping.
 
 ## MOSFETs
 
@@ -335,18 +376,19 @@ PHT4NQ10LT surface mount N-Channel MOSFETs—100V, 3.5A, logic level (driven dir
 
 ## Designing the Board
 
-I used Upverter (online e-CAD). Create schematic, lay out on board, route, do a ground pour, export gerbers.
+I used [Upverter](http://www.upverter.com) (online e-CAD). Create schematic, lay out on board, route, do a ground pour, export gerbers.
 
 ## Manufacturing
 
-SeeedStudio—$5 for 10x two-layer boards up to 100x100mm. Under $25 including shipping from China, better than two weeks turnaround.`,
+[SeeedStudio](http://www.seeedstudio.com)—$5 for 10x two-layer boards up to 100x100mm. Under $25 including shipping from China, better than two weeks turnaround.`,
   },
 
-  // SPACE TRADER - Main
+  // ============ SPACE TRADER ============
   "space-trader": {
     slug: "space-trader",
     title: "Space Trader",
     date: "2018-02-25",
+    isProject: true,
     images: [
       { src: "/images/space-trader/screenshots.png", alt: "Space Trader screenshots", caption: "Game screenshots" },
       { src: "/images/space-trader/spacetraderSplash.png", alt: "Splash screen", caption: "Splash screen" },
@@ -355,23 +397,22 @@ SeeedStudio—$5 for 10x two-layer boards up to 100x100mm. Under $25 including s
 
 [IMAGE:0]
 
-It was once a Palm Pilot game I wasted many hours on as a kid. Its lineage goes back to "Elite" on Atari. When I needed to learn Swift, I decided to recreate it for iPhone.
+It was once a [Palm Pilot game](http://www.spronck.net/spacetrader/STFrames.html) I wasted many hours on as a kid. Its lineage goes back to "[Elite](https://en.wikipedia.org/wiki/Elite_(video_game))" on Atari. When I needed to learn Swift, I decided to recreate it for iPhone.
 
 [IMAGE:1]
 
 ## Links
 
-├─ App Store: Available on iOS
-└─ Source: github.com/sosaysthecaptain/spacetrader
+├─ [App Store](https://itunes.apple.com/us/app/space-trader-2018/id1106932709?mt=8)
+└─ [Source on GitHub](https://github.com/sosaysthecaptain/spacetrader)
 
 ## Related Posts
 
-├─ Gameplay & Implementation
-├─ Encounters
-└─ Quests, Data Persistence, Debugging`,
+├─ [Gameplay & Implementation](/blog/space-trader-implementation)
+├─ [Encounters](/blog/space-trader-encounters)
+└─ [Quests, Data Persistence, Debugging](/blog/space-trader-quests)`,
   },
 
-  // SPACE TRADER - Implementation
   "space-trader-implementation": {
     slug: "space-trader-implementation",
     title: "Gameplay & Implementation",
@@ -414,7 +455,6 @@ Navigation charts use custom UIView objects with draw functions rendering planet
 Game data lives in Commander (player data) and Galaxy (generated galaxy, planet locations, market conditions). Additional classes: Ship, CrewMember, Gadget, HighScore, Journey, Newspaper, PoliticsType, SavedGame, Shield, SpecialEvent, StarSystem, TradeItem, UniversalGadget.`,
   },
 
-  // SPACE TRADER - Encounters
   "space-trader-encounters": {
     slug: "space-trader-encounters",
     title: "Encounters",
@@ -443,7 +483,6 @@ The logic:
 └─ At zero clicks, journey.completeJourney() resets planet and dismisses WarpViewVC`,
   },
 
-  // SPACE TRADER - Quests
   "space-trader-quests": {
     slug: "space-trader-quests",
     title: "Quests, Data Persistence, Debugging",
@@ -473,7 +512,13 @@ export function getPost(slug: string): Post | undefined {
 
 export function getAllPosts(): Post[] {
   return Object.values(posts)
-    .filter((p) => p.date)
+    .filter((p) => p.date && !p.parent) // Only top-level posts with dates
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+export function getProjects(): Post[] {
+  return Object.values(posts)
+    .filter((p) => p.isProject)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 

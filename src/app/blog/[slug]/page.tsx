@@ -5,6 +5,49 @@ import { getPost, getAllSlugs } from "@/lib/posts";
 
 type Params = Promise<{ slug: string }>;
 
+// Parse markdown links [text](url) into JSX
+function parseLinks(text: string): (string | JSX.Element)[] {
+  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  const parts: (string | JSX.Element)[] = [];
+  let lastIndex = 0;
+  let match;
+  let keyIndex = 0;
+
+  while ((match = linkRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    const [, linkText, url] = match;
+    const isInternal = url.startsWith("/");
+    if (isInternal) {
+      parts.push(
+        <Link key={keyIndex++} href={url} className="text-[--accent] hover:underline">
+          {linkText}
+        </Link>
+      );
+    } else {
+      parts.push(
+        <a
+          key={keyIndex++}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[--accent] hover:underline"
+        >
+          {linkText}
+        </a>
+      );
+    }
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : [text];
+}
+
 export default async function BlogPost({ params }: { params: Params }) {
   const { slug } = await params;
   const post = getPost(slug);
@@ -56,22 +99,29 @@ export default async function BlogPost({ params }: { params: Params }) {
           );
         }
         if (paragraph.startsWith("├─") || paragraph.startsWith("└─") || paragraph.startsWith("│")) {
+          // Handle tree-style lists with links
+          const lines = paragraph.split("\n");
           return (
             <pre key={`${i}-${j}`} className="text-[--foreground] my-1 whitespace-pre-wrap">
-              {paragraph}
+              {lines.map((line, k) => (
+                <span key={k}>
+                  {parseLinks(line)}
+                  {k < lines.length - 1 && "\n"}
+                </span>
+              ))}
             </pre>
           );
         }
         if (paragraph.match(/^\d+\./)) {
           return (
             <p key={`${i}-${j}`} className="text-[--foreground] my-2 pl-4">
-              {paragraph}
+              {parseLinks(paragraph)}
             </p>
           );
         }
         return (
           <p key={`${i}-${j}`} className="text-[--foreground] my-4 leading-relaxed">
-            {paragraph}
+            {parseLinks(paragraph)}
           </p>
         );
       });

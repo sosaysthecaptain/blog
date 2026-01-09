@@ -22,6 +22,15 @@ const projects = [
   },
 ];
 
+// All top-level posts (projects + blog posts, excluding sub-posts)
+const allPosts = [
+  { slug: "hello-world", title: "Hello World", date: "2026-01-08" },
+  { slug: "building-this-site", title: "Building This Site", date: "2026-01-07" },
+  { slug: "profilometer", title: "Optical Profilometer", date: "2018-03-14", isProject: true },
+  { slug: "fdm-startup", title: "FDM Startup", date: "2018-02-25", isProject: true },
+  { slug: "space-trader", title: "Space Trader", date: "2018-02-25", isProject: true },
+];
+
 const carouselImages = [
   {
     src: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200&h=600&fit=crop",
@@ -155,7 +164,25 @@ export default function Home() {
             <span className="text-[--muted]">·</span>
             <Link href="/blog/about">about</Link>
             <span className="text-[--muted]">·</span>
-            <a href="mailto:marc@example.com">contact</a>
+            <a href="mailto:contact@marcauger.com">contact</a>
+          </div>
+        </section>
+
+        {/* All Posts */}
+        <section className="mb-10">
+          <h2 className="text-[--muted] text-sm mb-4 uppercase tracking-wide">Posts</h2>
+          <div className="space-y-2">
+            {allPosts.map((post) => (
+              <div key={post.slug} className="flex items-baseline">
+                <span className="text-[--muted] w-28 shrink-0 text-sm">{post.date}</span>
+                <Link href={`/blog/${post.slug}`} className="hover:underline">
+                  {post.title}
+                </Link>
+                {post.isProject && (
+                  <span className="text-[--muted] text-xs ml-2">[project]</span>
+                )}
+              </div>
+            ))}
           </div>
         </section>
 
