@@ -3,44 +3,36 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useState, useEffect, useCallback } from "react";
-import { getPublishedPosts, getProjects, Post } from "@/lib/firestore";
-import { getAllPosts as getFallbackPosts, getProjects as getFallbackProjects } from "@/lib/posts";
+import { getPublishedPosts, getProjects, Post, getCarouselImages, CarouselImage, getFirstImageFromContent, getBlurbFromContent } from "@/lib/firestore";
+import Footer from "@/components/Footer";
+
+// Format date as "14 March 2018"
+function formatDate(dateStr: string): string {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  const day = date.getDate();
+  const month = date.toLocaleDateString("en-US", { month: "long" });
+  const year = date.getFullYear();
+  return `${day} ${month} ${year}`;
+}
 
 const POSTS_PER_PAGE = 10;
 
-const carouselImages = [
-  {
-    src: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200&h=600&fit=crop",
-    alt: "Circuit board closeup",
-  },
-  {
-    src: "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=1200&h=600&fit=crop",
-    alt: "3D printing in action",
-  },
-  {
-    src: "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=1200&h=600&fit=crop",
-    alt: "Technology abstract",
-  },
-  {
-    src: "https://images.unsplash.com/photo-1504610926078-a1611febcad3?w=1200&h=600&fit=crop",
-    alt: "Space and stars",
-  },
-];
-
 export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [carouselImages, setCarouselImages] = useState<CarouselImage[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [projects, setProjects] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
 
   const nextSlide = useCallback(() => {
-    setCurrentSlide((prev) => (prev + 1) % carouselImages.length);
-  }, []);
+    setCurrentSlide((prev) => (prev + 1) % (carouselImages.length || 1));
+  }, [carouselImages.length]);
 
   const prevSlide = useCallback(() => {
-    setCurrentSlide((prev) => (prev - 1 + carouselImages.length) % carouselImages.length);
-  }, []);
+    setCurrentSlide((prev) => (prev - 1 + carouselImages.length) % (carouselImages.length || 1));
+  }, [carouselImages.length]);
 
   useEffect(() => {
     const timer = setInterval(nextSlide, 5000);
@@ -50,30 +42,19 @@ export default function Home() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [firestorePosts, firestoreProjects] = await Promise.all([
+        const [firestorePosts, firestoreProjects, carousel] = await Promise.all([
           getPublishedPosts(),
           getProjects(),
+          getCarouselImages(),
         ]);
 
-        if (firestorePosts.length > 0) {
-          // Filter to only top-level posts (no parent)
-          const topLevelPosts = firestorePosts.filter((p) => !p.parent);
-          setPosts(topLevelPosts);
-          setProjects(firestoreProjects);
-        } else {
-          // Fall back to hardcoded
-          const fallbackList = getFallbackPosts();
-          const fallbackProj = getFallbackProjects();
-          setPosts(fallbackList.map((p) => ({ ...p, status: "published" as const } as Post)));
-          setProjects(fallbackProj.map((p) => ({ ...p, status: "published" as const } as Post)));
-        }
+        // Filter to only top-level posts (no parent)
+        const topLevelPosts = firestorePosts.filter((p) => !p.parent);
+        setPosts(topLevelPosts);
+        setProjects(firestoreProjects);
+        setCarouselImages(carousel);
       } catch (error) {
-        console.error("Error loading posts:", error);
-        // Fall back to hardcoded on error
-        const fallbackList = getFallbackPosts();
-        const fallbackProj = getFallbackProjects();
-        setPosts(fallbackList.map((p) => ({ ...p, status: "published" as const } as Post)));
-        setProjects(fallbackProj.map((p) => ({ ...p, status: "published" as const } as Post)));
+        console.error("Error loading data:", error);
       } finally {
         setLoading(false);
       }
@@ -86,13 +67,37 @@ export default function Home() {
     <div className="min-h-screen bg-[--background]">
       <main className="mx-auto max-w-3xl px-6 py-12">
         {/* Header */}
-        <header className="mb-10">
+        <header className="mb-6">
           <h1 className="text-[--foreground] text-3xl font-bold">MARC AUGER</h1>
+          <p className="text-[--muted] mt-1">hardware & software</p>
         </header>
+
+        {/* Links */}
+        <section className="mb-6 flex items-center gap-2 text-xs text-[--muted]">
+          <a
+            href="https://tickerbot.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-[--foreground]"
+          >
+            tickerbot.com
+          </a>
+          <span>·</span>
+          <a
+            href="https://github.com/sosaysthecaptain"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-[--foreground]"
+          >
+            github
+          </a>
+          <span>·</span>
+          <Link href="/blog/about" className="hover:text-[--foreground]">about</Link>
+        </section>
 
         {/* Image Carousel */}
         <section className="mb-12">
-          <div className="relative w-full h-72 border border-[--border] overflow-hidden bg-[--border]">
+          <div className="relative w-full h-96 border border-[--border] overflow-hidden bg-[--border]">
             {carouselImages.map((img, i) => (
               <div
                 key={i}
@@ -168,66 +173,93 @@ export default function Home() {
           )}
         </section>
 
-        {/* Links */}
+        {/* All Posts - Substack Style */}
         <section className="mb-10">
-          <h2 className="text-[--muted] text-sm mb-4 uppercase tracking-wide">Links</h2>
-          <div className="flex flex-wrap gap-4">
-            <a
-              href="https://github.com/sosaysthecaptain"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              github
-            </a>
-            <span className="text-[--muted]">·</span>
-            <Link href="/blog/about">about</Link>
-            <span className="text-[--muted]">·</span>
-            <a href="mailto:contact@marcauger.com">contact</a>
-          </div>
-        </section>
-
-        {/* All Posts */}
-        <section className="mb-10">
-          <h2 className="text-[--muted] text-sm mb-4 uppercase tracking-wide">Posts</h2>
+          <h2 className="text-[--muted] text-sm mb-6 uppercase tracking-wide">Posts</h2>
           {loading ? (
             <p className="text-[--muted]">Loading...</p>
           ) : posts.length === 0 ? (
             <p className="text-[--muted]">No posts yet.</p>
           ) : (
             <>
-              <div className="space-y-2">
+              <div className="divide-y divide-[--border]">
                 {posts
                   .slice((currentPage - 1) * POSTS_PER_PAGE, currentPage * POSTS_PER_PAGE)
-                  .map((post) => (
-                    <div key={post.slug} className="flex items-baseline">
-                      <span className="text-[--muted] w-28 shrink-0 text-sm">{post.date}</span>
-                      <Link href={`/blog/${post.slug}`} className="hover:underline">
-                        {post.title}
-                      </Link>
-                      {post.isProject && (
-                        <span className="text-[--muted] text-xs ml-2">[project]</span>
-                      )}
-                    </div>
-                  ))}
+                  .map((post) => {
+                    const thumbnail = getFirstImageFromContent(post.content);
+                    const blurb = getBlurbFromContent(post.content);
+                    return (
+                      <article key={post.slug} className="py-6 first:pt-0">
+                        <div className="flex gap-4">
+                          {/* Thumbnail */}
+                          {thumbnail && (
+                            <div className="shrink-0">
+                              <img
+                                src={thumbnail}
+                                alt=""
+                                className="w-28 sm:w-36 max-h-28 object-contain border border-[--border]"
+                              />
+                            </div>
+                          )}
+                          {/* Text content */}
+                          <div className="flex-1 min-w-0">
+                            <h3 className="leading-snug">
+                              <Link href={`/blog/${post.slug}`} className="font-medium text-[--accent] hover:underline">
+                                {post.title}
+                              </Link>
+                            </h3>
+                            <p className="text-[--foreground] text-sm leading-relaxed mt-1 line-clamp-2 font-serif">
+                              {blurb}
+                            </p>
+                            <div className="flex items-center gap-2 mt-2 flex-wrap">
+                              <span className="text-xs text-[--muted]">{formatDate(post.date)}</span>
+                              {post.tags && post.tags.length > 0 && (
+                                <>
+                                  {post.tags.slice(0, 2).map((tag, i) => {
+                                    const colors = [
+                                      "bg-amber-50 text-amber-700 border-amber-200",
+                                      "bg-emerald-50 text-emerald-700 border-emerald-200",
+                                      "bg-sky-50 text-sky-700 border-sky-200",
+                                      "bg-violet-50 text-violet-700 border-violet-200",
+                                      "bg-rose-50 text-rose-700 border-rose-200",
+                                    ];
+                                    const colorClass = colors[tag.charCodeAt(0) % colors.length];
+                                    return (
+                                      <span
+                                        key={tag}
+                                        className={`text-xs px-2 py-0.5 rounded-full border ${colorClass}`}
+                                      >
+                                        {tag}
+                                      </span>
+                                    );
+                                  })}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
               </div>
 
               {/* Pagination */}
               {posts.length > POSTS_PER_PAGE && (
-                <div className="flex items-center gap-4 mt-6 pt-4 border-t border-[--border]">
+                <div className="flex items-center justify-center gap-4 mt-10 pt-6 border-t border-[--border]">
                   <button
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
-                    className="text-sm text-[--muted] hover:text-[--foreground] disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="px-4 py-2 text-sm text-[--muted] hover:text-[--foreground] disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     ← Newer
                   </button>
                   <span className="text-sm text-[--muted]">
-                    Page {currentPage} of {Math.ceil(posts.length / POSTS_PER_PAGE)}
+                    {currentPage} / {Math.ceil(posts.length / POSTS_PER_PAGE)}
                   </span>
                   <button
                     onClick={() => setCurrentPage((p) => Math.min(Math.ceil(posts.length / POSTS_PER_PAGE), p + 1))}
                     disabled={currentPage >= Math.ceil(posts.length / POSTS_PER_PAGE)}
-                    className="text-sm text-[--muted] hover:text-[--foreground] disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="px-4 py-2 text-sm text-[--muted] hover:text-[--foreground] disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     Older →
                   </button>
@@ -237,12 +269,7 @@ export default function Home() {
           )}
         </section>
 
-        {/* Footer */}
-        <footer className="mt-16 pt-8 border-t border-[--border]">
-          <p className="text-[--muted] text-sm">
-            © {new Date().getFullYear()} Marc Auger
-          </p>
-        </footer>
+        <Footer />
       </main>
     </div>
   );

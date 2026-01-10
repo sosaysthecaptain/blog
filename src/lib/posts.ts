@@ -26,10 +26,10 @@ export const posts: Record<string, Post> = {
 
 The site now features:
 
-├─ Next.js for static generation
-├─ Firebase for hosting and future CMS
-├─ Monospace aesthetic throughout
-└─ All my old project writeups, preserved
+- Next.js for static generation
+- Firebase for hosting and future CMS
+- Monospace aesthetic throughout
+- All my old project writeups, preserved
 
 ## What's Next
 
@@ -44,11 +44,11 @@ I'll be adding new posts about current projects and experiments. Stay tuned.`,
 
 ## Stack
 
-├─ Next.js 16 with App Router
-├─ TypeScript
-├─ Tailwind CSS
-├─ Firebase (hosting, future Firestore for posts)
-└─ JetBrains Mono font
+- Next.js 16 with App Router
+- TypeScript
+- Tailwind CSS
+- Firebase (hosting, future Firestore for posts)
+- JetBrains Mono font
 
 ## Design
 
@@ -64,15 +64,7 @@ All posts are currently hardcoded in a TypeScript file. Eventually I'll wire up 
     slug: "about",
     title: "About",
     date: "",
-    content: `I'm a mechatronics and software engineer.
-
-I have a background in JavaScript (Angular, Node/Express, Mongo, Electron), Swift, C, Python, Arduino, RasPi, CAD (SolidWorks and Onshape), robotics, electronics, circuit board design (Upverter and Eagle), machine building & design, and DFM.
-
-## Links
-
-├─ [GitHub](https://github.com/sosaysthecaptain)
-├─ [LinkedIn](https://linkedin.com/in/marc-auger-3481a4104)
-└─ [Space Trader on App Store](https://itunes.apple.com/us/app/space-trader-2018/id1106932709?mt=8)`,
+    content: `I build hardware and software. CTO @ Tickerbot, first eng hire @ Bubble, UChicago.`,
   },
 
   // ============ FDM STARTUP ============
@@ -110,10 +102,10 @@ We created the Isis One, achieving good layer stacking by testing over a dozen l
 
 ## Related Posts
 
-├─ [The Print Bed](/blog/fdm-print-bed)
-├─ [Linear Systems](/blog/fdm-linear-systems)
-├─ [Software Settings](/blog/fdm-software-settings)
-└─ [The Printhead](/blog/fdm-printhead)`,
+- [The Print Bed](/blog/fdm-print-bed)
+- [Linear Systems](/blog/fdm-linear-systems)
+- [Software Settings](/blog/fdm-software-settings)
+- [The Printhead](/blog/fdm-printhead)`,
   },
 
   "fdm-print-bed": {
@@ -295,12 +287,12 @@ We got a dual extruder working at 150 mm/s with almost no stringing. Using PVA s
 
 The process:
 
-├─ Begin with a fluorescence microscope. Replace the light source with a DLP projector.
-├─ Project crosshatches onto the substrate—each corresponds to a vertical pixel.
-├─ Step through all Z values, capturing images.
-├─ Score each region for focus quality.
-├─ Choose the Z value with highest focus score for each pixel.
-└─ Create a 3D mesh.
+- Begin with a fluorescence microscope. Replace the light source with a DLP projector.
+- Project crosshatches onto the substrate—each corresponds to a vertical pixel.
+- Step through all Z values, capturing images.
+- Score each region for focus quality.
+- Choose the Z value with highest focus score for each pixel.
+- Create a 3D mesh.
 
 ## Hardware
 
@@ -310,8 +302,8 @@ Everything runs on a Tinkerboard (souped-up RasPi clone).
 
 ## Related Posts
 
-├─ [Software Architecture](/blog/profilometer-architecture)
-└─ [Circuit Board](/blog/profilometer-board)`,
+- [Software Architecture](/blog/profilometer-architecture)
+- [Circuit Board](/blog/profilometer-board)`,
   },
 
   "profilometer-architecture": {
@@ -403,14 +395,14 @@ It was once a [Palm Pilot game](http://www.spronck.net/spacetrader/STFrames.html
 
 ## Links
 
-├─ [App Store](https://itunes.apple.com/us/app/space-trader-2018/id1106932709?mt=8)
-└─ [Source on GitHub](https://github.com/sosaysthecaptain/spacetrader)
+- [App Store](https://itunes.apple.com/us/app/space-trader-2018/id1106932709?mt=8)
+- [Source on GitHub](https://github.com/sosaysthecaptain/spacetrader)
 
 ## Related Posts
 
-├─ [Gameplay & Implementation](/blog/space-trader-implementation)
-├─ [Encounters](/blog/space-trader-encounters)
-└─ [Quests, Data Persistence, Debugging](/blog/space-trader-quests)`,
+- [Gameplay & Implementation](/blog/space-trader-implementation)
+- [Encounters](/blog/space-trader-encounters)
+- [Quests, Data Persistence, Debugging](/blog/space-trader-quests)`,
   },
 
   "space-trader-implementation": {
@@ -430,11 +422,11 @@ It was once a [Palm Pilot game](http://www.spronck.net/spacetrader/STFrames.html
 
 Gameplay splits between on-planet and in-transit events. On-planet uses a five-part tab view:
 
-├─ System: Orientation, quests, refuel and repair
-├─ Sell: Sell cargo with profit/loss per unit
-├─ Buy: Purchase goods, see prices across systems
-├─ Shipyard: Shop for ships and equipment
-└─ Warp: Consult charts, choose destination, initiate warp
+- System: Orientation, quests, refuel and repair
+- Sell: Sell cargo with profit/loss per unit
+- Buy: Purchase goods, see prices across systems
+- Shipyard: Shop for ships and equipment
+- Warp: Consult charts, choose destination, initiate warp
 
 [IMAGE:0]
 [IMAGE:1]
@@ -469,18 +461,18 @@ Game data lives in Commander (player data) and Galaxy (generated galaxy, planet 
 
 The logic:
 
-├─ WarpVC calls Galaxy.warp() after verifying debts/fuel
-├─ Galaxy.warp() instantiates a Journey and calls beginJourney()
-├─ NSNotification fires segue to WarpViewVC (blank starfield background)
-├─ journey.resumeJourney() calls executeClick(), determining encounters
-├─ When encounter happens:
-│  ├─ Encounter class is instantiated
-│  ├─ NSNotification launches EncounterVC modal
-│  ├─ EncounterVC shows images, labels, four buttons
-│  ├─ Buttons call appropriate Encounter functions
-│  ├─ Subsequent stages happen within same EncounterVC via NSNotifications
-│  └─ On conclusion, EncounterVC is popped from stack
-└─ At zero clicks, journey.completeJourney() resets planet and dismisses WarpViewVC`,
+- WarpVC calls Galaxy.warp() after verifying debts/fuel
+- Galaxy.warp() instantiates a Journey and calls beginJourney()
+- NSNotification fires segue to WarpViewVC (blank starfield background)
+- journey.resumeJourney() calls executeClick(), determining encounters
+- When encounter happens:
+  - Encounter class is instantiated
+  - NSNotification launches EncounterVC modal
+  - EncounterVC shows images, labels, four buttons
+  - Buttons call appropriate Encounter functions
+  - Subsequent stages happen within same EncounterVC via NSNotifications
+  - On conclusion, EncounterVC is popped from stack
+- At zero clicks, journey.completeJourney() resets planet and dismisses WarpViewVC`,
   },
 
   "space-trader-quests": {
