@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/admin/layout,_N_T_/admin/(tabs)/layout,_N_T_/admin/(tabs)/cms/layout,_N_T_/admin/(tabs)/cms/page,_N_T_/admin/cms"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/admin/!KHRhYnMp/cms/__PAGE__",
+    "/admin/!KHRhYnMp/cms",
+    "/admin/!KHRhYnMp",
+    "/admin",
+    "/_index",
+    "/_head"
+  ]
+}

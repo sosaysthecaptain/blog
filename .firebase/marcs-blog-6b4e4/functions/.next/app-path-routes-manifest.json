@@ -1,0 +1,11 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/admin/(tabs)/carousel/page": "/admin/carousel",
+  "/admin/(tabs)/cms/page": "/admin/cms",
+  "/admin/migrate/page": "/admin/migrate",
+  "/admin/page": "/admin",
+  "/blog/[slug]/page": "/blog/[slug]",
+  "/favicon.ico/route": "/favicon.ico",
+  "/page": "/"
+}

@@ -115,7 +115,7 @@ export default function Home() {
             github
           </a>
           <span>·</span>
-          <Link href="/blog/about" className="hover:text-[--foreground]">about</Link>
+          <Link href="/about" className="hover:text-[--foreground]">about</Link>
         </section>
 
         {/* Image Carousel */}

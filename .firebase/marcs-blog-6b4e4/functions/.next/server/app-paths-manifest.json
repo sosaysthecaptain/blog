@@ -1,0 +1,11 @@
+{
+  "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/admin/(tabs)/carousel/page": "app/admin/(tabs)/carousel/page.js",
+  "/admin/(tabs)/cms/page": "app/admin/(tabs)/cms/page.js",
+  "/admin/migrate/page": "app/admin/migrate/page.js",
+  "/admin/page": "app/admin/page.js",
+  "/blog/[slug]/page": "app/blog/[slug]/page.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/page": "app/page.js"
+}

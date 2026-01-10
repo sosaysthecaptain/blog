@@ -1,0 +1,4 @@
+{
+  "/admin/(tabs)/cms/page": "app/admin/(tabs)/cms/page.js",
+  "/page": "app/page.js"
+}
