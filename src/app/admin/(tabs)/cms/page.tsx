@@ -174,6 +174,41 @@ export default function CMSPage() {
     }
   };
 
+  // Handle image drag and drop
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files).filter((f) =>
+      f.type.startsWith("image/")
+    );
+    if (files.length === 0) return;
+
+    const currentSlug = slug || "temp-" + Date.now();
+
+    for (const file of files) {
+      setStatus("Uploading image...");
+      try {
+        const url = await uploadImageFromBlob(file, currentSlug);
+        const textarea = textareaRef.current;
+        if (textarea) {
+          const start = textarea.selectionStart;
+          const end = textarea.selectionEnd;
+          const newContent =
+            content.slice(0, start) +
+            `\n![Image](${url})\n` +
+            content.slice(end);
+          setContent(newContent);
+        } else {
+          setContent(content + `\n![Image](${url})\n`);
+        }
+        setStatus("Image uploaded!");
+        setTimeout(() => setStatus(""), 2000);
+      } catch (error) {
+        console.error("Upload error:", error);
+        setStatus("Failed to upload image");
+      }
+    }
+  };
+
   // Save as draft
   const handleSaveDraft = async () => {
     if (!title || !slug) {
@@ -763,8 +798,10 @@ ${postContent}`;
                       value={content}
                       onChange={(e) => setContent(e.target.value)}
                       onPaste={handlePaste}
+                      onDrop={handleDrop}
+                      onDragOver={(e) => e.preventDefault()}
                       className="w-full h-96 px-3 py-2 border border-[--border] rounded bg-[--background] text-[--foreground] font-mono text-sm resize-y"
-                      placeholder="Write your post content here. Use markdown syntax. Paste images directly."
+                      placeholder="Write your post content here. Use markdown syntax. Paste or drag images."
                     />
                   )}
                 </div>

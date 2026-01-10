@@ -25,6 +25,7 @@ export default function Home() {
   const [projects, setProjects] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
+  const [autoPlay, setAutoPlay] = useState(true);
 
   const nextSlide = useCallback(() => {
     setCurrentSlide((prev) => (prev + 1) % (carouselImages.length || 1));
@@ -34,10 +35,32 @@ export default function Home() {
     setCurrentSlide((prev) => (prev - 1 + carouselImages.length) % (carouselImages.length || 1));
   }, [carouselImages.length]);
 
+  const manualNext = useCallback(() => {
+    setAutoPlay(false);
+    nextSlide();
+  }, [nextSlide]);
+
+  const manualPrev = useCallback(() => {
+    setAutoPlay(false);
+    prevSlide();
+  }, [prevSlide]);
+
+  // Auto-advance timer (only if autoPlay is true)
   useEffect(() => {
+    if (!autoPlay) return;
     const timer = setInterval(nextSlide, 5000);
     return () => clearInterval(timer);
-  }, [nextSlide]);
+  }, [nextSlide, autoPlay]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") manualNext();
+      if (e.key === "ArrowLeft") manualPrev();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [manualNext, manualPrev]);
 
   useEffect(() => {
     async function loadData() {
@@ -75,12 +98,12 @@ export default function Home() {
         {/* Links */}
         <section className="mb-6 flex items-center gap-2 text-xs text-[--muted]">
           <a
-            href="https://tickerbot.com"
+            href="https://tickerbot.io"
             target="_blank"
             rel="noopener noreferrer"
             className="hover:text-[--foreground]"
           >
-            tickerbot.com
+            tickerbot.io
           </a>
           <span>·</span>
           <a
@@ -97,7 +120,7 @@ export default function Home() {
 
         {/* Image Carousel */}
         <section className="mb-12">
-          <div className="relative w-full h-96 border border-[--border] overflow-hidden bg-[--border]">
+          <div className="relative w-full h-[500px] border border-[--border] overflow-hidden bg-black">
             {carouselImages.map((img, i) => (
               <div
                 key={i}
@@ -105,11 +128,20 @@ export default function Home() {
                   i === currentSlide ? "opacity-100" : "opacity-0"
                 }`}
               >
+                {/* Blurred background */}
+                <Image
+                  src={img.src}
+                  alt=""
+                  fill
+                  className="object-cover blur-2xl scale-110 opacity-60"
+                  unoptimized
+                />
+                {/* Sharp foreground image */}
                 <Image
                   src={img.src}
                   alt={img.alt}
                   fill
-                  className="object-cover"
+                  className="object-contain"
                   unoptimized
                 />
               </div>
@@ -117,14 +149,14 @@ export default function Home() {
 
             {/* Navigation arrows */}
             <button
-              onClick={prevSlide}
+              onClick={manualPrev}
               className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 hover:bg-white border border-[--border] flex items-center justify-center text-[--foreground] text-xl"
               aria-label="Previous slide"
             >
               ←
             </button>
             <button
-              onClick={nextSlide}
+              onClick={manualNext}
               className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 hover:bg-white border border-[--border] flex items-center justify-center text-[--foreground] text-xl"
               aria-label="Next slide"
             >
@@ -134,20 +166,6 @@ export default function Home() {
             {/* Slide counter */}
             <div className="absolute bottom-3 right-3 bg-white/80 border border-[--border] px-3 py-1 text-sm text-[--foreground]">
               {currentSlide + 1} / {carouselImages.length}
-            </div>
-
-            {/* Dot indicators */}
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
-              {carouselImages.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => setCurrentSlide(i)}
-                  className={`w-2 h-2 rounded-full transition-colors border border-[--border] ${
-                    i === currentSlide ? "bg-[--accent]" : "bg-white/80"
-                  }`}
-                  aria-label={`Go to slide ${i + 1}`}
-                />
-              ))}
             </div>
           </div>
         </section>
@@ -197,7 +215,7 @@ export default function Home() {
                               <img
                                 src={thumbnail}
                                 alt=""
-                                className="w-28 sm:w-36 max-h-28 object-contain border border-[--border]"
+                                className="w-40 sm:w-52 max-h-40 object-contain rounded"
                               />
                             </div>
                           )}
