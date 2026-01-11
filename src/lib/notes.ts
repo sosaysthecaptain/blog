@@ -218,52 +218,74 @@ const BLOG_FOLDER_NAME = "blog";
 
 // Get the blog folder ID
 export async function getBlogFolderId(): Promise<string | null> {
-  const q = query(
-    collection(db, NOTES_COLLECTION),
-    where("type", "==", "folder"),
-    where("title", "==", BLOG_FOLDER_NAME),
-    where("parentId", "==", null)
-  );
-  const snapshot = await getDocs(q);
-  if (snapshot.empty) return null;
-  return snapshot.docs[0].id;
+  try {
+    const q = query(
+      collection(db, NOTES_COLLECTION),
+      where("type", "==", "folder"),
+      where("title", "==", BLOG_FOLDER_NAME),
+      where("parentId", "==", null)
+    );
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return null;
+    return snapshot.docs[0].id;
+  } catch (error) {
+    console.error("Error getting blog folder:", error);
+    return null;
+  }
 }
 
 // Get all published blog posts (for public blog)
 export async function getPublishedBlogPosts(): Promise<NoteItem[]> {
-  const blogFolderId = await getBlogFolderId();
-  if (!blogFolderId) return [];
+  try {
+    const blogFolderId = await getBlogFolderId();
+    if (!blogFolderId) return [];
 
-  const q = query(
-    collection(db, NOTES_COLLECTION),
-    where("parentId", "==", blogFolderId),
-    where("type", "==", "note"),
-    where("published", "==", true)
-  );
-  const snapshot = await getDocs(q);
-  const posts = snapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as NoteItem[];
+    const q = query(
+      collection(db, NOTES_COLLECTION),
+      where("parentId", "==", blogFolderId),
+      where("type", "==", "note"),
+      where("published", "==", true)
+    );
+    const snapshot = await getDocs(q);
+    const posts = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as NoteItem[];
 
-  // Sort by date descending
-  return posts.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    // Sort by date descending, then by createdAt descending for same day
+    return posts.sort((a, b) => {
+      const dateCompare = (b.date || "").localeCompare(a.date || "");
+      if (dateCompare !== 0) return dateCompare;
+      // Same date - sort by createdAt (newer first)
+      const aTime = a.createdAt?.toMillis?.() || 0;
+      const bTime = b.createdAt?.toMillis?.() || 0;
+      return bTime - aTime;
+    });
+  } catch (error) {
+    console.error("Error getting published blog posts:", error);
+    return [];
+  }
 }
 
 // Get a single published blog post by slug
 export async function getPublishedBlogPostBySlug(slug: string): Promise<NoteItem | null> {
-  const blogFolderId = await getBlogFolderId();
-  if (!blogFolderId) return null;
+  try {
+    const blogFolderId = await getBlogFolderId();
+    if (!blogFolderId) return null;
 
-  const q = query(
-    collection(db, NOTES_COLLECTION),
-    where("parentId", "==", blogFolderId),
-    where("slug", "==", slug),
-    where("published", "==", true)
-  );
-  const snapshot = await getDocs(q);
-  if (snapshot.empty) return null;
-  return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as NoteItem;
+    const q = query(
+      collection(db, NOTES_COLLECTION),
+      where("parentId", "==", blogFolderId),
+      where("slug", "==", slug),
+      where("published", "==", true)
+    );
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return null;
+    return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as NoteItem;
+  } catch (error) {
+    console.error("Error getting blog post by slug:", error);
+    return null;
+  }
 }
 
 // Generate a slug from title
@@ -314,4 +336,91 @@ export async function getAdjacentBlogPosts(currentSlug: string): Promise<{
     : null;
 
   return { prev, next };
+}
+
+// ============ RECIPES PUBLISHING ============
+
+const RECIPES_FOLDER_NAME = "recipes";
+
+// Get the recipes folder ID
+export async function getRecipesFolderId(): Promise<string | null> {
+  try {
+    const q = query(
+      collection(db, NOTES_COLLECTION),
+      where("type", "==", "folder"),
+      where("title", "==", RECIPES_FOLDER_NAME),
+      where("parentId", "==", null)
+    );
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return null;
+    return snapshot.docs[0].id;
+  } catch (error) {
+    console.error("Error getting recipes folder:", error);
+    return null;
+  }
+}
+
+// Get all published recipes (for public recipes page)
+export async function getPublishedRecipes(): Promise<NoteItem[]> {
+  try {
+    const recipesFolderId = await getRecipesFolderId();
+    if (!recipesFolderId) return [];
+
+    const q = query(
+      collection(db, NOTES_COLLECTION),
+      where("parentId", "==", recipesFolderId),
+      where("type", "==", "note"),
+      where("published", "==", true)
+    );
+    const snapshot = await getDocs(q);
+    const recipes = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as NoteItem[];
+
+    // Sort alphabetically by title
+    return recipes.sort((a, b) => a.title.localeCompare(b.title));
+  } catch (error) {
+    console.error("Error getting published recipes:", error);
+    return [];
+  }
+}
+
+// Get a single published recipe by slug
+export async function getPublishedRecipeBySlug(slug: string): Promise<NoteItem | null> {
+  try {
+    const recipesFolderId = await getRecipesFolderId();
+    if (!recipesFolderId) return null;
+
+    const q = query(
+      collection(db, NOTES_COLLECTION),
+      where("parentId", "==", recipesFolderId),
+      where("slug", "==", slug),
+      where("published", "==", true)
+    );
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return null;
+    return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as NoteItem;
+  } catch (error) {
+    console.error("Error getting recipe by slug:", error);
+    return null;
+  }
+}
+
+// Check if slug exists in recipes folder
+export async function recipeSlugExists(slug: string, excludeId?: string): Promise<boolean> {
+  const recipesFolderId = await getRecipesFolderId();
+  if (!recipesFolderId) return false;
+
+  const q = query(
+    collection(db, NOTES_COLLECTION),
+    where("parentId", "==", recipesFolderId),
+    where("slug", "==", slug)
+  );
+  const snapshot = await getDocs(q);
+  if (snapshot.empty) return false;
+  if (excludeId && snapshot.docs.length === 1 && snapshot.docs[0].id === excludeId) {
+    return false;
+  }
+  return true;
 }

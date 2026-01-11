@@ -18,18 +18,24 @@
 }
 
 :root.dark {
-  --background: #1e1e1e;
+  --background: #1a1a1a;
   --foreground: #d4d4d4;
   --accent: #569cd6;
   --accent-muted: #264f78;
   --selection: #264f78;
   --muted: #6a737d;
-  --border: #2a2a2a;
-  --sidebar-bg: #181818;
-  --editor-bg: #1e1e1e;
-  --hover: #2a2a2a;
+  --border: #333333;
+  --sidebar-bg: #141414;
+  --editor-bg: #1a1a1a;
+  --hover: #252525;
   --success: #4ec9b0;
   --warning: #ce9178;
+}
+
+/* Force dark mode borders */
+:root.dark *,
+.dark * {
+  border-color: var(--border);
 }
 
 body {

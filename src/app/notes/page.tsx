@@ -31,6 +31,7 @@ export default function NotesPage() {
   const [items, setItems] = useState<NoteItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<NoteItem | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [isFullWidth, setIsFullWidth] = useState(true);
@@ -259,6 +260,31 @@ export default function NotesPage() {
     for (const note of notesToExport) {
       let content = note.content || "";
 
+      // First, convert images to markdown format (before stripping other HTML)
+      // Handle figure with figcaption
+      content = content.replace(
+        /<figure[^>]*>[\s\S]*?<img[^>]+src=["']([^"']+)["'][^>]*>[\s\S]*?<figcaption[^>]*>([\s\S]*?)<\/figcaption>[\s\S]*?<\/figure>/gi,
+        (_, src, caption) => {
+          const localPath = imageMap[src] ? `./images/${imageMap[src]}` : src;
+          return caption?.trim() ? `![${caption.trim()}](${localPath})\n\n` : `![](${localPath})\n\n`;
+        }
+      );
+      // Handle standalone img tags
+      content = content.replace(
+        /<img[^>]+src=["']([^"']+)["'][^>]*alt=["']([^"']*)["'][^>]*>/gi,
+        (_, src, alt) => {
+          const localPath = imageMap[src] ? `./images/${imageMap[src]}` : src;
+          return `![${alt || ""}](${localPath})`;
+        }
+      );
+      content = content.replace(
+        /<img[^>]+src=["']([^"']+)["'][^>]*>/gi,
+        (_, src) => {
+          const localPath = imageMap[src] ? `./images/${imageMap[src]}` : src;
+          return `![](${localPath})`;
+        }
+      );
+
       // Convert HTML to simple markdown
       content = content
         .replace(/<h1[^>]*>([\s\S]*?)<\/h1>/g, "# $1\n\n")
@@ -270,12 +296,10 @@ export default function NotesPage() {
         .replace(/<ul[^>]*>([\s\S]*?)<\/ul>/g, "$1")
         .replace(/<li[^>]*>([\s\S]*?)<\/li>/g, "- $1\n")
         .replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/g, "> $1\n\n")
-        .replace(/<[^>]+>/g, "");
-
-      // Replace image URLs
-      for (const [url, imgFilename] of Object.entries(imageMap)) {
-        content = content.replace(url, `./images/${imgFilename}`);
-      }
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
 
       // Create frontmatter
       const markdown = `---
@@ -455,44 +479,84 @@ ${content}`;
 
   return (
     <div className="h-screen bg-[--background] flex overflow-hidden">
+      {/* Mobile sidebar backdrop */}
+      {mobileSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <Sidebar
-        items={items}
-        selectedId={selectedItem?.id || null}
-        searchQuery={searchQuery}
-        collapsed={sidebarCollapsed}
-        currentFolderId={currentFolderId}
-        isDark={isDark}
-        sortOption={sortOption}
-        onSelect={handleSelect}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-        onCreateNote={handleCreateNote}
-        onCreateFolder={handleCreateFolder}
-        onDelete={handleDelete}
-        onRename={handleRename}
-        onRenameSubmit={handleRenameSubmit}
-        onRenameCancel={handleRenameCancel}
-        renamingId={renamingId}
-        onMove={handleMove}
-        onSearch={(query) => {
-          setSearchQuery(query);
-          // Clear selection when searching so results are visible
-          if (query) {
-            setSelectedItem(null);
-          }
-        }}
-        onExport={handleExport}
-        onExportFolder={handleExportFolder}
-        onImportBlogPosts={handleImportBlogPosts}
-        onToggleDarkMode={toggleDarkMode}
-        onSignOut={handleSignOut}
-        isFullWidth={isFullWidth}
-        onToggleFullWidth={() => setIsFullWidth(!isFullWidth)}
-        onSortChange={setSortOption}
-      />
+      <div
+        className={`
+          ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          md:translate-x-0 md:relative
+          fixed inset-y-0 left-0 z-50 h-full
+          transition-transform duration-200 ease-out
+          md:transition-none
+        `}
+        style={{ backgroundColor: 'var(--sidebar-bg)' }}
+      >
+        <Sidebar
+          items={items}
+          selectedId={selectedItem?.id || null}
+          searchQuery={searchQuery}
+          collapsed={sidebarCollapsed}
+          currentFolderId={currentFolderId}
+          isDark={isDark}
+          sortOption={sortOption}
+          onSelect={(item) => {
+            handleSelect(item);
+            setMobileSidebarOpen(false);
+          }}
+          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+          onCreateNote={handleCreateNote}
+          onCreateFolder={handleCreateFolder}
+          onDelete={handleDelete}
+          onRename={handleRename}
+          onRenameSubmit={handleRenameSubmit}
+          onRenameCancel={handleRenameCancel}
+          renamingId={renamingId}
+          onMove={handleMove}
+          onSearch={(query) => {
+            setSearchQuery(query);
+            // Clear selection when searching so results are visible
+            if (query) {
+              setSelectedItem(null);
+            }
+          }}
+          onExport={handleExport}
+          onExportFolder={handleExportFolder}
+          onImportBlogPosts={handleImportBlogPosts}
+          onToggleDarkMode={toggleDarkMode}
+          onSignOut={handleSignOut}
+          isFullWidth={isFullWidth}
+          onToggleFullWidth={() => setIsFullWidth(!isFullWidth)}
+          onSortChange={setSortOption}
+          onCloseMobile={() => setMobileSidebarOpen(false)}
+        />
+      </div>
 
       {/* Main content */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
+        {/* Mobile header with hamburger */}
+        <div className="md:hidden flex items-center gap-2 px-4 py-2 border-b border-[--border] bg-[--sidebar-bg]">
+          <button
+            type="button"
+            onClick={() => setMobileSidebarOpen(true)}
+            className="p-1.5 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded"
+            aria-label="Open menu"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            </svg>
+          </button>
+          <span className="text-sm font-medium text-[--foreground] truncate">
+            {selectedItem?.title || "Notes"}
+          </span>
+        </div>
+
         {selectedItem?.type === "note" ? (
           <NoteEditor
             note={selectedItem}

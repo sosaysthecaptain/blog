@@ -242,7 +242,16 @@ export default function FolderTree({
                 onCancel={() => onRenameCancel?.()}
               />
             ) : (
-              <span className="truncate text-sm">{item.title || "Untitled"}</span>
+              <>
+                <span className="truncate text-sm flex-1">{item.title || "Untitled"}</span>
+                {item.published && (
+                  <span
+                    className="w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: '#22c55e' }}
+                    title="Published"
+                  />
+                )}
+              </>
             )}
           </button>
         );

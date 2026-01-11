@@ -14,6 +14,7 @@ interface TiptapEditorProps {
   onChange: (content: string) => void;
   noteId: string;
   placeholder?: string;
+  onImageClick?: (src: string) => void;
 }
 
 export default function TiptapEditor({
@@ -21,6 +22,7 @@ export default function TiptapEditor({
   onChange,
   noteId,
   placeholder = "Start typing...",
+  onImageClick,
 }: TiptapEditorProps) {
   const placeholderIdRef = useRef(0);
   const noteIdRef = useRef(noteId);
@@ -187,6 +189,28 @@ export default function TiptapEditor({
       editor.commands.setContent(content);
     }
   }, [content, editor]);
+
+  // Handle image clicks for lightbox
+  useEffect(() => {
+    if (!editor || !onImageClick) return;
+
+    const editorElement = editor.view.dom;
+
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === "IMG") {
+        const src = target.getAttribute("src");
+        if (src) {
+          e.preventDefault();
+          e.stopPropagation();
+          onImageClick(src);
+        }
+      }
+    };
+
+    editorElement.addEventListener("click", handleClick);
+    return () => editorElement.removeEventListener("click", handleClick);
+  }, [editor, onImageClick]);
 
   if (!editor) {
     return (

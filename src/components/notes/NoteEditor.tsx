@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { NoteItem, updateNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap, generateSlug, blogSlugExists } from "@/lib/notes";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { NoteItem, updateNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap, generateSlug, blogSlugExists, recipeSlugExists } from "@/lib/notes";
 import { getCurrentUser, isAdminEmail } from "@/lib/auth";
 import TiptapEditor from "./TiptapEditor";
 import TagInput from "./TagInput";
+import ImageLightbox, { extractImagesFromHtml } from "@/components/ImageLightbox";
 
 interface NoteEditorProps {
   note: NoteItem;
@@ -25,11 +26,28 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [tagColors, setTagColors] = useState<TagColorsMap>({});
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
 
-  // Check if this note is in the blog folder and user can publish
+  // Check if this note is in a publishable folder (blog or recipes)
   const isBlogNote = parentFolder?.title === "blog" && parentFolder?.parentId === null;
+  const isRecipeNote = parentFolder?.title === "recipes" && parentFolder?.parentId === null;
   const currentUser = getCurrentUser();
-  const canPublish = isBlogNote && isAdminEmail(currentUser?.email || null);
+  const canPublish = (isBlogNote || isRecipeNote) && isAdminEmail(currentUser?.email || null);
+  const publishPath = isBlogNote ? "/blog/" : isRecipeNote ? "/recipes/" : "";
+
+  // Extract images for lightbox
+  const allImages = useMemo(() => extractImagesFromHtml(content), [content]);
+
+  const openLightbox = useCallback((src: string) => {
+    const index = allImages.indexOf(src);
+    setLightboxIndex(index >= 0 ? index : 0);
+    setLightboxOpen(true);
+  }, [allImages]);
+
+  const closeLightbox = useCallback(() => setLightboxOpen(false), []);
+  const nextImage = useCallback(() => setLightboxIndex((i) => (i + 1) % allImages.length), [allImages.length]);
+  const prevImage = useCallback(() => setLightboxIndex((i) => (i - 1 + allImages.length) % allImages.length), [allImages.length]);
 
   // Track previous note to save when switching
   const prevNoteRef = useRef<{ id: string; title: string; content: string; date: string; tags: string[]; published: boolean; slug: string } | null>(null);
@@ -195,31 +213,52 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
     onBack();
   };
 
-  // Handle publish toggle
+  // Handle publish toggle - saves immediately
   const handlePublishToggle = async () => {
+    if (!note.id) return;
+
     const newPublished = !published;
+    let newSlug = slug;
 
     // Auto-generate slug if publishing and no slug set
     if (newPublished && !slug) {
-      const newSlug = generateSlug(title);
-      setSlug(newSlug);
-      // Check if this slug exists
-      const exists = await blogSlugExists(newSlug, note.id);
+      newSlug = generateSlug(title);
+      const slugChecker = isRecipeNote ? recipeSlugExists : blogSlugExists;
+      const exists = await slugChecker(newSlug, note.id);
       if (exists) {
         setSlugError("This slug is already in use - edit it before publishing");
-      } else {
-        setSlugError(null);
+        return;
       }
     }
 
+    // Update state
     setPublished(newPublished);
+    setSlug(newSlug);
+    setSlugError(null);
+
+    // Save immediately
+    setSaveStatus("saving");
+    const success = await saveNoteData(note.id, {
+      title,
+      content,
+      date,
+      tags,
+      published: newPublished,
+      slug: newSlug,
+    });
+
+    if (success) {
+      setSaveStatus("saved");
+      onUpdate({ ...note, title, content, date, tags, published: newPublished, slug: newSlug });
+    }
   };
 
   // Validate slug when it changes
   const handleSlugChange = async (newSlug: string) => {
     setSlug(newSlug);
     if (newSlug) {
-      const exists = await blogSlugExists(newSlug, note.id);
+      const slugChecker = isRecipeNote ? recipeSlugExists : blogSlugExists;
+      const exists = await slugChecker(newSlug, note.id);
       setSlugError(exists ? "This slug is already in use" : null);
     } else {
       setSlugError(null);
@@ -264,7 +303,7 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
 
   return (
     <div className="flex-1 h-full overflow-y-auto bg-[--background]">
-      <div className={isFullWidth ? "px-8 py-12" : "max-w-3xl mx-auto px-8 py-12"}>
+      <div className={isFullWidth ? "px-4 py-6 md:px-8 md:py-12" : "max-w-3xl mx-auto px-4 py-6 md:px-8 md:py-12"}>
         {/* Back button when in a folder */}
         {parentFolder && (
           <button
@@ -285,7 +324,7 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Untitled"
-          className="w-full text-4xl font-bold bg-transparent outline-none text-[--foreground] placeholder:text-[--muted] mb-2 font-serif"
+          className="w-full text-2xl md:text-4xl font-bold bg-transparent outline-none text-[--foreground] placeholder:text-[--muted] mb-2 font-serif"
         />
 
         {/* Subtitle / Date */}
@@ -296,15 +335,15 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
             onChange={(e) => setDate(e.target.value)}
             className="bg-transparent outline-none"
           />
-          <span className="text-xs">
-            {saveStatus === "saving" && "Saving..."}
-            {saveStatus === "saved" && "Saved"}
-            {saveStatus === "unsaved" && "•"}
-          </span>
+          {saveStatus === "saving" && (
+            <svg className="w-4 h-4 text-[--muted] animate-pulse" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/>
+            </svg>
+          )}
         </div>
 
         {/* Tags and Publish */}
-        <div className="mb-8 flex items-start justify-between gap-4">
+        <div className="mb-8 flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div className="flex-1">
             <TagInput
               tags={tags}
@@ -315,17 +354,17 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
             />
           </div>
 
-          {/* Publish controls - only for blog notes */}
+          {/* Publish controls - for blog and recipe notes */}
           {canPublish && (
-            <div className="flex items-center gap-4 shrink-0 text-sm">
+            <div className="flex flex-wrap items-center gap-2 md:gap-4 shrink-0 text-sm">
               <div className="flex items-center gap-1.5 text-[--muted]">
-                <span>/blog/</span>
+                <span className="hidden md:inline">{publishPath}</span>
                 <input
                   type="text"
                   value={slug}
                   onChange={(e) => handleSlugChange(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))}
                   placeholder={generateSlug(title)}
-                  className="w-40 px-2 py-1 bg-[--sidebar-bg] border border-[--border] rounded outline-none focus:border-[--accent] text-[--foreground]"
+                  className="w-32 md:w-40 px-2 py-1 bg-[--sidebar-bg] border border-[--border] rounded outline-none focus:border-[--accent] text-[--foreground]"
                 />
               </div>
               {slugError && (
@@ -355,8 +394,20 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
           onChange={setContent}
           noteId={note.id || "new"}
           placeholder="Start writing..."
+          onImageClick={openLightbox}
         />
       </div>
+
+      {/* Image Lightbox */}
+      {lightboxOpen && allImages.length > 0 && (
+        <ImageLightbox
+          images={allImages}
+          currentIndex={lightboxIndex}
+          onClose={closeLightbox}
+          onNext={nextImage}
+          onPrev={prevImage}
+        />
+      )}
     </div>
   );
 }

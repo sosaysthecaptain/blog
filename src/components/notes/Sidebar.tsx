@@ -32,6 +32,7 @@ interface SidebarProps {
   onToggleFullWidth: () => void;
   onSignOut: () => void;
   onSortChange: (sort: SortOption) => void;
+  onCloseMobile?: () => void;
 }
 
 export default function Sidebar({
@@ -61,6 +62,7 @@ export default function Sidebar({
   onToggleFullWidth,
   onSignOut,
   onSortChange,
+  onCloseMobile,
 }: SidebarProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set()
@@ -210,7 +212,22 @@ export default function Sidebar({
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-[--border]">
-        <span className="font-medium text-sm text-[--foreground]">Notes</span>
+        <div className="flex items-center gap-2">
+          {/* Mobile close button */}
+          {onCloseMobile && (
+            <button
+              type="button"
+              onClick={onCloseMobile}
+              className="md:hidden p-1 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded"
+              aria-label="Close menu"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+          <span className="font-medium text-sm text-[--foreground]">Notes</span>
+        </div>
         <div className="flex items-center gap-0.5">
           {/* New Note */}
           <button

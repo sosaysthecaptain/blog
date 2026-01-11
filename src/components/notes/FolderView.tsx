@@ -76,8 +76,8 @@ export default function FolderView({
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-[--border] bg-[--sidebar-bg]">
+      {/* Header - hidden on mobile since parent has mobile header */}
+      <div className="hidden md:flex items-center justify-between px-4 py-2 border-b border-[--border] bg-[--sidebar-bg]">
         <div className="flex items-center gap-2">
           {folder && (
             <button
@@ -162,10 +162,10 @@ export default function FolderView({
               <th className="text-left px-4 py-1.5">
                 <span className="text-xs font-medium text-[--muted]">Title</span>
               </th>
-              <th className="text-left px-4 py-1.5 w-28">
+              <th className="text-left px-4 py-1.5 w-28 hidden md:table-cell">
                 <span className="text-xs font-medium text-[--muted]">Date</span>
               </th>
-              <th className="text-left px-4 py-1.5">
+              <th className="text-left px-4 py-1.5 hidden md:table-cell">
                 <span className="text-xs font-medium text-[--muted]">Tags</span>
               </th>
             </tr>
@@ -193,10 +193,10 @@ export default function FolderView({
                     </span>
                   </div>
                 </td>
-                <td className="px-4 py-1.5 text-xs text-[--muted] tabular-nums">
+                <td className="px-4 py-1.5 text-xs text-[--muted] tabular-nums hidden md:table-cell">
                   {item.date || "—"}
                 </td>
-                <td className="px-4 py-1.5">
+                <td className="px-4 py-1.5 hidden md:table-cell">
                   <div className="flex flex-wrap gap-1">
                     {item.tags?.map((tag) => {
                       const color = getTagColor(tag);
@@ -234,8 +234,8 @@ export default function FolderView({
                     <span className="text-sm">New note</span>
                   </div>
                 </td>
-                <td className="px-4 py-1.5"></td>
-                <td className="px-4 py-1.5"></td>
+                <td className="px-4 py-1.5 hidden md:table-cell"></td>
+                <td className="px-4 py-1.5 hidden md:table-cell"></td>
               </tr>
             )}
           </tbody>
