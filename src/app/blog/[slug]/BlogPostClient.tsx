@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import { getPublishedBlogPostBySlug, getAdjacentBlogPosts, NoteItem } from "@/lib/notes";
+import { getPostBySlug, getAdjacentPosts } from "@/lib/firestore";
 import Footer from "@/components/Footer";
 
 // Check if content is HTML (from Tiptap) vs Markdown
@@ -195,13 +196,31 @@ export default function BlogPostClient() {
   useEffect(() => {
     async function loadPost() {
       try {
+        // Try notes first
         const notePost = await getPublishedBlogPostBySlug(slug);
         if (notePost) {
           setPost(notePost);
           const adjacent = await getAdjacentBlogPosts(slug);
           setAdjacentPosts(adjacent);
         } else {
-          setNotFound(true);
+          // Fall back to old posts collection
+          const oldPost = await getPostBySlug(slug);
+          if (oldPost) {
+            setPost({
+              slug: oldPost.slug,
+              title: oldPost.title,
+              date: oldPost.date,
+              content: oldPost.content,
+              tags: oldPost.tags,
+              type: "note",
+              parentId: null,
+              published: true,
+            } as NoteItem);
+            const adjacent = await getAdjacentPosts(slug);
+            setAdjacentPosts(adjacent);
+          } else {
+            setNotFound(true);
+          }
         }
       } catch (error) {
         console.error("Error loading post:", error);

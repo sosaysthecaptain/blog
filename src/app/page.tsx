@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useState, useEffect, useCallback } from "react";
-import { getProjects, Post, getCarouselImages, CarouselImage, getFirstImageFromContent, getBlurbFromContent } from "@/lib/firestore";
+import { getProjects, Post, getCarouselImages, CarouselImage, getFirstImageFromContent, getBlurbFromContent, getPublishedPosts } from "@/lib/firestore";
 import { getPublishedBlogPosts, NoteItem } from "@/lib/notes";
 import Footer from "@/components/Footer";
 
@@ -66,15 +66,36 @@ export default function Home() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [blogPosts, firestoreProjects, carousel] = await Promise.all([
+        const [blogPosts, oldPosts, firestoreProjects, carousel] = await Promise.all([
           getPublishedBlogPosts(),
+          getPublishedPosts(),
           getProjects(),
           getCarouselImages(),
         ]);
 
-        // Only use notes - filter to those with valid slugs
-        const validPosts = blogPosts.filter(note => note.slug);
-        setPosts(validPosts);
+        // Merge notes and old posts, dedupe by title (notes take priority)
+        const seenTitles = new Set<string>();
+        const allPosts: (NoteItem | Post)[] = [];
+
+        // Notes first (take priority)
+        for (const note of blogPosts) {
+          if (note.slug) {
+            seenTitles.add(note.title.toLowerCase());
+            allPosts.push(note);
+          }
+        }
+
+        // Old posts (skip if title already seen)
+        for (const post of oldPosts.filter(p => !p.parent)) {
+          if (!seenTitles.has(post.title.toLowerCase())) {
+            seenTitles.add(post.title.toLowerCase());
+            allPosts.push(post);
+          }
+        }
+
+        // Sort by date descending
+        allPosts.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+        setPosts(allPosts);
         setProjects(firestoreProjects);
         setCarouselImages(carousel);
       } catch (error) {
