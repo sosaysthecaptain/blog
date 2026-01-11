@@ -81,13 +81,8 @@ export default function FolderTree({
   onDragEnd,
 }: FolderTreeProps) {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  // Items are already sorted by parent - just filter by parentId and maintain order
   const children = items.filter((i) => i.parentId === parentId);
-  const folders = children.filter((i) => i.type === "folder");
-  const notes = children.filter((i) => i.type === "note");
-
-  // Sort alphabetically
-  folders.sort((a, b) => a.title.localeCompare(b.title));
-  notes.sort((a, b) => a.title.localeCompare(b.title));
 
   const handleDragOver = (e: React.DragEvent, targetId: string | null) => {
     e.preventDefault();
@@ -121,136 +116,133 @@ export default function FolderTree({
 
   return (
     <div>
-      {folders.map((folder) => {
-        const isExpanded = expandedFolders.has(folder.id!);
-        const isSelected = selectedId === folder.id;
-        const isDropTarget = dropTarget === folder.id;
-        const isDragging = draggedId === folder.id;
-        const isRenaming = renamingId === folder.id;
+      {children.map((item) => {
+        const isExpanded = item.type === "folder" && expandedFolders.has(item.id!);
+        const isSelected = selectedId === item.id;
+        const isDropTarget = item.type === "folder" && dropTarget === item.id;
+        const isDragging = draggedId === item.id;
+        const isRenaming = renamingId === item.id;
 
-        return (
-          <div key={folder.id}>
-            <button
-              type="button"
-              draggable={!isRenaming}
-              onDragStart={(e) => {
-                if (isRenaming) return;
-                e.dataTransfer.effectAllowed = "move";
-                onDragStart?.(folder.id!);
-              }}
-              onDragEnd={() => {
-                setDropTarget(null);
-                onDragEnd?.();
-              }}
-              onDragOver={(e) => handleDragOver(e, folder.id!)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, folder.id!)}
-              onClick={() => !isRenaming && onSelect(folder)}
-              onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, folder, parentId); }}
-              className={`w-full flex items-center gap-1 px-2 py-1.5 text-sm text-left transition-colors ${
-                !isSelected && !isDropTarget ? "hover:bg-[--hover]" : ""
-              } ${isDragging ? "opacity-50" : ""}`}
-              style={{
-                paddingLeft: `${level * 16 + 8}px`,
-                backgroundColor: isSelected ? 'var(--accent)' : isDropTarget ? '#3b82f6' : undefined,
-                color: isSelected || isDropTarget ? 'white' : 'var(--foreground)',
-              }}
-            >
+        if (item.type === "folder") {
+          return (
+            <div key={item.id}>
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleExpand(folder.id!);
+                draggable={!isRenaming}
+                onDragStart={(e) => {
+                  if (isRenaming) return;
+                  e.dataTransfer.effectAllowed = "move";
+                  onDragStart?.(item.id!);
                 }}
-                className="p-0.5 hover:bg-black/10 rounded"
+                onDragEnd={() => {
+                  setDropTarget(null);
+                  onDragEnd?.();
+                }}
+                onDragOver={(e) => handleDragOver(e, item.id!)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, item.id!)}
+                onClick={() => !isRenaming && onSelect(item)}
+                onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, item, parentId); }}
+                className={`w-full flex items-center gap-1 px-2 py-1 text-sm text-left transition-colors ${
+                  !isSelected && !isDropTarget ? "hover:bg-[--hover]" : ""
+                } ${isDragging ? "opacity-50" : ""}`}
+                style={{
+                  paddingLeft: `${level * 12 + 8}px`,
+                  backgroundColor: isSelected ? 'var(--accent)' : isDropTarget ? '#3b82f6' : undefined,
+                  color: isSelected || isDropTarget ? 'white' : 'var(--foreground)',
+                }}
               >
-                <svg
-                  className={`w-3 h-3 transition-transform ${
-                    isExpanded ? "rotate-90" : ""
-                  }`}
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleExpand(item.id!);
+                  }}
+                  className="p-0.5 hover:bg-black/10 rounded"
                 >
-                  <path
-                    fillRule="evenodd"
-                    d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                    clipRule="evenodd"
+                  <svg
+                    className={`w-3 h-3 transition-transform ${
+                      isExpanded ? "rotate-90" : ""
+                    }`}
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </button>
+                <FolderIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                {isRenaming ? (
+                  <RenameInput
+                    initialValue={item.title}
+                    onSubmit={(newName) => onRenameSubmit?.(item.id!, newName)}
+                    onCancel={() => onRenameCancel?.()}
                   />
-                </svg>
+                ) : (
+                  <span className="truncate text-sm">{item.title || "Untitled"}</span>
+                )}
               </button>
-              <FolderIcon className="w-4 h-4 flex-shrink-0" />
-              {isRenaming ? (
-                <RenameInput
-                  initialValue={folder.title}
-                  onSubmit={(newName) => onRenameSubmit?.(folder.id!, newName)}
-                  onCancel={() => onRenameCancel?.()}
+              {isExpanded && (
+                <FolderTree
+                  items={items}
+                  parentId={item.id!}
+                  level={level + 1}
+                  selectedId={selectedId}
+                  expandedFolders={expandedFolders}
+                  renamingId={renamingId}
+                  onSelect={onSelect}
+                  onToggleExpand={onToggleExpand}
+                  onContextMenu={onContextMenu}
+                  onMove={onMove}
+                  onRenameSubmit={onRenameSubmit}
+                  onRenameCancel={onRenameCancel}
+                  draggedId={draggedId}
+                  onDragStart={onDragStart}
+                  onDragEnd={onDragEnd}
                 />
-              ) : (
-                <span className="truncate">{folder.title || "Untitled"}</span>
               )}
-            </button>
-            {isExpanded && (
-              <FolderTree
-                items={items}
-                parentId={folder.id!}
-                level={level + 1}
-                selectedId={selectedId}
-                expandedFolders={expandedFolders}
-                renamingId={renamingId}
-                onSelect={onSelect}
-                onToggleExpand={onToggleExpand}
-                onContextMenu={onContextMenu}
-                onMove={onMove}
-                onRenameSubmit={onRenameSubmit}
-                onRenameCancel={onRenameCancel}
-                draggedId={draggedId}
-                onDragStart={onDragStart}
-                onDragEnd={onDragEnd}
-              />
-            )}
-          </div>
-        );
-      })}
+            </div>
+          );
+        }
 
-      {notes.map((note) => {
-        const isSelected = selectedId === note.id;
-        const isDragging = draggedId === note.id;
-        const isRenaming = renamingId === note.id;
-
+        // Note item
         return (
           <button
-            key={note.id}
+            key={item.id}
             type="button"
             draggable={!isRenaming}
             onDragStart={(e) => {
               if (isRenaming) return;
               e.dataTransfer.effectAllowed = "move";
-              onDragStart?.(note.id!);
+              onDragStart?.(item.id!);
             }}
             onDragEnd={() => {
               setDropTarget(null);
               onDragEnd?.();
             }}
-            onClick={() => !isRenaming && onSelect(note)}
-            onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, note, parentId); }}
-            className={`w-full flex items-center gap-1 px-2 py-1.5 text-sm text-left transition-colors ${
+            onClick={() => !isRenaming && onSelect(item)}
+            onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, item, parentId); }}
+            className={`w-full flex items-center gap-1 px-2 py-1 text-sm text-left transition-colors ${
               !isSelected ? "hover:bg-[--hover]" : ""
             } ${isDragging ? "opacity-50" : ""}`}
             style={{
-              paddingLeft: `${level * 16 + 24}px`,
+              paddingLeft: `${level * 12 + 20}px`,
               backgroundColor: isSelected ? 'var(--accent)' : undefined,
               color: isSelected ? 'white' : 'var(--foreground)',
             }}
           >
-            <NoteIcon className="w-4 h-4 flex-shrink-0" />
+            <NoteIcon className="w-3.5 h-3.5 flex-shrink-0" />
             {isRenaming ? (
               <RenameInput
-                initialValue={note.title}
-                onSubmit={(newName) => onRenameSubmit?.(note.id!, newName)}
+                initialValue={item.title}
+                onSubmit={(newName) => onRenameSubmit?.(item.id!, newName)}
                 onCancel={() => onRenameCancel?.()}
               />
             ) : (
-              <span className="truncate">{note.title || "Untitled"}</span>
+              <span className="truncate text-sm">{item.title || "Untitled"}</span>
             )}
           </button>
         );

@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { NoteItem, updateNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap } from "@/lib/notes";
-import { useAutosave } from "@/hooks/useAutosave";
 import TiptapEditor from "./TiptapEditor";
 import TagInput from "./TagInput";
 
@@ -21,20 +20,12 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
   const [tags, setTags] = useState<string[]>(note.tags || []);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [tagColors, setTagColors] = useState<TagColorsMap>({});
+  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
 
-  // Refs for immediate save
-  const dataRef = useRef({ title, content, date, tags });
-  const noteRef = useRef(note);
-  const hasUnsavedChanges = useRef(false);
-
-  // Update refs when data changes
-  useEffect(() => {
-    dataRef.current = { title, content, date, tags };
-  }, [title, content, date, tags]);
-
-  useEffect(() => {
-    noteRef.current = note;
-  }, [note]);
+  // Track previous note to save when switching
+  const prevNoteRef = useRef<{ id: string; title: string; content: string; date: string; tags: string[] } | null>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isMountedRef = useRef(true);
 
   // Load available tags and tag colors
   useEffect(() => {
@@ -42,72 +33,142 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
     getTagColors().then(setTagColors);
   }, []);
 
-  // Reset when note changes
+  // Save function
+  const saveNoteData = useCallback(async (
+    noteId: string,
+    data: { title: string; content: string; date: string; tags: string[] }
+  ) => {
+    try {
+      await updateNote(noteId, {
+        title: data.title,
+        content: data.content,
+        date: data.date,
+        tags: data.tags,
+      });
+      return true;
+    } catch (error) {
+      console.error("Failed to save note:", error);
+      return false;
+    }
+  }, []);
+
+  // When note changes, save the previous note first
   useEffect(() => {
+    const prevNote = prevNoteRef.current;
+
+    // If we have a previous note with different ID, save it
+    if (prevNote && prevNote.id && prevNote.id !== note.id) {
+      // Clear any pending autosave for the old note
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+
+      // Save the previous note immediately
+      saveNoteData(prevNote.id, {
+        title: prevNote.title,
+        content: prevNote.content,
+        date: prevNote.date,
+        tags: prevNote.tags,
+      });
+    }
+
+    // Reset state for new note
     setTitle(note.title);
     setContent(note.content || "");
     setDate(note.date || new Date().toISOString().split("T")[0]);
     setTags(note.tags || []);
-    hasUnsavedChanges.current = false;
-  }, [note.id]);
+    setSaveStatus("saved");
 
-  const saveNote = useCallback(async (data: { title: string; content: string; date: string; tags: string[] }) => {
-    if (!noteRef.current.id) return;
-    await updateNote(noteRef.current.id, {
-      title: data.title,
-      content: data.content,
-      date: data.date,
-      tags: data.tags,
-    });
-    onUpdate({
-      ...noteRef.current,
-      title: data.title,
-      content: data.content,
-      date: data.date,
-      tags: data.tags,
-    });
-    hasUnsavedChanges.current = false;
-  }, [onUpdate]);
+    // Update ref with new note's initial data
+    prevNoteRef.current = {
+      id: note.id || "",
+      title: note.title,
+      content: note.content || "",
+      date: note.date || new Date().toISOString().split("T")[0],
+      tags: note.tags || [],
+    };
+  }, [note.id, note.title, note.content, note.date, note.tags, saveNoteData]);
 
-  const { markSaved, status, save: forceSave } = useAutosave({
-    data: { title, content, date, tags },
-    onSave: saveNote,
-    interval: 10000,
-    enabled: !!note.id,
-  });
-
-  // Mark when there are unsaved changes
+  // Update prevNoteRef when data changes (for autosave and switch-save)
   useEffect(() => {
-    if (status === "unsaved") {
-      hasUnsavedChanges.current = true;
+    if (prevNoteRef.current && prevNoteRef.current.id === note.id) {
+      prevNoteRef.current = { id: note.id || "", title, content, date, tags };
     }
-  }, [status]);
+  }, [note.id, title, content, date, tags]);
 
-  // Mark as saved after initial load
+  // Mark as unsaved when data changes
   useEffect(() => {
-    markSaved();
-  }, [note.id, markSaved]);
+    // Check if data actually changed from the note prop
+    const hasChanges =
+      title !== note.title ||
+      content !== (note.content || "") ||
+      date !== (note.date || new Date().toISOString().split("T")[0]) ||
+      JSON.stringify(tags) !== JSON.stringify(note.tags || []);
 
-  // Save immediately when navigating away (component unmount or note change)
+    if (hasChanges) {
+      setSaveStatus("unsaved");
+    }
+  }, [title, content, date, tags, note]);
+
+  // Autosave with debounce
   useEffect(() => {
+    if (saveStatus !== "unsaved" || !note.id) return;
+
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Set new timeout for autosave
+    saveTimeoutRef.current = setTimeout(async () => {
+      if (!isMountedRef.current) return;
+
+      setSaveStatus("saving");
+      const success = await saveNoteData(note.id!, { title, content, date, tags });
+
+      if (isMountedRef.current && success) {
+        setSaveStatus("saved");
+        onUpdate({ ...note, title, content, date, tags });
+      }
+    }, 2000); // 2 second debounce - much faster than before
+
     return () => {
-      // Save on unmount if there are unsaved changes
-      if (hasUnsavedChanges.current && noteRef.current.id) {
-        const data = dataRef.current;
-        updateNote(noteRef.current.id, {
-          title: data.title,
-          content: data.content,
-          date: data.date,
-          tags: data.tags,
-        }).catch(console.error);
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [note.id]);
+  }, [saveStatus, note, title, content, date, tags, saveNoteData, onUpdate]);
+
+  // Save on unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+
+      // Clear any pending autosave
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+
+      // Save current note on unmount
+      const currentNote = prevNoteRef.current;
+      if (currentNote && currentNote.id) {
+        saveNoteData(currentNote.id, {
+          title: currentNote.title,
+          content: currentNote.content,
+          date: currentNote.date,
+          tags: currentNote.tags,
+        });
+      }
+    };
+  }, [saveNoteData]);
 
   const handleBack = () => {
-    // Force save before navigating back
-    if (status === "unsaved") {
-      forceSave();
+    // Save before navigating back
+    if (saveStatus === "unsaved" && note.id) {
+      saveNoteData(note.id, { title, content, date, tags });
     }
     onBack();
   };
@@ -151,6 +212,11 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
             onChange={(e) => setDate(e.target.value)}
             className="bg-transparent outline-none"
           />
+          <span className="text-xs">
+            {saveStatus === "saving" && "Saving..."}
+            {saveStatus === "saved" && "Saved"}
+            {saveStatus === "unsaved" && "•"}
+          </span>
         </div>
 
         {/* Tags */}

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { NoteItem } from "@/lib/notes";
 import FolderTree from "./FolderTree";
+import { SortOption, sortItems } from "./FolderView";
 
 interface SidebarProps {
   items: NoteItem[];
@@ -13,6 +14,7 @@ interface SidebarProps {
   isDark: boolean;
   isFullWidth: boolean;
   renamingId: string | null;
+  sortOption: SortOption;
   onSelect: (item: NoteItem) => void;
   onToggleCollapse: () => void;
   onCreateNote: (parentId: string | null) => void;
@@ -29,6 +31,7 @@ interface SidebarProps {
   onToggleDarkMode: () => void;
   onToggleFullWidth: () => void;
   onSignOut: () => void;
+  onSortChange: (sort: SortOption) => void;
 }
 
 export default function Sidebar({
@@ -40,6 +43,7 @@ export default function Sidebar({
   isDark,
   isFullWidth,
   renamingId,
+  sortOption,
   onSelect,
   onToggleCollapse,
   onCreateNote,
@@ -56,6 +60,7 @@ export default function Sidebar({
   onToggleDarkMode,
   onToggleFullWidth,
   onSignOut,
+  onSortChange,
 }: SidebarProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set()
@@ -87,33 +92,36 @@ export default function Sidebar({
     }
   }, [searchQuery, items]);
 
-  // Filter items based on search query for the tree
-  const filteredItems = searchQuery
-    ? items.filter((item) => {
-        const q = searchQuery.toLowerCase();
-        // Include item if it matches or has matching descendants
-        if (item.title.toLowerCase().includes(q)) return true;
-        if (item.tags?.some((t) => t.toLowerCase().includes(q))) return true;
-        if (item.content?.toLowerCase().includes(q)) return true;
-        // Include folders that contain matching items
-        if (item.type === "folder") {
-          const hasMatchingDescendant = (parentId: string): boolean => {
-            const children = items.filter((i) => i.parentId === parentId);
-            return children.some((child) => {
-              if (child.title.toLowerCase().includes(q)) return true;
-              if (child.tags?.some((t) => t.toLowerCase().includes(q))) return true;
-              if (child.content?.toLowerCase().includes(q)) return true;
-              if (child.type === "folder" && child.id) {
-                return hasMatchingDescendant(child.id);
-              }
-              return false;
-            });
-          };
-          return item.id ? hasMatchingDescendant(item.id) : false;
-        }
-        return false;
-      })
-    : items;
+  // Filter and sort items based on search query for the tree
+  const filteredItems = useMemo(() => {
+    let result = searchQuery
+      ? items.filter((item) => {
+          const q = searchQuery.toLowerCase();
+          // Include item if it matches or has matching descendants
+          if (item.title.toLowerCase().includes(q)) return true;
+          if (item.tags?.some((t) => t.toLowerCase().includes(q))) return true;
+          if (item.content?.toLowerCase().includes(q)) return true;
+          // Include folders that contain matching items
+          if (item.type === "folder") {
+            const hasMatchingDescendant = (parentId: string): boolean => {
+              const children = items.filter((i) => i.parentId === parentId);
+              return children.some((child) => {
+                if (child.title.toLowerCase().includes(q)) return true;
+                if (child.tags?.some((t) => t.toLowerCase().includes(q))) return true;
+                if (child.content?.toLowerCase().includes(q)) return true;
+                if (child.type === "folder" && child.id) {
+                  return hasMatchingDescendant(child.id);
+                }
+                return false;
+              });
+            };
+            return item.id ? hasMatchingDescendant(item.id) : false;
+          }
+          return false;
+        })
+      : items;
+    return sortItems(result, sortOption);
+  }, [items, searchQuery, sortOption]);
 
   // Auto-expand parent folders when an item is selected
   useEffect(() => {

@@ -35,6 +35,7 @@ export default function NotesPage() {
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [isFullWidth, setIsFullWidth] = useState(true);
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [sortOption, setSortOption] = useState<"date-desc" | "date-asc" | "title-asc" | "title-desc" | "updated-desc">("date-desc");
   const { isDark, toggle: toggleDarkMode, mounted } = useDarkMode();
 
   // Auth
@@ -460,6 +461,7 @@ ${content}`;
         collapsed={sidebarCollapsed}
         currentFolderId={currentFolderId}
         isDark={isDark}
+        sortOption={sortOption}
         onSelect={handleSelect}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
         onCreateNote={handleCreateNote}
@@ -484,6 +486,7 @@ ${content}`;
         onSignOut={handleSignOut}
         isFullWidth={isFullWidth}
         onToggleFullWidth={() => setIsFullWidth(!isFullWidth)}
+        onSortChange={setSortOption}
       />
 
       {/* Main content */}
@@ -511,6 +514,8 @@ ${content}`;
             folder={selectedItem}
             items={items}
             searchQuery={searchQuery}
+            sortOption={sortOption}
+            onSortChange={setSortOption}
             onSelect={handleSelect}
             onBack={handleBack}
             onCreateNote={handleCreateNote}
