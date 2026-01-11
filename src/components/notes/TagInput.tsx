@@ -130,7 +130,10 @@ export default function TagInput({
       </div>
 
       {showDropdown && (filteredTags.length > 0 || showCreate) && (
-        <div className="absolute z-10 w-full mt-1 bg-[--background] border border-[--border] rounded shadow-lg max-h-48 overflow-y-auto">
+        <div
+          className="absolute z-10 left-0 min-w-[200px] max-w-[300px] mt-1 border border-[--border] rounded shadow-lg max-h-48 overflow-y-auto"
+          style={{ backgroundColor: 'var(--background)' }}
+        >
           {filteredTags.map((tag, idx) => {
             const color = getTagColor(tag);
             return (

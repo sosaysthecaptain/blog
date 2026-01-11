@@ -9,15 +9,15 @@ import TagInput from "./TagInput";
 interface NoteEditorProps {
   note: NoteItem;
   onUpdate: (note: NoteItem) => void;
+  isFullWidth: boolean;
 }
 
-export default function NoteEditor({ note, onUpdate }: NoteEditorProps) {
+export default function NoteEditor({ note, onUpdate, isFullWidth }: NoteEditorProps) {
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content || "");
   const [date, setDate] = useState(note.date || new Date().toISOString().split("T")[0]);
   const [tags, setTags] = useState<string[]>(note.tags || []);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
-  const [isFullWidth, setIsFullWidth] = useState(true);
 
   // Load available tags
   useEffect(() => {
@@ -66,17 +66,6 @@ export default function NoteEditor({ note, onUpdate }: NoteEditorProps) {
   return (
     <div className="flex-1 h-full overflow-y-auto bg-[--background]">
       <div className={isFullWidth ? "px-8 py-12" : "max-w-3xl mx-auto px-8 py-12"}>
-        {/* Full width toggle */}
-        <div className="flex justify-end mb-4">
-          <button
-            type="button"
-            onClick={() => setIsFullWidth(!isFullWidth)}
-            className="text-xs text-[--muted] hover:text-[--foreground]"
-          >
-            {isFullWidth ? "Constrain width" : "Full width"}
-          </button>
-        </div>
-
         {/* Title */}
         <input
           type="text"

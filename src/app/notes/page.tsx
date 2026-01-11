@@ -32,6 +32,8 @@ export default function NotesPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [isFullWidth, setIsFullWidth] = useState(true);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
   const { isDark, toggle: toggleDarkMode, mounted } = useDarkMode();
 
   // Auth
@@ -133,15 +135,30 @@ export default function NotesPage() {
     await loadNotes();
   };
 
-  const handleRename = async (item: NoteItem) => {
-    const newName = window.prompt("Enter new name:", item.title);
-    if (newName && newName !== item.title && item.id) {
-      await updateNote(item.id, { title: newName });
-      await loadNotes();
-      if (selectedItem?.id === item.id) {
-        setSelectedItem({ ...item, title: newName });
-      }
+  const handleRename = (item: NoteItem) => {
+    if (item.id) {
+      setRenamingId(item.id);
     }
+  };
+
+  const handleRenameSubmit = async (itemId: string, newName: string) => {
+    const item = items.find((i) => i.id === itemId);
+    if (!item || !newName.trim() || newName === item.title) {
+      setRenamingId(null);
+      return;
+    }
+    await updateNote(itemId, { title: newName.trim() });
+    setItems((prev) =>
+      prev.map((i) => (i.id === itemId ? { ...i, title: newName.trim() } : i))
+    );
+    if (selectedItem?.id === itemId) {
+      setSelectedItem({ ...item, title: newName.trim() });
+    }
+    setRenamingId(null);
+  };
+
+  const handleRenameCancel = () => {
+    setRenamingId(null);
   };
 
   const handleNoteUpdate = useCallback((updatedNote: NoteItem) => {
@@ -331,6 +348,7 @@ ${content}`;
       <Sidebar
         items={items}
         selectedId={selectedItem?.id || null}
+        searchQuery={searchQuery}
         collapsed={sidebarCollapsed}
         currentFolderId={currentFolderId}
         isDark={isDark}
@@ -340,18 +358,29 @@ ${content}`;
         onCreateFolder={handleCreateFolder}
         onDelete={handleDelete}
         onRename={handleRename}
+        onRenameSubmit={handleRenameSubmit}
+        onRenameCancel={handleRenameCancel}
+        renamingId={renamingId}
         onMove={handleMove}
-        onSearch={setSearchQuery}
+        onSearch={(query) => {
+          setSearchQuery(query);
+          // Clear selection when searching so results are visible
+          if (query) {
+            setSelectedItem(null);
+          }
+        }}
         onExport={handleExport}
         onExportFolder={handleExportFolder}
         onToggleDarkMode={toggleDarkMode}
         onSignOut={handleSignOut}
+        isFullWidth={isFullWidth}
+        onToggleFullWidth={() => setIsFullWidth(!isFullWidth)}
       />
 
       {/* Main content */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {selectedItem?.type === "note" ? (
-          <NoteEditor note={selectedItem} onUpdate={handleNoteUpdate} />
+          <NoteEditor note={selectedItem} onUpdate={handleNoteUpdate} isFullWidth={isFullWidth} />
         ) : (
           <FolderView
             folder={selectedItem}

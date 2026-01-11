@@ -3,10 +3,11 @@
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
-import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
-import { useEffect, useCallback, useState } from "react";
+import { useEffect, useCallback, useRef } from "react";
 import { uploadNoteImage } from "@/lib/notes-storage";
+import { ImagePlaceholder } from "./ImagePlaceholder";
+import { ImageWithCaption } from "./ImageWithCaption";
 
 interface TiptapEditorProps {
   content: string;
@@ -21,7 +22,7 @@ export default function TiptapEditor({
   noteId,
   placeholder = "Start typing...",
 }: TiptapEditorProps) {
-  const [isUploading, setIsUploading] = useState(false);
+  const placeholderIdRef = useRef(0);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -34,10 +35,8 @@ export default function TiptapEditor({
       Placeholder.configure({
         placeholder,
       }),
-      Image.configure({
-        inline: false,
-        allowBase64: false,
-      }),
+      ImagePlaceholder,
+      ImageWithCaption,
       Link.configure({
         openOnClick: false,
         HTMLAttributes: {
@@ -89,19 +88,74 @@ export default function TiptapEditor({
     async (blob: Blob) => {
       if (!editor) return;
 
+      // Generate unique ID for this placeholder
+      const placeholderId = `upload-${Date.now()}-${placeholderIdRef.current++}`;
+
+      // Insert placeholder at cursor position
+      editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: "imagePlaceholder",
+          attrs: { id: placeholderId },
+        })
+        .run();
+
       const id = noteId || `temp-${Date.now()}`;
-      setIsUploading(true);
       try {
         const url = await uploadNoteImage(blob, id);
-        editor
-          .chain()
-          .focus()
-          .setImage({ src: url, alt: "Image" })
-          .run();
+
+        // Find and replace the placeholder with the actual image
+        const { doc, tr } = editor.state;
+        let placeholderPos: number | null = null;
+
+        doc.descendants((node, pos) => {
+          if (
+            node.type.name === "imagePlaceholder" &&
+            node.attrs.id === placeholderId
+          ) {
+            placeholderPos = pos;
+            return false;
+          }
+          return true;
+        });
+
+        if (placeholderPos !== null) {
+          // Delete placeholder and insert image with caption
+          editor
+            .chain()
+            .focus()
+            .setNodeSelection(placeholderPos)
+            .deleteSelection()
+            .setImageWithCaption({ src: url, alt: "Image", caption: "" })
+            .run();
+        } else {
+          // Fallback: just insert at current position
+          editor
+            .chain()
+            .focus()
+            .setImageWithCaption({ src: url, alt: "Image", caption: "" })
+            .run();
+        }
       } catch (error) {
         console.error("Failed to upload image:", error);
-      } finally {
-        setIsUploading(false);
+        // Remove the placeholder on error
+        const { doc } = editor.state;
+        doc.descendants((node, pos) => {
+          if (
+            node.type.name === "imagePlaceholder" &&
+            node.attrs.id === placeholderId
+          ) {
+            editor
+              .chain()
+              .focus()
+              .setNodeSelection(pos)
+              .deleteSelection()
+              .run();
+            return false;
+          }
+          return true;
+        });
       }
     },
     [editor, noteId]
@@ -125,15 +179,6 @@ export default function TiptapEditor({
   return (
     <div className="tiptap-editor font-serif relative">
       <EditorContent editor={editor} />
-
-      {isUploading && (
-        <div className="inline-flex items-center gap-2 px-3 py-2 mt-4 border-2 border-dashed border-[--border] rounded bg-[--hover] text-[--muted] text-sm">
-          <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          Uploading image...
-        </div>
-      )}
 
       <style jsx global>{`
         .tiptap-editor .ProseMirror {
@@ -220,16 +265,6 @@ export default function TiptapEditor({
           border-radius: 0;
           font-size: inherit;
         }
-        .tiptap-editor .ProseMirror img {
-          max-width: 100%;
-          height: auto;
-          border-radius: 0.5rem;
-          margin: 1.5rem 0;
-          cursor: pointer;
-        }
-        .tiptap-editor .ProseMirror img.ProseMirror-selectednode {
-          outline: 2px solid var(--accent);
-        }
         .tiptap-editor .ProseMirror a {
           color: var(--accent);
           text-decoration: underline;
@@ -244,41 +279,6 @@ export default function TiptapEditor({
         }
         .tiptap-editor .ProseMirror em {
           font-style: italic;
-        }
-
-        /* Image upload placeholder */
-        .tiptap-editor .ProseMirror .image-upload-placeholder {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 2rem;
-          margin: 1.5rem 0;
-          border: 2px dashed var(--border);
-          border-radius: 0.5rem;
-          background: var(--hover);
-          color: var(--muted);
-          font-size: 0.875rem;
-        }
-        .tiptap-editor .ProseMirror .image-upload-placeholder .upload-progress {
-          width: 120px;
-          height: 4px;
-          background: var(--border);
-          border-radius: 2px;
-          margin-bottom: 0.5rem;
-          overflow: hidden;
-        }
-        .tiptap-editor .ProseMirror .image-upload-placeholder .upload-progress::after {
-          content: '';
-          display: block;
-          width: 40%;
-          height: 100%;
-          background: var(--accent);
-          animation: progress 1s ease-in-out infinite;
-        }
-        @keyframes progress {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(350%); }
         }
 
         /* Dark mode adjustments */

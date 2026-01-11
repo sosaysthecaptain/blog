@@ -7,40 +7,52 @@ import FolderTree from "./FolderTree";
 interface SidebarProps {
   items: NoteItem[];
   selectedId: string | null;
+  searchQuery: string;
   collapsed: boolean;
   currentFolderId: string | null;
   isDark: boolean;
+  isFullWidth: boolean;
+  renamingId: string | null;
   onSelect: (item: NoteItem) => void;
   onToggleCollapse: () => void;
   onCreateNote: (parentId: string | null) => void;
   onCreateFolder: (parentId: string | null) => void;
   onDelete: (item: NoteItem) => void;
   onRename: (item: NoteItem) => void;
+  onRenameSubmit: (itemId: string, newName: string) => void;
+  onRenameCancel: () => void;
   onMove: (itemId: string, newParentId: string | null) => void;
   onSearch: (query: string) => void;
   onExport: () => void;
   onExportFolder: (folderId: string) => void;
   onToggleDarkMode: () => void;
+  onToggleFullWidth: () => void;
   onSignOut: () => void;
 }
 
 export default function Sidebar({
   items,
   selectedId,
+  searchQuery,
   collapsed,
   currentFolderId,
   isDark,
+  isFullWidth,
+  renamingId,
   onSelect,
   onToggleCollapse,
   onCreateNote,
   onCreateFolder,
   onDelete,
   onRename,
+  onRenameSubmit,
+  onRenameCancel,
   onMove,
   onSearch,
   onExport,
   onExportFolder,
   onToggleDarkMode,
+  onToggleFullWidth,
   onSignOut,
 }: SidebarProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
@@ -53,8 +65,53 @@ export default function Sidebar({
     parentId: string | null;
   } | null>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [localSearchInput, setLocalSearchInput] = useState("");
   const [draggedId, setDraggedId] = useState<string | null>(null);
+
+  // Sync local input with prop (for when search is cleared externally)
+  useEffect(() => {
+    if (searchQuery !== localSearchInput) {
+      setLocalSearchInput(searchQuery);
+    }
+  }, [searchQuery]);
+
+  // Auto-expand all folders when searching
+  useEffect(() => {
+    if (searchQuery) {
+      const allFolderIds = items
+        .filter((i) => i.type === "folder" && i.id)
+        .map((i) => i.id!);
+      setExpandedFolders(new Set(allFolderIds));
+    }
+  }, [searchQuery, items]);
+
+  // Filter items based on search query for the tree
+  const filteredItems = searchQuery
+    ? items.filter((item) => {
+        const q = searchQuery.toLowerCase();
+        // Include item if it matches or has matching descendants
+        if (item.title.toLowerCase().includes(q)) return true;
+        if (item.tags?.some((t) => t.toLowerCase().includes(q))) return true;
+        if (item.content?.toLowerCase().includes(q)) return true;
+        // Include folders that contain matching items
+        if (item.type === "folder") {
+          const hasMatchingDescendant = (parentId: string): boolean => {
+            const children = items.filter((i) => i.parentId === parentId);
+            return children.some((child) => {
+              if (child.title.toLowerCase().includes(q)) return true;
+              if (child.tags?.some((t) => t.toLowerCase().includes(q))) return true;
+              if (child.content?.toLowerCase().includes(q)) return true;
+              if (child.type === "folder" && child.id) {
+                return hasMatchingDescendant(child.id);
+              }
+              return false;
+            });
+          };
+          return item.id ? hasMatchingDescendant(item.id) : false;
+        }
+        return false;
+      })
+    : items;
 
   // Auto-expand parent folders when an item is selected
   useEffect(() => {
@@ -105,7 +162,7 @@ export default function Sidebar({
   const closeContextMenu = () => setContextMenu(null);
 
   const handleSearch = (value: string) => {
-    setSearchQuery(value);
+    setLocalSearchInput(value);
     onSearch(value);
   };
 
@@ -195,7 +252,7 @@ export default function Sidebar({
           </svg>
           <input
             type="text"
-            value={searchQuery}
+            value={localSearchInput}
             onChange={(e) => handleSearch(e.target.value)}
             placeholder="Search..."
             className="w-full pl-7 pr-2 py-1 text-xs bg-[--background] border border-[--border] rounded focus:outline-none focus:border-[--accent] text-[--foreground] placeholder:text-[--muted]"
@@ -221,22 +278,25 @@ export default function Sidebar({
         }}
       >
         <FolderTree
-          items={items}
+          items={filteredItems}
           parentId={null}
           level={0}
           selectedId={selectedId}
           expandedFolders={expandedFolders}
+          renamingId={renamingId}
           onSelect={onSelect}
           onToggleExpand={toggleExpand}
           onContextMenu={handleContextMenu}
           onMove={onMove}
+          onRenameSubmit={onRenameSubmit}
+          onRenameCancel={onRenameCancel}
           draggedId={draggedId}
           onDragStart={setDraggedId}
           onDragEnd={() => setDraggedId(null)}
         />
-        {items.length === 0 && (
+        {filteredItems.length === 0 && (
           <p className="text-center text-xs text-[--muted] py-8">
-            No notes yet
+            {searchQuery ? "No matches found" : "No notes yet"}
           </p>
         )}
       </div>
@@ -289,6 +349,22 @@ export default function Sidebar({
                 </svg>
               )}
               {isDark ? "Light mode" : "Dark mode"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { onToggleFullWidth(); setShowMoreMenu(false); }}
+              className="context-menu-item flex items-center gap-2"
+            >
+              {isFullWidth ? (
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                </svg>
+              )}
+              {isFullWidth ? "Constrain width" : "Full width"}
             </button>
             <button
               type="button"
