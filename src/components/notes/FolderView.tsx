@@ -128,7 +128,7 @@ export default function FolderView({
               <tr
                 key={item.id}
                 onClick={() => onSelect(item)}
-                className="border-b border-[--border] hover:bg-[--hover] cursor-pointer"
+                className="hover:bg-[--hover] cursor-pointer"
               >
                 <td className="px-6 py-3">
                   <div className="flex items-center gap-2">

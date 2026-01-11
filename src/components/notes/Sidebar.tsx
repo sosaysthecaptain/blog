@@ -129,8 +129,9 @@ export default function Sidebar({
             className="p-1.5 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded"
             title="New folder"
           >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none">
+              <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" fill="currentColor" />
+              <path d="M10 8v4m-2-2h4" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </button>
           {/* Collapse */}
@@ -261,8 +262,13 @@ export default function Sidebar({
       {/* Context Menu */}
       {contextMenu && (
         <div
-          className="fixed bg-[--background] border border-[--border] rounded shadow-lg py-1 z-50 min-w-[120px]"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
+          className="fixed rounded shadow-lg py-1 z-50 min-w-[120px]"
+          style={{
+            left: contextMenu.x,
+            top: contextMenu.y,
+            backgroundColor: 'white',
+            border: '1px solid #e0e0e0'
+          }}
         >
           <button
             type="button"
