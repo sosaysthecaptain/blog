@@ -14,6 +14,7 @@ interface FolderTreeProps {
   onToggleExpand: (folderId: string) => void;
   onContextMenu: (e: React.MouseEvent, item: NoteItem | null, parentId: string | null) => void;
   onMove?: (itemId: string, newParentId: string | null) => void;
+  onReorder?: (itemId: string, targetId: string, position: "before" | "after") => void;
   onRenameSubmit?: (itemId: string, newName: string) => void;
   onRenameCancel?: () => void;
   draggedId?: string | null;
@@ -74,6 +75,7 @@ export default function FolderTree({
   onToggleExpand,
   onContextMenu,
   onMove,
+  onReorder,
   onRenameSubmit,
   onRenameCancel,
   draggedId,
@@ -81,36 +83,97 @@ export default function FolderTree({
   onDragEnd,
 }: FolderTreeProps) {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [dropPosition, setDropPosition] = useState<"before" | "after" | "inside" | null>(null);
   // Items are already sorted by parent - just filter by parentId and maintain order
   const children = items.filter((i) => i.parentId === parentId);
 
-  const handleDragOver = (e: React.DragEvent, targetId: string | null) => {
+  const handleDragOver = (e: React.DragEvent, targetId: string | null, targetItem?: NoteItem) => {
     e.preventDefault();
     e.stopPropagation();
-    if (draggedId && draggedId !== targetId) {
-      setDropTarget(targetId);
+    if (!draggedId || draggedId === targetId) return;
+
+    setDropTarget(targetId);
+
+    // Determine position based on mouse location
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const height = rect.height;
+
+    // For folders, middle zone = drop inside
+    if (targetItem?.type === "folder") {
+      if (y < height * 0.25) {
+        setDropPosition("before");
+      } else if (y > height * 0.75) {
+        setDropPosition("after");
+      } else {
+        setDropPosition("inside");
+      }
+    } else {
+      // For notes, just before/after
+      setDropPosition(y < height / 2 ? "before" : "after");
     }
   };
 
   const handleDragLeave = () => {
     setDropTarget(null);
+    setDropPosition(null);
   };
 
-  const handleDrop = (e: React.DragEvent, targetId: string | null) => {
+  const handleDrop = (e: React.DragEvent, targetId: string | null, targetItem?: NoteItem) => {
     e.preventDefault();
     e.stopPropagation();
+
+    const currentDropPosition = dropPosition;
     setDropTarget(null);
-    if (draggedId && onMove && draggedId !== targetId) {
-      // Don't allow dropping into self or descendants
-      const isDescendant = (parentId: string | null, itemId: string): boolean => {
-        if (parentId === itemId) return true;
-        const parent = items.find(i => i.id === parentId);
-        if (!parent || !parent.parentId) return false;
-        return isDescendant(parent.parentId, itemId);
-      };
-      if (targetId && isDescendant(targetId, draggedId)) return;
-      onMove(draggedId, targetId);
+    setDropPosition(null);
+
+    if (!draggedId || draggedId === targetId) {
+      onDragEnd?.();
+      return;
     }
+
+    const draggedItem = items.find(i => i.id === draggedId);
+    if (!draggedItem) {
+      onDragEnd?.();
+      return;
+    }
+
+    // Don't allow dropping into self or descendants
+    const isDescendant = (checkParentId: string | null, itemId: string): boolean => {
+      if (checkParentId === itemId) return true;
+      const parent = items.find(i => i.id === checkParentId);
+      if (!parent || !parent.parentId) return false;
+      return isDescendant(parent.parentId, itemId);
+    };
+
+    // If dropping "inside" a folder, move into that folder
+    if (currentDropPosition === "inside" && targetId && targetItem?.type === "folder") {
+      if (isDescendant(targetId, draggedId)) {
+        onDragEnd?.();
+        return;
+      }
+      onMove?.(draggedId, targetId);
+      onDragEnd?.();
+      return;
+    }
+
+    // If same parent, this is a reorder operation
+    if (targetId && draggedItem.parentId === targetItem?.parentId && onReorder && currentDropPosition) {
+      onReorder(draggedId, targetId, currentDropPosition as "before" | "after");
+      onDragEnd?.();
+      return;
+    }
+
+    // Different parent - move to that parent
+    if (targetId && onMove) {
+      const newParentId = targetItem?.parentId ?? null;
+      if (newParentId && isDescendant(newParentId, draggedId)) {
+        onDragEnd?.();
+        return;
+      }
+      onMove(draggedId, newParentId);
+    }
+
     onDragEnd?.();
   };
 
@@ -119,13 +182,20 @@ export default function FolderTree({
       {children.map((item) => {
         const isExpanded = item.type === "folder" && expandedFolders.has(item.id!);
         const isSelected = selectedId === item.id;
-        const isDropTarget = item.type === "folder" && dropTarget === item.id;
+        const isCurrentDropTarget = dropTarget === item.id;
+        const isDropInside = isCurrentDropTarget && dropPosition === "inside" && item.type === "folder";
+        const isDropBefore = isCurrentDropTarget && dropPosition === "before";
+        const isDropAfter = isCurrentDropTarget && dropPosition === "after";
         const isDragging = draggedId === item.id;
         const isRenaming = renamingId === item.id;
 
         if (item.type === "folder") {
           return (
-            <div key={item.id}>
+            <div key={item.id} className="relative">
+              {/* Drop indicator - before */}
+              {isDropBefore && (
+                <div className="absolute left-0 right-0 top-0 h-0.5 bg-blue-500 z-10" style={{ marginLeft: `${level * 12 + 8}px` }} />
+              )}
               <button
                 type="button"
                 draggable={!isRenaming}
@@ -136,20 +206,21 @@ export default function FolderTree({
                 }}
                 onDragEnd={() => {
                   setDropTarget(null);
+                  setDropPosition(null);
                   onDragEnd?.();
                 }}
-                onDragOver={(e) => handleDragOver(e, item.id!)}
+                onDragOver={(e) => handleDragOver(e, item.id!, item)}
                 onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, item.id!)}
+                onDrop={(e) => handleDrop(e, item.id!, item)}
                 onClick={() => !isRenaming && onSelect(item)}
                 onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, item, parentId); }}
                 className={`w-full flex items-center gap-1 px-2 py-1 text-sm text-left transition-colors ${
-                  !isSelected && !isDropTarget ? "hover:bg-[--hover]" : ""
+                  !isSelected && !isDropInside ? "hover:bg-[--hover]" : ""
                 } ${isDragging ? "opacity-50" : ""}`}
                 style={{
                   paddingLeft: `${level * 12 + 8}px`,
-                  backgroundColor: isSelected ? 'var(--accent-muted)' : isDropTarget ? 'var(--accent-muted)' : undefined,
-                  color: isSelected || isDropTarget ? 'white' : 'var(--foreground)',
+                  backgroundColor: isSelected ? 'var(--accent-muted)' : isDropInside ? 'var(--accent-muted)' : undefined,
+                  color: isSelected || isDropInside ? 'white' : 'var(--foreground)',
                 }}
               >
                 <button
@@ -185,6 +256,10 @@ export default function FolderTree({
                   <span className="truncate text-sm">{item.title || "Untitled"}</span>
                 )}
               </button>
+              {/* Drop indicator - after */}
+              {isDropAfter && (
+                <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-blue-500 z-10" style={{ marginLeft: `${level * 12 + 8}px` }} />
+              )}
               {isExpanded && (
                 <FolderTree
                   items={items}
@@ -197,6 +272,7 @@ export default function FolderTree({
                   onToggleExpand={onToggleExpand}
                   onContextMenu={onContextMenu}
                   onMove={onMove}
+                  onReorder={onReorder}
                   onRenameSubmit={onRenameSubmit}
                   onRenameCancel={onRenameCancel}
                   draggedId={draggedId}
@@ -210,50 +286,63 @@ export default function FolderTree({
 
         // Note item
         return (
-          <button
-            key={item.id}
-            type="button"
-            draggable={!isRenaming}
-            onDragStart={(e) => {
-              if (isRenaming) return;
-              e.dataTransfer.effectAllowed = "move";
-              onDragStart?.(item.id!);
-            }}
-            onDragEnd={() => {
-              setDropTarget(null);
-              onDragEnd?.();
-            }}
-            onClick={() => !isRenaming && onSelect(item)}
-            onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, item, parentId); }}
-            className={`w-full flex items-center gap-1 px-2 py-1 text-sm text-left transition-colors ${
-              !isSelected ? "hover:bg-[--hover]" : ""
-            } ${isDragging ? "opacity-50" : ""}`}
-            style={{
-              paddingLeft: `${level * 12 + 20}px`,
-              backgroundColor: isSelected ? 'var(--accent-muted)' : undefined,
-              color: isSelected ? 'white' : 'var(--foreground)',
-            }}
-          >
-            <NoteIcon className="w-3.5 h-3.5 flex-shrink-0" />
-            {isRenaming ? (
-              <RenameInput
-                initialValue={item.title}
-                onSubmit={(newName) => onRenameSubmit?.(item.id!, newName)}
-                onCancel={() => onRenameCancel?.()}
-              />
-            ) : (
-              <>
-                <span className="truncate text-sm flex-1">{item.title || "Untitled"}</span>
-                {item.published && (
-                  <span
-                    className="w-2 h-2 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: '#22c55e' }}
-                    title="Published"
-                  />
-                )}
-              </>
+          <div key={item.id} className="relative">
+            {/* Drop indicator - before */}
+            {isDropBefore && (
+              <div className="absolute left-0 right-0 top-0 h-0.5 bg-blue-500 z-10" style={{ marginLeft: `${level * 12 + 20}px` }} />
             )}
-          </button>
+            <button
+              type="button"
+              draggable={!isRenaming}
+              onDragStart={(e) => {
+                if (isRenaming) return;
+                e.dataTransfer.effectAllowed = "move";
+                onDragStart?.(item.id!);
+              }}
+              onDragEnd={() => {
+                setDropTarget(null);
+                setDropPosition(null);
+                onDragEnd?.();
+              }}
+              onDragOver={(e) => handleDragOver(e, item.id!, item)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, item.id!, item)}
+              onClick={() => !isRenaming && onSelect(item)}
+              onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, item, parentId); }}
+              className={`w-full flex items-center gap-1 px-2 py-1 text-sm text-left transition-colors ${
+                !isSelected ? "hover:bg-[--hover]" : ""
+              } ${isDragging ? "opacity-50" : ""}`}
+              style={{
+                paddingLeft: `${level * 12 + 20}px`,
+                backgroundColor: isSelected ? 'var(--accent-muted)' : undefined,
+                color: isSelected ? 'white' : 'var(--foreground)',
+              }}
+            >
+              <NoteIcon className="w-3.5 h-3.5 flex-shrink-0" />
+              {isRenaming ? (
+                <RenameInput
+                  initialValue={item.title}
+                  onSubmit={(newName) => onRenameSubmit?.(item.id!, newName)}
+                  onCancel={() => onRenameCancel?.()}
+                />
+              ) : (
+                <>
+                  <span className="truncate text-sm flex-1">{item.title || "Untitled"}</span>
+                  {item.published && (
+                    <span
+                      className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: '#22c55e' }}
+                      title="Published"
+                    />
+                  )}
+                </>
+              )}
+            </button>
+            {/* Drop indicator - after */}
+            {isDropAfter && (
+              <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-blue-500 z-10" style={{ marginLeft: `${level * 12 + 20}px` }} />
+            )}
+          </div>
         );
       })}
     </div>

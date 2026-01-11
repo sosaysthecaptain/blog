@@ -24,6 +24,7 @@ interface SidebarProps {
   onRenameSubmit: (itemId: string, newName: string) => void;
   onRenameCancel: () => void;
   onMove: (itemId: string, newParentId: string | null) => void;
+  onReorder: (itemId: string, targetId: string, position: "before" | "after") => void;
   onSearch: (query: string) => void;
   onExport: () => void;
   onExportFolder: (folderId: string) => void;
@@ -54,6 +55,7 @@ export default function Sidebar({
   onRenameSubmit,
   onRenameCancel,
   onMove,
+  onReorder,
   onSearch,
   onExport,
   onExportFolder,
@@ -315,6 +317,7 @@ export default function Sidebar({
           onToggleExpand={toggleExpand}
           onContextMenu={handleContextMenu}
           onMove={onMove}
+          onReorder={onReorder}
           onRenameSubmit={onRenameSubmit}
           onRenameCancel={onRenameCancel}
           draggedId={draggedId}

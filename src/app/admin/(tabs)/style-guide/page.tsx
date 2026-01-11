@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { ConfirmDialog, AlertDialog } from "@/components/ui/Dialog";
 
-type Category = "colors" | "typography" | "buttons" | "inputs" | "sidebar" | "tags" | "icons" | "layouts";
+type Category = "colors" | "typography" | "buttons" | "inputs" | "sidebar" | "tags" | "icons" | "layouts" | "dialogs";
 
 const CATEGORIES: { id: Category; label: string }[] = [
   { id: "colors", label: "Colors" },
@@ -13,6 +14,7 @@ const CATEGORIES: { id: Category; label: string }[] = [
   { id: "tags", label: "Tags" },
   { id: "icons", label: "Icons" },
   { id: "layouts", label: "Layouts" },
+  { id: "dialogs", label: "Dialogs" },
 ];
 
 export default function StyleGuidePage() {
@@ -53,6 +55,7 @@ export default function StyleGuidePage() {
         {selectedCategory === "tags" && <TagsSection />}
         {selectedCategory === "icons" && <IconsSection />}
         {selectedCategory === "layouts" && <LayoutsSection />}
+        {selectedCategory === "dialogs" && <DialogsSection />}
       </div>
     </div>
   );
@@ -638,6 +641,94 @@ function LayoutsSection() {
         <p className="text-xs text-[--muted] mt-2">
           Uses fixed positioning with z-index. Backdrop overlay closes drawer on click.
         </p>
+      </ComponentBlock>
+    </div>
+  );
+}
+
+function DialogsSection() {
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [showDangerConfirm, setShowDangerConfirm] = useState(false);
+  const [showAlert, setShowAlert] = useState(false);
+
+  return (
+    <div>
+      <SectionTitle>Dialogs</SectionTitle>
+      <p className="text-[--muted] mb-8">
+        Custom modal dialogs that replace browser defaults (window.confirm, window.alert).
+        Located in <code className="text-sm bg-gray-100 px-1 rounded">@/components/ui/Dialog.tsx</code>.
+      </p>
+
+      <ComponentBlock title="Confirm Dialog" description="For actions requiring user confirmation">
+        <div className="flex gap-4">
+          <button
+            onClick={() => setShowConfirm(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+          >
+            Show Confirm Dialog
+          </button>
+          <button
+            onClick={() => setShowDangerConfirm(true)}
+            className="px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700"
+          >
+            Show Danger Confirm
+          </button>
+        </div>
+        <ConfirmDialog
+          open={showConfirm}
+          title="Confirm Action"
+          message="Are you sure you want to proceed with this action?"
+          onConfirm={() => setShowConfirm(false)}
+          onCancel={() => setShowConfirm(false)}
+        />
+        <ConfirmDialog
+          open={showDangerConfirm}
+          title="Delete Item"
+          message="This action cannot be undone. Are you sure you want to delete this item?"
+          variant="danger"
+          confirmLabel="Delete"
+          onConfirm={() => setShowDangerConfirm(false)}
+          onCancel={() => setShowDangerConfirm(false)}
+        />
+      </ComponentBlock>
+
+      <ComponentBlock title="Alert Dialog" description="For informational messages">
+        <button
+          onClick={() => setShowAlert(true)}
+          className="px-4 py-2 border border-[--border] rounded text-sm hover:bg-gray-50"
+        >
+          Show Alert Dialog
+        </button>
+        <AlertDialog
+          open={showAlert}
+          title="Operation Complete"
+          message="The task has been completed successfully."
+          onClose={() => setShowAlert(false)}
+        />
+      </ComponentBlock>
+
+      <ComponentBlock title="Usage Example" description="How to use dialogs in components">
+        <pre className="text-xs bg-gray-800 text-gray-100 p-4 rounded overflow-x-auto">
+{`// Import the dialog components
+import { ConfirmDialog, AlertDialog } from "@/components/ui/Dialog";
+
+// Add state for dialog visibility
+const [showConfirm, setShowConfirm] = useState(false);
+
+// Render the dialog (anywhere in your component)
+<ConfirmDialog
+  open={showConfirm}
+  title="Delete Item"
+  message="Are you sure?"
+  variant="danger"
+  confirmLabel="Delete"
+  onConfirm={() => {
+    setShowConfirm(false);
+    // Do the action
+  }}
+  onCancel={() => setShowConfirm(false)}
+/>`}
+        </pre>
       </ComponentBlock>
     </div>
   );

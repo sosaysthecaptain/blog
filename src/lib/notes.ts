@@ -25,20 +25,52 @@ export interface NoteItem {
   // Note-specific fields
   content?: string;
   date?: string;
+  time?: string; // HH:MM format, optional
   tags?: string[];
 
   // Publishing fields (for blog folder)
   published?: boolean;
   slug?: string;
+
+  // Sort order for manual reordering (lower = earlier)
+  sortOrder?: number;
 }
 
 // Get all notes and folders
 export async function getAllNotes(): Promise<NoteItem[]> {
   const snapshot = await getDocs(collection(db, NOTES_COLLECTION));
-  return snapshot.docs.map((doc) => ({
+  const notes = snapshot.docs.map((doc) => ({
     id: doc.id,
     ...doc.data(),
   })) as NoteItem[];
+  // Sort by sortOrder first (if present), then by createdAt
+  return notes.sort((a, b) => {
+    // Items with sortOrder come first, sorted by sortOrder
+    if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+      return a.sortOrder - b.sortOrder;
+    }
+    if (a.sortOrder !== undefined) return -1;
+    if (b.sortOrder !== undefined) return 1;
+    // Fall back to createdAt
+    const aTime = a.createdAt?.toMillis?.() || 0;
+    const bTime = b.createdAt?.toMillis?.() || 0;
+    return aTime - bTime;
+  });
+}
+
+// Batch update sort orders for multiple items
+export async function updateSortOrders(
+  updates: Array<{ id: string; sortOrder: number }>
+): Promise<void> {
+  const { writeBatch } = await import("firebase/firestore");
+  const batch = writeBatch(db);
+
+  for (const { id, sortOrder } of updates) {
+    const docRef = doc(db, NOTES_COLLECTION, id);
+    batch.update(docRef, { sortOrder, updatedAt: Timestamp.now() });
+  }
+
+  await batch.commit();
 }
 
 // Get notes/folders by parent ID

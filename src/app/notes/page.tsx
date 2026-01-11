@@ -16,6 +16,7 @@ import {
   deleteNote,
   deleteFolderRecursive,
   updateNote,
+  updateSortOrders,
 } from "@/lib/notes";
 import { getAllPosts, Post } from "@/lib/firestore";
 import { deleteNoteImages, downloadImageBlob } from "@/lib/notes-storage";
@@ -23,6 +24,7 @@ import { useDarkMode } from "@/hooks/useDarkMode";
 import Sidebar from "@/components/notes/Sidebar";
 import NoteEditor from "@/components/notes/NoteEditor";
 import FolderView from "@/components/notes/FolderView";
+import { ConfirmDialog, AlertDialog } from "@/components/ui/Dialog";
 import JSZip from "jszip";
 
 export default function NotesPage() {
@@ -38,6 +40,20 @@ export default function NotesPage() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [sortOption, setSortOption] = useState<"date-desc" | "date-asc" | "title-asc" | "title-desc" | "updated-desc">("date-desc");
   const { isDark, toggle: toggleDarkMode, mounted } = useDarkMode();
+
+  // Dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    variant?: "default" | "danger";
+  }>({ open: false, title: "", message: "", onConfirm: () => {} });
+  const [alertDialog, setAlertDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+  }>({ open: false, title: "", message: "" });
 
   // Auth
   useEffect(() => {
@@ -123,24 +139,33 @@ export default function NotesPage() {
 
   const handleDelete = async (item: NoteItem) => {
     if (!item.id) return;
-    const confirmed = window.confirm(
-      item.type === "folder"
-        ? "Delete this folder and all its contents?"
-        : "Delete this note?"
-    );
-    if (!confirmed) return;
 
-    if (item.type === "folder") {
-      await deleteFolderRecursive(item.id);
-    } else {
-      await deleteNoteImages(item.id);
-      await deleteNote(item.id);
-    }
+    const doDelete = async () => {
+      if (item.type === "folder") {
+        await deleteFolderRecursive(item.id!);
+      } else {
+        await deleteNoteImages(item.id!);
+        await deleteNote(item.id!);
+      }
 
-    if (selectedItem?.id === item.id) {
-      setSelectedItem(null);
-    }
-    await loadNotes();
+      if (selectedItem?.id === item.id) {
+        setSelectedItem(null);
+      }
+      await loadNotes();
+    };
+
+    setConfirmDialog({
+      open: true,
+      title: item.type === "folder" ? "Delete Folder" : "Delete Note",
+      message: item.type === "folder"
+        ? "Delete this folder and all its contents? This cannot be undone."
+        : "Delete this note? This cannot be undone.",
+      variant: "danger",
+      onConfirm: () => {
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+        doDelete();
+      },
+    });
   };
 
   const handleRename = (item: NoteItem) => {
@@ -195,6 +220,53 @@ export default function NotesPage() {
     setItems((prev) =>
       prev.map((i) => (i.id === itemId ? { ...i, parentId: newParentId } : i))
     );
+  };
+
+  const handleReorder = async (itemId: string, targetId: string, position: "before" | "after") => {
+    const draggedItem = items.find(i => i.id === itemId);
+    const targetItem = items.find(i => i.id === targetId);
+    if (!draggedItem || !targetItem) return;
+
+    // Only reorder if same parent
+    if (draggedItem.parentId !== targetItem.parentId) return;
+
+    // Get siblings in this parent, sorted by sortOrder
+    const siblings = items
+      .filter(i => i.parentId === draggedItem.parentId)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+    // Remove dragged item from list
+    const withoutDragged = siblings.filter(s => s.id !== itemId);
+    const targetIndex = withoutDragged.findIndex(s => s.id === targetId);
+
+    // Insert at new position
+    const newIndex = position === "before" ? targetIndex : targetIndex + 1;
+    withoutDragged.splice(newIndex, 0, draggedItem);
+
+    // Assign new sort orders (10, 20, 30, etc.)
+    const updates = withoutDragged.map((item, index) => ({
+      id: item.id!,
+      sortOrder: (index + 1) * 10,
+    }));
+
+    // Update in batch
+    await updateSortOrders(updates);
+
+    // Update local state
+    setItems(prev => {
+      const updatedMap = new Map(updates.map(u => [u.id, u.sortOrder]));
+      return prev.map(i => {
+        const newOrder = updatedMap.get(i.id!);
+        return newOrder !== undefined ? { ...i, sortOrder: newOrder } : i;
+      }).sort((a, b) => {
+        if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+          return a.sortOrder - b.sortOrder;
+        }
+        if (a.sortOrder !== undefined) return -1;
+        if (b.sortOrder !== undefined) return 1;
+        return 0;
+      });
+    });
   };
 
   // Helper to get all descendant notes of a folder
@@ -388,70 +460,85 @@ ${content}`;
 
   // Import blog posts into notes
   const handleImportBlogPosts = async () => {
-    const confirmed = window.confirm(
-      "Import all blog posts into a 'blog' folder? This will create a new folder and convert posts to notes."
-    );
-    if (!confirmed) return;
+    const doImport = async () => {
+      try {
+        // Get all blog posts
+        const posts = await getAllPosts();
+        if (posts.length === 0) {
+          setAlertDialog({ open: true, title: "No Posts", message: "No blog posts found to import." });
+          return;
+        }
 
-    try {
-      // Get all blog posts
-      const posts = await getAllPosts();
-      if (posts.length === 0) {
-        alert("No blog posts found to import.");
-        return;
-      }
-
-      // Check if blog folder already exists
-      let blogFolder = items.find(
-        (i) => i.type === "folder" && i.title.toLowerCase() === "blog" && i.parentId === null
-      );
-
-      // Create blog folder if it doesn't exist
-      if (!blogFolder) {
-        const now = new Date();
-        const newFolder: NoteItem = {
-          type: "folder",
-          title: "blog",
-          parentId: null,
-          createdAt: now as any,
-          updatedAt: now as any,
-        };
-        const folderId = await createNote(newFolder);
-        blogFolder = { ...newFolder, id: folderId };
-        setItems((prev) => [...prev, blogFolder!]);
-      }
-
-      // Import each post
-      const newNotes: NoteItem[] = [];
-      for (const post of posts) {
-        // Check if a note with this title already exists in the blog folder
-        const existingNote = items.find(
-          (i) => i.type === "note" && i.parentId === blogFolder!.id && i.title === post.title
+        // Check if blog folder already exists
+        let blogFolder = items.find(
+          (i) => i.type === "folder" && i.title.toLowerCase() === "blog" && i.parentId === null
         );
-        if (existingNote) continue; // Skip duplicates
 
-        const now = new Date();
-        const newNote: NoteItem = {
-          type: "note",
-          title: post.title,
-          parentId: blogFolder.id!,
-          content: markdownToHtml(post.content || ""),
-          date: post.date,
-          tags: post.tags || [],
-          published: false,
-          createdAt: now as any,
-          updatedAt: now as any,
-        };
-        const noteId = await createNote(newNote);
-        newNotes.push({ ...newNote, id: noteId });
+        // Create blog folder if it doesn't exist
+        if (!blogFolder) {
+          const now = new Date();
+          const newFolder: NoteItem = {
+            type: "folder",
+            title: "blog",
+            parentId: null,
+            createdAt: now as any,
+            updatedAt: now as any,
+          };
+          const folderId = await createNote(newFolder);
+          blogFolder = { ...newFolder, id: folderId };
+          setItems((prev) => [...prev, blogFolder!]);
+        }
+
+        // Import each post
+        const newNotes: NoteItem[] = [];
+        for (const post of posts) {
+          // Check if a note with this title already exists in the blog folder
+          const existingNote = items.find(
+            (i) => i.type === "note" && i.parentId === blogFolder!.id && i.title === post.title
+          );
+          if (existingNote) continue; // Skip duplicates
+
+          const now = new Date();
+          const newNote: NoteItem = {
+            type: "note",
+            title: post.title,
+            parentId: blogFolder.id!,
+            content: markdownToHtml(post.content || ""),
+            date: post.date,
+            tags: post.tags || [],
+            published: false,
+            createdAt: now as any,
+            updatedAt: now as any,
+          };
+          const noteId = await createNote(newNote);
+          newNotes.push({ ...newNote, id: noteId });
+        }
+
+        setItems((prev) => [...prev, ...newNotes]);
+        setAlertDialog({
+          open: true,
+          title: "Import Complete",
+          message: `Imported ${newNotes.length} blog posts into the 'blog' folder.`,
+        });
+      } catch (error) {
+        console.error("Import error:", error);
+        setAlertDialog({
+          open: true,
+          title: "Import Failed",
+          message: "Failed to import blog posts. See console for details.",
+        });
       }
+    };
 
-      setItems((prev) => [...prev, ...newNotes]);
-      alert(`Imported ${newNotes.length} blog posts into the 'blog' folder.`);
-    } catch (error) {
-      console.error("Import error:", error);
-      alert("Failed to import blog posts. See console for details.");
-    }
+    setConfirmDialog({
+      open: true,
+      title: "Import Blog Posts",
+      message: "Import all blog posts into a 'blog' folder? This will create a new folder and convert posts to notes.",
+      onConfirm: () => {
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+        doImport();
+      },
+    });
   };
 
   // Loading state
@@ -526,6 +613,7 @@ ${content}`;
           onRenameCancel={handleRenameCancel}
           renamingId={renamingId}
           onMove={handleMove}
+          onReorder={handleReorder}
           onSearch={(query) => {
             setSearchQuery(query);
             // Clear selection when searching so results are visible
@@ -595,6 +683,23 @@ ${content}`;
           />
         )}
       </div>
+
+      {/* Dialogs */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant={confirmDialog.variant}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, open: false }))}
+        confirmLabel={confirmDialog.variant === "danger" ? "Delete" : "Confirm"}
+      />
+      <AlertDialog
+        open={alertDialog.open}
+        title={alertDialog.title}
+        message={alertDialog.message}
+        onClose={() => setAlertDialog(prev => ({ ...prev, open: false }))}
+      />
     </div>
   );
 }

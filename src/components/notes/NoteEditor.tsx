@@ -19,6 +19,7 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content || "");
   const [date, setDate] = useState(note.date || new Date().toISOString().split("T")[0]);
+  const [time, setTime] = useState(note.time || "");
   const [tags, setTags] = useState<string[]>(note.tags || []);
   const [published, setPublished] = useState(note.published || false);
   const [slug, setSlug] = useState(note.slug || "");
@@ -50,7 +51,7 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
   const prevImage = useCallback(() => setLightboxIndex((i) => (i - 1 + allImages.length) % allImages.length), [allImages.length]);
 
   // Track previous note to save when switching
-  const prevNoteRef = useRef<{ id: string; title: string; content: string; date: string; tags: string[]; published: boolean; slug: string } | null>(null);
+  const prevNoteRef = useRef<{ id: string; title: string; content: string; date: string; time: string; tags: string[]; published: boolean; slug: string } | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef(true);
 
@@ -63,13 +64,14 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
   // Save function
   const saveNoteData = useCallback(async (
     noteId: string,
-    data: { title: string; content: string; date: string; tags: string[]; published: boolean; slug: string }
+    data: { title: string; content: string; date: string; time: string; tags: string[]; published: boolean; slug: string }
   ) => {
     try {
       await updateNote(noteId, {
         title: data.title,
         content: data.content,
         date: data.date,
+        time: data.time || undefined, // Don't store empty string
         tags: data.tags,
         published: data.published,
         slug: data.slug,
@@ -98,6 +100,7 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
         title: prevNote.title,
         content: prevNote.content,
         date: prevNote.date,
+        time: prevNote.time,
         tags: prevNote.tags,
         published: prevNote.published,
         slug: prevNote.slug,
@@ -108,6 +111,7 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
     setTitle(note.title);
     setContent(note.content || "");
     setDate(note.date || new Date().toISOString().split("T")[0]);
+    setTime(note.time || "");
     setTags(note.tags || []);
     setPublished(note.published || false);
     setSlug(note.slug || "");
@@ -120,18 +124,19 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
       title: note.title,
       content: note.content || "",
       date: note.date || new Date().toISOString().split("T")[0],
+      time: note.time || "",
       tags: note.tags || [],
       published: note.published || false,
       slug: note.slug || "",
     };
-  }, [note.id, note.title, note.content, note.date, note.tags, note.published, note.slug, saveNoteData]);
+  }, [note.id, note.title, note.content, note.date, note.time, note.tags, note.published, note.slug, saveNoteData]);
 
   // Update prevNoteRef when data changes (for autosave and switch-save)
   useEffect(() => {
     if (prevNoteRef.current && prevNoteRef.current.id === note.id) {
-      prevNoteRef.current = { id: note.id || "", title, content, date, tags, published, slug };
+      prevNoteRef.current = { id: note.id || "", title, content, date, time, tags, published, slug };
     }
-  }, [note.id, title, content, date, tags, published, slug]);
+  }, [note.id, title, content, date, time, tags, published, slug]);
 
   // Mark as unsaved when data changes
   useEffect(() => {
@@ -140,6 +145,7 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
       title !== note.title ||
       content !== (note.content || "") ||
       date !== (note.date || new Date().toISOString().split("T")[0]) ||
+      time !== (note.time || "") ||
       JSON.stringify(tags) !== JSON.stringify(note.tags || []) ||
       published !== (note.published || false) ||
       slug !== (note.slug || "");
@@ -147,7 +153,7 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
     if (hasChanges) {
       setSaveStatus("unsaved");
     }
-  }, [title, content, date, tags, published, slug, note]);
+  }, [title, content, date, time, tags, published, slug, note]);
 
   // Autosave with debounce
   useEffect(() => {
@@ -163,11 +169,11 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
       if (!isMountedRef.current) return;
 
       setSaveStatus("saving");
-      const success = await saveNoteData(note.id!, { title, content, date, tags, published, slug });
+      const success = await saveNoteData(note.id!, { title, content, date, time, tags, published, slug });
 
       if (isMountedRef.current && success) {
         setSaveStatus("saved");
-        onUpdate({ ...note, title, content, date, tags, published, slug });
+        onUpdate({ ...note, title, content, date, time, tags, published, slug });
       }
     }, 2000); // 2 second debounce - much faster than before
 
@@ -197,6 +203,7 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
           title: currentNote.title,
           content: currentNote.content,
           date: currentNote.date,
+          time: currentNote.time,
           tags: currentNote.tags,
           published: currentNote.published,
           slug: currentNote.slug,
@@ -208,7 +215,7 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
   const handleBack = () => {
     // Save before navigating back
     if (saveStatus === "unsaved" && note.id) {
-      saveNoteData(note.id, { title, content, date, tags, published, slug });
+      saveNoteData(note.id, { title, content, date, time, tags, published, slug });
     }
     onBack();
   };
@@ -242,6 +249,7 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
       title,
       content,
       date,
+      time,
       tags,
       published: newPublished,
       slug: newSlug,
@@ -249,7 +257,7 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
 
     if (success) {
       setSaveStatus("saved");
-      onUpdate({ ...note, title, content, date, tags, published: newPublished, slug: newSlug });
+      onUpdate({ ...note, title, content, date, time, tags, published: newPublished, slug: newSlug });
     }
   };
 
@@ -281,12 +289,12 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
     }
 
     setSaveStatus("saving");
-    const success = await saveNoteData(note.id, { title, content, date, tags, published, slug });
+    const success = await saveNoteData(note.id, { title, content, date, time, tags, published, slug });
     if (success) {
       setSaveStatus("saved");
-      onUpdate({ ...note, title, content, date, tags, published, slug });
+      onUpdate({ ...note, title, content, date, time, tags, published, slug });
     }
-  }, [note, title, content, date, tags, published, slug, saveNoteData, onUpdate]);
+  }, [note, title, content, date, time, tags, published, slug, saveNoteData, onUpdate]);
 
   // Keyboard shortcut: Cmd+S to save
   useEffect(() => {
@@ -327,13 +335,20 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
           className="w-full text-2xl md:text-4xl font-bold bg-transparent outline-none text-[--foreground] placeholder:text-[--muted] mb-2 font-serif"
         />
 
-        {/* Subtitle / Date */}
+        {/* Subtitle / Date & Time */}
         <div className="flex items-center gap-4 mb-6 text-sm text-[--muted] italic">
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
             className="bg-transparent outline-none"
+          />
+          <input
+            type="time"
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+            placeholder="--:--"
+            className="bg-transparent outline-none w-20"
           />
           {saveStatus === "saving" && (
             <svg className="w-4 h-4 text-[--muted] animate-pulse" fill="currentColor" viewBox="0 0 24 24">
