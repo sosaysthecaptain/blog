@@ -12,6 +12,10 @@ interface FolderTreeProps {
   onSelect: (item: NoteItem) => void;
   onToggleExpand: (folderId: string) => void;
   onContextMenu: (e: React.MouseEvent, item: NoteItem | null, parentId: string | null) => void;
+  onMove?: (itemId: string, newParentId: string | null) => void;
+  draggedId?: string | null;
+  onDragStart?: (itemId: string) => void;
+  onDragEnd?: () => void;
 }
 
 export default function FolderTree({
@@ -23,7 +27,12 @@ export default function FolderTree({
   onSelect,
   onToggleExpand,
   onContextMenu,
+  onMove,
+  draggedId,
+  onDragStart,
+  onDragEnd,
 }: FolderTreeProps) {
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const children = items.filter((i) => i.parentId === parentId);
   const folders = children.filter((i) => i.type === "folder");
   const notes = children.filter((i) => i.type === "note");
@@ -32,23 +41,69 @@ export default function FolderTree({
   folders.sort((a, b) => a.title.localeCompare(b.title));
   notes.sort((a, b) => a.title.localeCompare(b.title));
 
+  const handleDragOver = (e: React.DragEvent, targetId: string | null) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (draggedId && draggedId !== targetId) {
+      setDropTarget(targetId);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDropTarget(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetId: string | null) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDropTarget(null);
+    if (draggedId && onMove && draggedId !== targetId) {
+      // Don't allow dropping into self or descendants
+      const isDescendant = (parentId: string | null, itemId: string): boolean => {
+        if (parentId === itemId) return true;
+        const parent = items.find(i => i.id === parentId);
+        if (!parent || !parent.parentId) return false;
+        return isDescendant(parent.parentId, itemId);
+      };
+      if (targetId && isDescendant(targetId, draggedId)) return;
+      onMove(draggedId, targetId);
+    }
+    onDragEnd?.();
+  };
+
   return (
     <div>
       {folders.map((folder) => {
         const isExpanded = expandedFolders.has(folder.id!);
         const isSelected = selectedId === folder.id;
+        const isDropTarget = dropTarget === folder.id;
+        const isDragging = draggedId === folder.id;
 
         return (
           <div key={folder.id}>
             <button
               type="button"
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = "move";
+                onDragStart?.(folder.id!);
+              }}
+              onDragEnd={() => {
+                setDropTarget(null);
+                onDragEnd?.();
+              }}
+              onDragOver={(e) => handleDragOver(e, folder.id!)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, folder.id!)}
               onClick={() => onSelect(folder)}
               onContextMenu={(e) => onContextMenu(e, folder, parentId)}
               className={`w-full flex items-center gap-1 px-2 py-1.5 text-sm text-left transition-colors ${
                 isSelected
                   ? "bg-[--accent] text-white"
+                  : isDropTarget
+                  ? "bg-blue-500 text-white"
                   : "text-[--foreground] hover:bg-[--hover]"
-              }`}
+              } ${isDragging ? "opacity-50" : ""}`}
               style={{ paddingLeft: `${level * 16 + 8}px` }}
             >
               <button
@@ -86,6 +141,10 @@ export default function FolderTree({
                 onSelect={onSelect}
                 onToggleExpand={onToggleExpand}
                 onContextMenu={onContextMenu}
+                onMove={onMove}
+                draggedId={draggedId}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
               />
             )}
           </div>
@@ -94,18 +153,28 @@ export default function FolderTree({
 
       {notes.map((note) => {
         const isSelected = selectedId === note.id;
+        const isDragging = draggedId === note.id;
 
         return (
           <button
             key={note.id}
             type="button"
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = "move";
+              onDragStart?.(note.id!);
+            }}
+            onDragEnd={() => {
+              setDropTarget(null);
+              onDragEnd?.();
+            }}
             onClick={() => onSelect(note)}
             onContextMenu={(e) => onContextMenu(e, note, parentId)}
             className={`w-full flex items-center gap-1 px-2 py-1.5 text-sm text-left transition-colors ${
               isSelected
                 ? "bg-[--accent] text-white"
                 : "text-[--foreground] hover:bg-[--hover]"
-            }`}
+            } ${isDragging ? "opacity-50" : ""}`}
             style={{ paddingLeft: `${level * 16 + 24}px` }}
           >
             <NoteIcon className="w-4 h-4 flex-shrink-0" />

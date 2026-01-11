@@ -1,10 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { NoteItem } from "@/lib/notes";
 import FolderTree from "./FolderTree";
-import SearchBar from "./SearchBar";
-import Link from "next/link";
 
 interface SidebarProps {
   items: NoteItem[];
@@ -18,8 +16,10 @@ interface SidebarProps {
   onCreateFolder: (parentId: string | null) => void;
   onDelete: (item: NoteItem) => void;
   onRename: (item: NoteItem) => void;
+  onMove: (itemId: string, newParentId: string | null) => void;
   onSearch: (query: string) => void;
   onExport: () => void;
+  onExportFolder: (folderId: string) => void;
   onToggleDarkMode: () => void;
   onSignOut: () => void;
 }
@@ -36,8 +36,10 @@ export default function Sidebar({
   onCreateFolder,
   onDelete,
   onRename,
+  onMove,
   onSearch,
   onExport,
+  onExportFolder,
   onToggleDarkMode,
   onSignOut,
 }: SidebarProps) {
@@ -51,6 +53,33 @@ export default function Sidebar({
     parentId: string | null;
   } | null>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+
+  // Auto-expand parent folders when an item is selected
+  useEffect(() => {
+    if (!selectedId) return;
+    const selected = items.find((i) => i.id === selectedId);
+    if (!selected || !selected.parentId) return;
+
+    // Expand all parent folders up to root
+    const parentsToExpand: string[] = [];
+    let current = selected;
+    while (current.parentId) {
+      parentsToExpand.push(current.parentId);
+      const parent = items.find((i) => i.id === current.parentId);
+      if (!parent) break;
+      current = parent;
+    }
+
+    if (parentsToExpand.length > 0) {
+      setExpandedFolders((prev) => {
+        const next = new Set(prev);
+        parentsToExpand.forEach((id) => next.add(id));
+        return next;
+      });
+    }
+  }, [selectedId, items]);
 
   const toggleExpand = (folderId: string) => {
     setExpandedFolders((prev) => {
@@ -75,6 +104,11 @@ export default function Sidebar({
 
   const closeContextMenu = () => setContextMenu(null);
 
+  const handleSearch = (value: string) => {
+    setSearchQuery(value);
+    onSearch(value);
+  };
+
   if (collapsed) {
     return (
       <div className="w-12 bg-[--sidebar-bg] border-r border-[--border] flex flex-col h-full">
@@ -85,7 +119,7 @@ export default function Sidebar({
           title="Expand sidebar"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
           </svg>
         </button>
         <button
@@ -95,7 +129,7 @@ export default function Sidebar({
           title="New note"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
           </svg>
         </button>
       </div>
@@ -108,9 +142,9 @@ export default function Sidebar({
       onClick={() => { closeContextMenu(); setShowMoreMenu(false); }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-[--border]">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[--border]">
         <span className="font-medium text-sm text-[--foreground]">Notes</span>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
           {/* New Note */}
           <button
             type="button"
@@ -118,8 +152,8 @@ export default function Sidebar({
             className="p-1.5 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded"
             title="New note"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
           </button>
           {/* New Folder */}
@@ -129,9 +163,8 @@ export default function Sidebar({
             className="p-1.5 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded"
             title="New folder"
           >
-            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none">
-              <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" fill="currentColor" />
-              <path d="M10 8v4m-2-2h4" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
             </svg>
           </button>
           {/* Collapse */}
@@ -141,22 +174,51 @@ export default function Sidebar({
             className="p-1.5 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded"
             title="Collapse sidebar"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
             </svg>
           </button>
         </div>
       </div>
 
       {/* Search */}
-      <div className="p-2 border-b border-[--border]">
-        <SearchBar onSearch={onSearch} />
+      <div className="px-3 py-2 border-b border-[--border]">
+        <div className="relative">
+          <svg
+            className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[--muted]"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+            placeholder="Search..."
+            className="w-full pl-7 pr-2 py-1 text-xs bg-[--background] border border-[--border] rounded focus:outline-none focus:border-[--accent] text-[--foreground] placeholder:text-[--muted]"
+          />
+        </div>
       </div>
 
       {/* Tree */}
       <div
-        className="flex-1 overflow-y-auto py-2"
+        className="flex-1 overflow-y-auto py-1"
         onContextMenu={(e) => handleContextMenu(e, null, null)}
+        onDragOver={(e) => {
+          if (draggedId) {
+            e.preventDefault();
+          }
+        }}
+        onDrop={(e) => {
+          if (draggedId) {
+            e.preventDefault();
+            onMove(draggedId, null);
+            setDraggedId(null);
+          }
+        }}
       >
         <FolderTree
           items={items}
@@ -167,6 +229,10 @@ export default function Sidebar({
           onSelect={onSelect}
           onToggleExpand={toggleExpand}
           onContextMenu={handleContextMenu}
+          onMove={onMove}
+          draggedId={draggedId}
+          onDragStart={setDraggedId}
+          onDragEnd={() => setDraggedId(null)}
         />
         {items.length === 0 && (
           <p className="text-center text-xs text-[--muted] py-8">
@@ -176,23 +242,23 @@ export default function Sidebar({
       </div>
 
       {/* Footer with more menu */}
-      <div className="p-2 border-t border-[--border] relative">
+      <div className="px-3 py-2 border-t border-[--border] relative">
         <div className="flex items-center justify-between">
           <button
             type="button"
             onClick={onExport}
-            className="flex items-center gap-1 px-2 py-1.5 text-xs text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded"
+            className="flex items-center gap-1.5 text-xs text-[--muted] hover:text-[--foreground]"
             title="Export all notes"
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
             Export
           </button>
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setShowMoreMenu(!showMoreMenu); }}
-            className="p-1.5 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded"
+            className="p-1 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded"
             title="More options"
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -204,54 +270,55 @@ export default function Sidebar({
         {/* More menu dropdown */}
         {showMoreMenu && (
           <div
-            className="absolute bottom-full left-2 right-2 mb-1 bg-[--background] border border-[--border] rounded shadow-lg py-1 z-50"
+            className="absolute bottom-full left-2 right-2 mb-1 rounded shadow-lg py-1 z-50"
+            style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)' }}
             onClick={(e) => e.stopPropagation()}
           >
             <button
               type="button"
               onClick={() => { onToggleDarkMode(); setShowMoreMenu(false); }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[--foreground] hover:bg-[--hover]"
+              className="context-menu-item flex items-center gap-2"
             >
               {isDark ? (
-                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
                 </svg>
               ) : (
-                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
                 </svg>
               )}
               {isDark ? "Light mode" : "Dark mode"}
             </button>
-            <Link
-              href="/admin"
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[--foreground] hover:bg-[--hover]"
-              onClick={() => setShowMoreMenu(false)}
+            <button
+              type="button"
+              onClick={() => { window.location.href = '/admin'; }}
+              className="context-menu-item flex items-center gap-2"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
               Admin
-            </Link>
-            <Link
-              href="/"
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[--foreground] hover:bg-[--hover]"
-              onClick={() => setShowMoreMenu(false)}
+            </button>
+            <button
+              type="button"
+              onClick={() => { window.location.href = '/'; }}
+              className="context-menu-item flex items-center gap-2"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
               </svg>
               Home
-            </Link>
-            <div className="h-px bg-[--border] my-1" />
+            </button>
+            <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
             <button
               type="button"
               onClick={() => { onSignOut(); setShowMoreMenu(false); }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-500 hover:bg-[--hover]"
+              className="context-menu-item danger flex items-center gap-2"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
               </svg>
               Sign out
             </button>
@@ -262,13 +329,14 @@ export default function Sidebar({
       {/* Context Menu */}
       {contextMenu && (
         <div
-          className="fixed rounded shadow-lg py-1 z-50 min-w-[120px]"
+          className="fixed rounded shadow-lg py-1 z-50 min-w-[140px]"
           style={{
             left: contextMenu.x,
             top: contextMenu.y,
-            backgroundColor: 'white',
-            border: '1px solid #e0e0e0'
+            backgroundColor: 'var(--background)',
+            border: '1px solid var(--border)'
           }}
+          onClick={(e) => e.stopPropagation()}
         >
           <button
             type="button"
@@ -276,7 +344,7 @@ export default function Sidebar({
               onCreateNote(contextMenu.item?.type === "folder" ? contextMenu.item.id! : contextMenu.parentId);
               closeContextMenu();
             }}
-            className="w-full text-left px-3 py-1 text-xs text-[--foreground] hover:bg-[--hover]"
+            className="context-menu-item"
           >
             New Note
           </button>
@@ -286,30 +354,42 @@ export default function Sidebar({
               onCreateFolder(contextMenu.item?.type === "folder" ? contextMenu.item.id! : contextMenu.parentId);
               closeContextMenu();
             }}
-            className="w-full text-left px-3 py-1 text-xs text-[--foreground] hover:bg-[--hover]"
+            className="context-menu-item"
           >
             New Folder
           </button>
           {contextMenu.item && (
             <>
-              <div className="h-px bg-[--border] my-1" />
+              <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
               <button
                 type="button"
                 onClick={() => {
                   onRename(contextMenu.item!);
                   closeContextMenu();
                 }}
-                className="w-full text-left px-3 py-1 text-xs text-[--foreground] hover:bg-[--hover]"
+                className="context-menu-item"
               >
                 Rename
               </button>
+              {contextMenu.item.type === "folder" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onExportFolder(contextMenu.item!.id!);
+                    closeContextMenu();
+                  }}
+                  className="context-menu-item"
+                >
+                  Export Folder
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
                   onDelete(contextMenu.item!);
                   closeContextMenu();
                 }}
-                className="w-full text-left px-3 py-1 text-xs text-red-500 hover:bg-[--hover]"
+                className="context-menu-item danger"
               >
                 Delete
               </button>

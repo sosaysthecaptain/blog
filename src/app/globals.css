@@ -55,3 +55,37 @@ a:hover {
   background: var(--accent);
   color: var(--background);
 }
+
+/* Context menu items */
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+  color: var(--foreground);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+
+.context-menu-item:hover {
+  background-color: var(--hover) !important;
+}
+
+.context-menu-item.danger {
+  color: #ef4444;
+}
+
+.context-menu-item.danger:hover {
+  background-color: var(--hover) !important;
+}
+
+/* Drop target indicator */
+.drop-target {
+  background-color: var(--accent) !important;
+  opacity: 0.3;
+}

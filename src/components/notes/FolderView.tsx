@@ -10,6 +10,7 @@ interface FolderViewProps {
   searchQuery: string;
   onSelect: (item: NoteItem) => void;
   onBack: () => void;
+  onCreateNote: (parentId: string | null) => void;
 }
 
 export default function FolderView({
@@ -18,6 +19,7 @@ export default function FolderView({
   searchQuery,
   onSelect,
   onBack,
+  onCreateNote,
 }: FolderViewProps) {
   const [sortBy, setSortBy] = useState<"title" | "date">("title");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -106,7 +108,7 @@ export default function FolderView({
                   )}
                 </button>
               </th>
-              <th className="text-left px-6 py-2 w-32">
+              <th className="text-left px-6 py-2 w-40">
                 <button
                   type="button"
                   onClick={() => toggleSort("date")}
@@ -168,10 +170,24 @@ export default function FolderView({
             ))}
             {contents.length === 0 && (
               <tr>
-                <td colSpan={3} className="px-6 py-12 text-center text-[--muted]">
-                  {searchQuery
-                    ? "No matching notes found"
-                    : "This folder is empty"}
+                <td colSpan={3} className="px-6 py-12 text-center">
+                  {searchQuery ? (
+                    <span className="text-[--muted]">No matching notes found</span>
+                  ) : (
+                    <div className="flex flex-col items-center gap-3">
+                      <span className="text-[--muted]">This folder is empty</span>
+                      <button
+                        type="button"
+                        onClick={() => onCreateNote(folder?.id || null)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-[--accent] hover:bg-[--hover] rounded"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                        </svg>
+                        Create a note
+                      </button>
+                    </div>
+                  )}
                 </td>
               </tr>
             )}

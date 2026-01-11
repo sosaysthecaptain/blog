@@ -79,36 +79,36 @@ export default function NotesPage() {
   };
 
   const handleCreateNote = async (parentId: string | null) => {
-    const id = await createNote({
+    const now = new Date();
+    const newNote: NoteItem = {
       type: "note",
       title: "Untitled",
       parentId,
       content: "",
-      date: new Date().toISOString().split("T")[0],
+      date: now.toISOString().split("T")[0],
       tags: [],
-    });
-    await loadNotes();
-    const newNote = items.find((i) => i.id === id) || {
-      id,
-      type: "note" as const,
-      title: "Untitled",
-      parentId,
-      content: "",
-      date: new Date().toISOString().split("T")[0],
-      tags: [],
-      createdAt: null as any,
-      updatedAt: null as any,
+      createdAt: now as any,
+      updatedAt: now as any,
     };
+    const id = await createNote(newNote);
+    newNote.id = id;
+    // Add to items immediately so it shows in the list
+    setItems((prev) => [...prev, newNote]);
     setSelectedItem(newNote);
   };
 
   const handleCreateFolder = async (parentId: string | null) => {
-    const id = await createNote({
+    const now = new Date();
+    const newFolder: NoteItem = {
       type: "folder",
       title: "New Folder",
       parentId,
-    });
-    await loadNotes();
+      createdAt: now as any,
+      updatedAt: now as any,
+    };
+    const id = await createNote(newFolder);
+    newFolder.id = id;
+    setItems((prev) => [...prev, newFolder]);
   };
 
   const handleDelete = async (item: NoteItem) => {
@@ -162,15 +162,42 @@ export default function NotesPage() {
     }
   };
 
-  const handleExport = async () => {
+  const handleMove = async (itemId: string, newParentId: string | null) => {
+    const item = items.find((i) => i.id === itemId);
+    if (!item || item.parentId === newParentId) return;
+
+    await updateNote(itemId, { parentId: newParentId });
+    setItems((prev) =>
+      prev.map((i) => (i.id === itemId ? { ...i, parentId: newParentId } : i))
+    );
+  };
+
+  // Helper to get all descendant notes of a folder
+  const getNotesInFolder = (folderId: string | null): NoteItem[] => {
+    const result: NoteItem[] = [];
+    const addChildren = (parentId: string | null) => {
+      for (const item of items) {
+        if (item.parentId === parentId) {
+          if (item.type === "note") {
+            result.push(item);
+          } else if (item.type === "folder" && item.id) {
+            addChildren(item.id);
+          }
+        }
+      }
+    };
+    addChildren(folderId);
+    return result;
+  };
+
+  const exportNotes = async (notesToExport: NoteItem[], filename: string) => {
     const zip = new JSZip();
     const imageMap: Record<string, string> = {};
     const imagesFolder = zip.folder("images");
 
     // Find all image URLs in notes
     const allImageUrls = new Set<string>();
-    const notes = items.filter((i) => i.type === "note");
-    for (const note of notes) {
+    for (const note of notesToExport) {
       if (!note.content) continue;
       const imageMatches = note.content.matchAll(/<img[^>]+src="([^"]+)"/g);
       for (const match of imageMatches) {
@@ -189,9 +216,9 @@ export default function NotesPage() {
         if (response.ok) {
           const blob = await response.blob();
           const ext = url.split(".").pop()?.split("?")[0] || "jpg";
-          const filename = `image-${imageCount}.${ext}`;
-          imageMap[url] = filename;
-          imagesFolder?.file(filename, blob);
+          const imgFilename = `image-${imageCount}.${ext}`;
+          imageMap[url] = imgFilename;
+          imagesFolder?.file(imgFilename, blob);
           imageCount++;
         }
       } catch (e) {
@@ -209,7 +236,7 @@ export default function NotesPage() {
     };
 
     // Create markdown files
-    for (const note of notes) {
+    for (const note of notesToExport) {
       let content = note.content || "";
 
       // Convert HTML to simple markdown
@@ -226,8 +253,8 @@ export default function NotesPage() {
         .replace(/<[^>]+>/g, "");
 
       // Replace image URLs
-      for (const [url, filename] of Object.entries(imageMap)) {
-        content = content.replace(url, `./images/${filename}`);
+      for (const [url, imgFilename] of Object.entries(imageMap)) {
+        content = content.replace(url, `./images/${imgFilename}`);
       }
 
       // Create frontmatter
@@ -251,9 +278,21 @@ ${content}`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `notes-export-${new Date().toISOString().split("T")[0]}.zip`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleExport = async () => {
+    const notes = items.filter((i) => i.type === "note");
+    await exportNotes(notes, `notes-export-${new Date().toISOString().split("T")[0]}.zip`);
+  };
+
+  const handleExportFolder = async (folderId: string) => {
+    const folder = items.find((i) => i.id === folderId);
+    const notes = getNotesInFolder(folderId);
+    const folderName = folder?.title || "folder";
+    await exportNotes(notes, `${folderName}-export-${new Date().toISOString().split("T")[0]}.zip`);
   };
 
   // Loading state
@@ -301,8 +340,10 @@ ${content}`;
         onCreateFolder={handleCreateFolder}
         onDelete={handleDelete}
         onRename={handleRename}
+        onMove={handleMove}
         onSearch={setSearchQuery}
         onExport={handleExport}
+        onExportFolder={handleExportFolder}
         onToggleDarkMode={toggleDarkMode}
         onSignOut={handleSignOut}
       />
@@ -318,6 +359,7 @@ ${content}`;
             searchQuery={searchQuery}
             onSelect={handleSelect}
             onBack={handleBack}
+            onCreateNote={handleCreateNote}
           />
         )}
       </div>

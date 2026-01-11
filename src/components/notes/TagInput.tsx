@@ -88,7 +88,7 @@ export default function TagInput({
 
   return (
     <div className="relative">
-      <div className="flex flex-wrap gap-1.5 p-2 border border-[--border] rounded bg-[--editor-bg] min-h-[38px]">
+      <div className="flex flex-wrap items-center gap-1.5">
         {tags.map((tag) => {
           const color = getTagColor(tag);
           return (
@@ -124,8 +124,8 @@ export default function TagInput({
           onFocus={() => setShowDropdown(true)}
           onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
           onKeyDown={handleKeyDown}
-          placeholder={tags.length === 0 ? "Add tags..." : ""}
-          className="flex-1 min-w-[80px] bg-transparent outline-none text-sm text-[--foreground] placeholder:text-[--muted]"
+          placeholder={tags.length === 0 ? "Add tags..." : "+"}
+          className="min-w-[60px] bg-transparent outline-none text-sm text-[--foreground] placeholder:text-[--muted]"
         />
       </div>
 

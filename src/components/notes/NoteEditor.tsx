@@ -17,6 +17,7 @@ export default function NoteEditor({ note, onUpdate }: NoteEditorProps) {
   const [date, setDate] = useState(note.date || new Date().toISOString().split("T")[0]);
   const [tags, setTags] = useState<string[]>(note.tags || []);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [isFullWidth, setIsFullWidth] = useState(true);
 
   // Load available tags
   useEffect(() => {
@@ -48,7 +49,7 @@ export default function NoteEditor({ note, onUpdate }: NoteEditorProps) {
     });
   }, [note, onUpdate]);
 
-  const { status, isDirty, save, markSaved } = useAutosave({
+  const { markSaved, status } = useAutosave({
     data: { title, content, date, tags },
     onSave: saveNote,
     interval: 10000,
@@ -60,86 +61,61 @@ export default function NoteEditor({ note, onUpdate }: NoteEditorProps) {
     markSaved();
   }, [note.id, markSaved]);
 
+  const saveStatus = status === "saving" ? "Saving..." : status === "unsaved" ? "Unsaved" : "Saved";
+
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-[--border] bg-[--sidebar-bg]">
-        <div className="flex items-center gap-3">
-          <StatusIndicator status={status} />
-          <span className="text-xs text-[--muted]">
-            {status === "saving"
-              ? "Saving..."
-              : status === "unsaved"
-              ? "Unsaved changes"
-              : "Saved"}
-          </span>
+    <div className="flex-1 h-full overflow-y-auto bg-[--background]">
+      <div className={isFullWidth ? "px-8 py-12" : "max-w-3xl mx-auto px-8 py-12"}>
+        {/* Full width toggle */}
+        <div className="flex justify-end mb-4">
+          <button
+            type="button"
+            onClick={() => setIsFullWidth(!isFullWidth)}
+            className="text-xs text-[--muted] hover:text-[--foreground]"
+          >
+            {isFullWidth ? "Constrain width" : "Full width"}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={save}
-          disabled={!isDirty}
-          className="px-3 py-1 text-xs bg-[--accent] text-white rounded hover:opacity-90 disabled:opacity-50"
-        >
-          Save now
-        </button>
-      </div>
 
-      {/* Editor */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-6 py-8">
-          {/* Title */}
+        {/* Title */}
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Untitled"
+          className="w-full text-4xl font-bold bg-transparent outline-none text-[--foreground] placeholder:text-[--muted] mb-2 font-serif"
+        />
+
+        {/* Subtitle / Date */}
+        <div className="flex items-center gap-4 mb-6 text-sm text-[--muted] italic">
           <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Untitled"
-            className="w-full text-3xl font-bold bg-transparent outline-none text-[--foreground] placeholder:text-[--muted] mb-4"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="bg-transparent outline-none"
           />
-
-          {/* Meta row */}
-          <div className="flex flex-wrap items-center gap-4 mb-6 text-sm">
-            <div className="flex items-center gap-2">
-              <label className="text-[--muted]">Date</label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="px-2 py-1 bg-[--editor-bg] border border-[--border] rounded text-[--foreground]"
-              />
-            </div>
-          </div>
-
-          {/* Tags */}
-          <div className="mb-6">
-            <label className="block text-sm text-[--muted] mb-1">Tags</label>
-            <TagInput
-              tags={tags}
-              availableTags={availableTags}
-              onChange={setTags}
-            />
-          </div>
-
-          {/* Content */}
-          <div className="border border-[--border] rounded overflow-hidden">
-            <TiptapEditor
-              content={content}
-              onChange={setContent}
-              noteId={note.id || "new"}
-              placeholder="Start writing..."
-            />
-          </div>
         </div>
+
+        {/* Tags */}
+        <div className="mb-8">
+          <TagInput
+            tags={tags}
+            availableTags={availableTags}
+            onChange={setTags}
+          />
+        </div>
+
+        {/* Divider */}
+        <div className="border-t border-[--border] mb-8" />
+
+        {/* Content */}
+        <TiptapEditor
+          content={content}
+          onChange={setContent}
+          noteId={note.id || "new"}
+          placeholder="Start writing..."
+        />
       </div>
     </div>
   );
-}
-
-function StatusIndicator({ status }: { status: "saved" | "saving" | "unsaved" }) {
-  const colors = {
-    saved: "bg-[--success]",
-    saving: "bg-[--warning] animate-pulse",
-    unsaved: "bg-[--warning]",
-  };
-
-  return <div className={`w-2 h-2 rounded-full ${colors[status]}`} />;
 }
