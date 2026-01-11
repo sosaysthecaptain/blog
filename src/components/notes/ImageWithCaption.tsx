@@ -94,42 +94,17 @@ export const ImageWithCaption = Node.create<ImageWithCaptionOptions>({
 function ImageWithCaptionView({ node, updateAttributes, selected }: NodeViewProps) {
   const attrs = node.attrs as { src: string; alt?: string; caption?: string; width?: number };
   const { src, alt, caption, width } = attrs;
-  const [isEditing, setIsEditing] = useState(false);
-  const [captionText, setCaptionText] = useState(caption || "");
-  const [isResizing, setIsResizing] = useState(false);
   const [currentWidth, setCurrentWidth] = useState(width || null);
   const imageRef = useRef<HTMLImageElement>(null);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
 
   useEffect(() => {
-    setCaptionText(caption || "");
-  }, [caption]);
-
-  useEffect(() => {
     setCurrentWidth(width || null);
   }, [width]);
 
-  const handleCaptionBlur = () => {
-    setIsEditing(false);
-    if (captionText !== caption) {
-      updateAttributes({ caption: captionText });
-    }
-  };
-
-  const handleCaptionKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleCaptionBlur();
-    } else if (e.key === "Escape") {
-      setCaptionText(caption || "");
-      setIsEditing(false);
-    }
-  };
-
   const handleResizeStart = (e: React.MouseEvent) => {
     e.preventDefault();
-    setIsResizing(true);
     startXRef.current = e.clientX;
     startWidthRef.current = imageRef.current?.offsetWidth || 300;
 
@@ -140,7 +115,6 @@ function ImageWithCaptionView({ node, updateAttributes, selected }: NodeViewProp
     };
 
     const handleMouseUp = () => {
-      setIsResizing(false);
       if (currentWidth) {
         updateAttributes({ width: currentWidth });
       }
@@ -194,50 +168,45 @@ function ImageWithCaptionView({ node, updateAttributes, selected }: NodeViewProp
             />
           )}
         </div>
-        {isEditing ? (
-          <input
-            type="text"
-            value={captionText}
-            onChange={(e) => setCaptionText(e.target.value)}
-            onBlur={handleCaptionBlur}
-            onKeyDown={handleCaptionKeyDown}
-            autoFocus
-            placeholder="Add a caption..."
-            style={{
-              marginTop: "8px",
-              padding: "4px 8px",
-              fontSize: "14px",
-              color: "var(--muted)",
-              backgroundColor: "var(--background)",
-              border: "1px solid var(--border)",
-              borderRadius: "4px",
-              outline: "none",
-              width: "100%",
-              maxWidth: currentWidth ? `${currentWidth}px` : "100%",
-              fontStyle: "italic",
-            }}
-          />
-        ) : (
-          <figcaption
-            onClick={() => setIsEditing(true)}
-            style={{
-              marginTop: "8px",
-              fontSize: "14px",
-              color: "var(--muted)",
-              fontStyle: "italic",
-              cursor: "text",
-              padding: "4px 0",
-              minHeight: "24px",
-              width: "100%",
-              maxWidth: currentWidth ? `${currentWidth}px` : "100%",
-            }}
-          >
-            {captionText || (
-              <span style={{ opacity: 0.5 }}>Click to add caption...</span>
-            )}
-          </figcaption>
-        )}
+        <figcaption
+          contentEditable
+          suppressContentEditableWarning
+          onBlur={(e) => {
+            const newCaption = e.currentTarget.textContent || "";
+            if (newCaption !== caption) {
+              updateAttributes({ caption: newCaption });
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.currentTarget.blur();
+            }
+          }}
+          style={{
+            marginTop: "8px",
+            fontSize: "14px",
+            color: "var(--muted)",
+            cursor: "text",
+            padding: "4px 0",
+            minHeight: "24px",
+            width: "100%",
+            maxWidth: currentWidth ? `${currentWidth}px` : "100%",
+            outline: "none",
+          }}
+          data-placeholder="Add a caption..."
+        >
+          {caption}
+        </figcaption>
       </figure>
+      <style>{`
+        figcaption[data-placeholder]:empty::before {
+          content: attr(data-placeholder);
+          color: var(--muted);
+          opacity: 0.5;
+          pointer-events: none;
+        }
+      `}</style>
     </NodeViewWrapper>
   );
 }

@@ -25,6 +25,7 @@ interface SidebarProps {
   onSearch: (query: string) => void;
   onExport: () => void;
   onExportFolder: (folderId: string) => void;
+  onImportBlogPosts: () => void;
   onToggleDarkMode: () => void;
   onToggleFullWidth: () => void;
   onSignOut: () => void;
@@ -51,6 +52,7 @@ export default function Sidebar({
   onSearch,
   onExport,
   onExportFolder,
+  onImportBlogPosts,
   onToggleDarkMode,
   onToggleFullWidth,
   onSignOut,
@@ -366,6 +368,17 @@ export default function Sidebar({
               )}
               {isFullWidth ? "Constrain width" : "Full width"}
             </button>
+            <button
+              type="button"
+              onClick={() => { onImportBlogPosts(); setShowMoreMenu(false); }}
+              className="context-menu-item flex items-center gap-2"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
+              Import blog posts
+            </button>
+            <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
             <button
               type="button"
               onClick={() => { window.location.href = '/admin'; }}

@@ -168,27 +168,29 @@ export default function FolderView({
                 </td>
               </tr>
             ))}
-            {contents.length === 0 && (
+            {contents.length === 0 && searchQuery && (
               <tr>
                 <td colSpan={3} className="px-6 py-12 text-center">
-                  {searchQuery ? (
-                    <span className="text-[--muted]">No matching notes found</span>
-                  ) : (
-                    <div className="flex flex-col items-center gap-3">
-                      <span className="text-[--muted]">This folder is empty</span>
-                      <button
-                        type="button"
-                        onClick={() => onCreateNote(folder?.id || null)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-[--accent] hover:bg-[--hover] rounded"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                        </svg>
-                        Create a note
-                      </button>
-                    </div>
-                  )}
+                  <span className="text-[--muted]">No matching notes found</span>
                 </td>
+              </tr>
+            )}
+            {/* New note row */}
+            {!searchQuery && (
+              <tr
+                onClick={() => onCreateNote(folder?.id || null)}
+                className="hover:bg-[--hover] cursor-pointer text-[--muted] hover:text-[--foreground]"
+              >
+                <td className="px-6 py-2">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                    </svg>
+                    <span className="text-sm">New note</span>
+                  </div>
+                </td>
+                <td className="px-6 py-2"></td>
+                <td className="px-6 py-2"></td>
               </tr>
             )}
           </tbody>

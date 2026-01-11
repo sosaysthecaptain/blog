@@ -17,6 +17,7 @@ import {
   deleteFolderRecursive,
   updateNote,
 } from "@/lib/notes";
+import { getAllPosts, Post } from "@/lib/firestore";
 import { deleteNoteImages } from "@/lib/notes-storage";
 import { useDarkMode } from "@/hooks/useDarkMode";
 import Sidebar from "@/components/notes/Sidebar";
@@ -312,6 +313,113 @@ ${content}`;
     await exportNotes(notes, `${folderName}-export-${new Date().toISOString().split("T")[0]}.zip`);
   };
 
+  // Convert markdown to simple HTML for TipTap
+  const markdownToHtml = (md: string): string => {
+    return md
+      // Code blocks (must come before inline code)
+      .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+      // Images with captions (custom markdown: ![alt](src "caption"))
+      .replace(/!\[([^\]]*)\]\(([^)]+)\s+"([^"]+)"\)/g, '<figure data-image-caption><img src="$2" alt="$1"><figcaption>$3</figcaption></figure>')
+      // Regular images
+      .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<figure data-image-caption><img src="$2" alt="$1"><figcaption></figcaption></figure>')
+      // Headers
+      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+      .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+      // Bold and italic
+      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      // Inline code
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      // Links
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+      // Blockquotes
+      .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+      // Unordered lists
+      .replace(/^[-*] (.+)$/gm, '<li>$1</li>')
+      // Ordered lists
+      .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+      // Wrap consecutive list items
+      .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+      // Horizontal rules
+      .replace(/^---$/gm, '<hr>')
+      // Paragraphs (lines not already wrapped)
+      .split('\n\n')
+      .map(block => {
+        if (block.startsWith('<') || block.trim() === '') return block;
+        return `<p>${block.replace(/\n/g, '<br>')}</p>`;
+      })
+      .join('\n');
+  };
+
+  // Import blog posts into notes
+  const handleImportBlogPosts = async () => {
+    const confirmed = window.confirm(
+      "Import all blog posts into a 'blog' folder? This will create a new folder and convert posts to notes."
+    );
+    if (!confirmed) return;
+
+    try {
+      // Get all blog posts
+      const posts = await getAllPosts();
+      if (posts.length === 0) {
+        alert("No blog posts found to import.");
+        return;
+      }
+
+      // Check if blog folder already exists
+      let blogFolder = items.find(
+        (i) => i.type === "folder" && i.title.toLowerCase() === "blog" && i.parentId === null
+      );
+
+      // Create blog folder if it doesn't exist
+      if (!blogFolder) {
+        const now = new Date();
+        const newFolder: NoteItem = {
+          type: "folder",
+          title: "blog",
+          parentId: null,
+          createdAt: now as any,
+          updatedAt: now as any,
+        };
+        const folderId = await createNote(newFolder);
+        blogFolder = { ...newFolder, id: folderId };
+        setItems((prev) => [...prev, blogFolder!]);
+      }
+
+      // Import each post
+      const newNotes: NoteItem[] = [];
+      for (const post of posts) {
+        // Check if a note with this title already exists in the blog folder
+        const existingNote = items.find(
+          (i) => i.type === "note" && i.parentId === blogFolder!.id && i.title === post.title
+        );
+        if (existingNote) continue; // Skip duplicates
+
+        const now = new Date();
+        const newNote: NoteItem = {
+          type: "note",
+          title: post.title,
+          parentId: blogFolder.id!,
+          content: markdownToHtml(post.content || ""),
+          date: post.date,
+          tags: post.tags || [],
+          createdAt: now as any,
+          updatedAt: now as any,
+        };
+        const noteId = await createNote(newNote);
+        newNotes.push({ ...newNote, id: noteId });
+      }
+
+      setItems((prev) => [...prev, ...newNotes]);
+      alert(`Imported ${newNotes.length} blog posts into the 'blog' folder.`);
+    } catch (error) {
+      console.error("Import error:", error);
+      alert("Failed to import blog posts. See console for details.");
+    }
+  };
+
   // Loading state
   if (loading || !mounted) {
     return (
@@ -371,6 +479,7 @@ ${content}`;
         }}
         onExport={handleExport}
         onExportFolder={handleExportFolder}
+        onImportBlogPosts={handleImportBlogPosts}
         onToggleDarkMode={toggleDarkMode}
         onSignOut={handleSignOut}
         isFullWidth={isFullWidth}
@@ -380,7 +489,23 @@ ${content}`;
       {/* Main content */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {selectedItem?.type === "note" ? (
-          <NoteEditor note={selectedItem} onUpdate={handleNoteUpdate} isFullWidth={isFullWidth} />
+          <NoteEditor
+            note={selectedItem}
+            parentFolder={selectedItem.parentId ? items.find(i => i.id === selectedItem.parentId && i.type === "folder") || null : null}
+            onUpdate={handleNoteUpdate}
+            onBack={() => {
+              // Navigate back to parent folder or root
+              const parent = items.find(i => i.id === selectedItem.parentId);
+              if (parent) {
+                setSelectedItem(parent);
+                setCurrentFolderId(parent.id!);
+              } else {
+                setSelectedItem(null);
+                setCurrentFolderId(null);
+              }
+            }}
+            isFullWidth={isFullWidth}
+          />
         ) : (
           <FolderView
             folder={selectedItem}

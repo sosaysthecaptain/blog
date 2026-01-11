@@ -164,3 +164,45 @@ function getDescendants(
   }
   return result;
 }
+
+// Tag colors storage
+const TAG_COLORS_DOC_ID = "_tagColors";
+
+export interface TagColorsMap {
+  [tag: string]: number; // Color index
+}
+
+// Get tag colors from Firestore
+export async function getTagColors(): Promise<TagColorsMap> {
+  try {
+    const docRef = doc(db, NOTES_COLLECTION, TAG_COLORS_DOC_ID);
+    const snapshot = await getDoc(docRef);
+    if (!snapshot.exists()) return {};
+    const data = snapshot.data();
+    return data.colors || {};
+  } catch (error) {
+    console.error("Failed to load tag colors:", error);
+    return {};
+  }
+}
+
+// Save tag colors to Firestore
+export async function saveTagColors(colors: TagColorsMap): Promise<void> {
+  const docRef = doc(db, NOTES_COLLECTION, TAG_COLORS_DOC_ID);
+  await updateDoc(docRef, { colors, updatedAt: Timestamp.now() }).catch(async () => {
+    // If doc doesn't exist, create it
+    const { setDoc } = await import("firebase/firestore");
+    await setDoc(docRef, {
+      colors,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+  });
+}
+
+// Set color for a single tag
+export async function setTagColor(tag: string, colorIndex: number): Promise<void> {
+  const colors = await getTagColors();
+  colors[tag] = colorIndex;
+  await saveTagColors(colors);
+}
