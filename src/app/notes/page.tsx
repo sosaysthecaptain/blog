@@ -18,7 +18,7 @@ import {
   updateNote,
 } from "@/lib/notes";
 import { getAllPosts, Post } from "@/lib/firestore";
-import { deleteNoteImages } from "@/lib/notes-storage";
+import { deleteNoteImages, downloadImageBlob } from "@/lib/notes-storage";
 import { useDarkMode } from "@/hooks/useDarkMode";
 import Sidebar from "@/components/notes/Sidebar";
 import NoteEditor from "@/components/notes/NoteEditor";
@@ -234,28 +234,20 @@ export default function NotesPage() {
       }
     }
 
-    // Download images
+    // Download images using Firebase SDK (avoids CORS issues)
     let imageCount = 0;
     for (const url of allImageUrls) {
       try {
-        // Use no-cors mode as fallback, fetch the image
-        const response = await fetch(url, { mode: 'cors' }).catch(() =>
-          fetch(url, { mode: 'no-cors' })
-        );
-
-        if (response.ok || response.type === 'opaque') {
-          const blob = await response.blob();
-          // Only add if we got actual content
-          if (blob.size > 0) {
-            // Extract extension from URL, handling query strings
-            const urlPath = url.split('?')[0];
-            const ext = urlPath.split('.').pop()?.toLowerCase() || 'jpg';
-            const validExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) ? ext : 'jpg';
-            const imgFilename = `image-${imageCount}.${validExt}`;
-            imageMap[url] = imgFilename;
-            imagesFolder?.file(imgFilename, blob);
-            imageCount++;
-          }
+        const blob = await downloadImageBlob(url);
+        if (blob && blob.size > 0) {
+          // Extract extension from URL, handling query strings
+          const urlPath = url.split('?')[0];
+          const ext = urlPath.split('.').pop()?.toLowerCase() || 'jpg';
+          const validExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) ? ext : 'jpg';
+          const imgFilename = `image-${imageCount}.${validExt}`;
+          imageMap[url] = imgFilename;
+          imagesFolder?.file(imgFilename, blob);
+          imageCount++;
         }
       } catch (e) {
         console.warn(`Failed to download: ${url}`, e);

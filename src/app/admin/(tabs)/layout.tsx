@@ -97,6 +97,32 @@ export default function AdminTabsLayout({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
           </svg>
         </Link>
+        <Link
+          href="/admin/users"
+          className={`p-4 transition-colors ${
+            isActive("/admin/users")
+              ? "bg-white text-blue-600 border-l-2 border-blue-600"
+              : "text-[--muted] hover:bg-gray-100"
+          }`}
+          title="Users"
+        >
+          <svg className="w-5 h-5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+          </svg>
+        </Link>
+        <Link
+          href="/admin/style-guide"
+          className={`p-4 transition-colors ${
+            isActive("/admin/style-guide")
+              ? "bg-white text-blue-600 border-l-2 border-blue-600"
+              : "text-[--muted] hover:bg-gray-100"
+          }`}
+          title="Style Guide"
+        >
+          <svg className="w-5 h-5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+          </svg>
+        </Link>
         <div className="flex-1" />
         <Link
           href="/"

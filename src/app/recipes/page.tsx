@@ -100,7 +100,7 @@ export default function RecipesPage() {
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2 border-b border-[--border]">
           <Link href="/" className="font-medium text-sm text-[--foreground] hover:text-[--accent]">
-            &larr; Recipes
+            &larr; home
           </Link>
         </div>
 
