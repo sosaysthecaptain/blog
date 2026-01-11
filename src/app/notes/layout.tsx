@@ -3,6 +3,9 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Notes - Marc Auger",
   description: "Personal notes",
+  icons: {
+    icon: "/favicon-notes.svg",
+  },
 };
 
 export default function NotesLayout({

@@ -190,13 +190,13 @@ export default function TiptapEditor({
     }
   }, [content, editor]);
 
-  // Handle image clicks for lightbox
+  // Handle image double-clicks for lightbox (single click just selects)
   useEffect(() => {
     if (!editor || !onImageClick) return;
 
     const editorElement = editor.view.dom;
 
-    const handleClick = (e: MouseEvent) => {
+    const handleDoubleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (target.tagName === "IMG") {
         const src = target.getAttribute("src");
@@ -208,8 +208,8 @@ export default function TiptapEditor({
       }
     };
 
-    editorElement.addEventListener("click", handleClick);
-    return () => editorElement.removeEventListener("click", handleClick);
+    editorElement.addEventListener("dblclick", handleDoubleClick);
+    return () => editorElement.removeEventListener("dblclick", handleDoubleClick);
   }, [editor, onImageClick]);
 
   if (!editor) {

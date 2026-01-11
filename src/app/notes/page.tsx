@@ -115,6 +115,10 @@ export default function NotesPage() {
     const id = await createNote(newFolder);
     newFolder.id = id;
     setItems((prev) => [...prev, newFolder]);
+    // Auto-select the folder and enter rename mode
+    setSelectedItem(newFolder);
+    setCurrentFolderId(id);
+    setRenamingId(id);
   };
 
   const handleDelete = async (item: NoteItem) => {
@@ -216,11 +220,12 @@ export default function NotesPage() {
     const imageMap: Record<string, string> = {};
     const imagesFolder = zip.folder("images");
 
-    // Find all image URLs in notes
+    // Find all image URLs in notes (handle both single and double quotes)
     const allImageUrls = new Set<string>();
     for (const note of notesToExport) {
       if (!note.content) continue;
-      const imageMatches = note.content.matchAll(/<img[^>]+src="([^"]+)"/g);
+      // Match src with double or single quotes
+      const imageMatches = note.content.matchAll(/<img[^>]+src=["']([^"']+)["']/g);
       for (const match of imageMatches) {
         const url = match[1];
         if (url.startsWith("http")) {
@@ -233,17 +238,27 @@ export default function NotesPage() {
     let imageCount = 0;
     for (const url of allImageUrls) {
       try {
-        const response = await fetch(url);
-        if (response.ok) {
+        // Use no-cors mode as fallback, fetch the image
+        const response = await fetch(url, { mode: 'cors' }).catch(() =>
+          fetch(url, { mode: 'no-cors' })
+        );
+
+        if (response.ok || response.type === 'opaque') {
           const blob = await response.blob();
-          const ext = url.split(".").pop()?.split("?")[0] || "jpg";
-          const imgFilename = `image-${imageCount}.${ext}`;
-          imageMap[url] = imgFilename;
-          imagesFolder?.file(imgFilename, blob);
-          imageCount++;
+          // Only add if we got actual content
+          if (blob.size > 0) {
+            // Extract extension from URL, handling query strings
+            const urlPath = url.split('?')[0];
+            const ext = urlPath.split('.').pop()?.toLowerCase() || 'jpg';
+            const validExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) ? ext : 'jpg';
+            const imgFilename = `image-${imageCount}.${validExt}`;
+            imageMap[url] = imgFilename;
+            imagesFolder?.file(imgFilename, blob);
+            imageCount++;
+          }
         }
       } catch (e) {
-        console.warn(`Failed to download: ${url}`);
+        console.warn(`Failed to download: ${url}`, e);
       }
     }
 
