@@ -6,6 +6,24 @@
   --accent: #0066cc;
   --muted: #666666;
   --border: #e0e0e0;
+  --sidebar-bg: #f9fafb;
+  --editor-bg: #ffffff;
+  --hover: #f3f4f6;
+  --success: #22c55e;
+  --warning: #f59e0b;
+}
+
+:root.dark {
+  --background: #1a1a1a;
+  --foreground: #e5e5e5;
+  --accent: #60a5fa;
+  --muted: #9ca3af;
+  --border: #374151;
+  --sidebar-bg: #111827;
+  --editor-bg: #1f2937;
+  --hover: #374151;
+  --success: #4ade80;
+  --warning: #fbbf24;
 }
 
 body {
