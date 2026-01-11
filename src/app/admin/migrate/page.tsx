@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { User } from "firebase/auth";
 import { posts as hardcodedPosts } from "@/lib/posts";
 import { createPost, getAllPosts } from "@/lib/firestore";
+import { getBlogFolderId, getNotesByParent, updateNote, generateSlug } from "@/lib/notes";
 import { onAuthChange, isAdminEmail, signInWithGoogle } from "@/lib/auth";
 import Link from "next/link";
 
@@ -85,6 +86,53 @@ export default function MigratePage() {
     }
   };
 
+  // Publish all notes in blog folder
+  const handlePublishBlogNotes = async () => {
+    setMigrating(true);
+    setStatus("Finding blog folder...");
+
+    try {
+      const blogFolderId = await getBlogFolderId();
+      if (!blogFolderId) {
+        setStatus("No 'blog' folder found at root level.");
+        setMigrating(false);
+        return;
+      }
+
+      setStatus("Loading notes in blog folder...");
+      const notes = await getNotesByParent(blogFolderId);
+      const notesToUpdate = notes.filter(n => n.type === "note");
+
+      if (notesToUpdate.length === 0) {
+        setStatus("No notes found in blog folder.");
+        setMigrating(false);
+        return;
+      }
+
+      setStatus(`Publishing ${notesToUpdate.length} notes...`);
+
+      for (const note of notesToUpdate) {
+        if (!note.id) continue;
+
+        const slug = note.slug || generateSlug(note.title);
+        setStatus(`Publishing: ${note.title} → /blog/${slug}`);
+
+        await updateNote(note.id, {
+          published: true,
+          slug: slug,
+        });
+      }
+
+      setStatus(`Successfully published ${notesToUpdate.length} notes! Rebuild to generate static pages.`);
+      setDone(true);
+    } catch (error) {
+      console.error("Publish error:", error);
+      setStatus(`Error: ${error}`);
+    } finally {
+      setMigrating(false);
+    }
+  };
+
   // Loading state
   if (authLoading) {
     return (
@@ -131,13 +179,22 @@ export default function MigratePage() {
 
       <div className="space-y-4 text-center">
         {!done && (
-          <button
-            onClick={handleMigrate}
-            disabled={migrating}
-            className="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            {migrating ? "Migrating..." : "Start Migration"}
-          </button>
+          <div className="space-y-4">
+            <button
+              onClick={handleMigrate}
+              disabled={migrating}
+              className="block w-full px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {migrating ? "Working..." : "Migrate Hardcoded Posts to Firestore"}
+            </button>
+            <button
+              onClick={handlePublishBlogNotes}
+              disabled={migrating}
+              className="block w-full px-6 py-3 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+            >
+              {migrating ? "Working..." : "Publish All Blog Folder Notes"}
+            </button>
+          </div>
         )}
 
         {status && (

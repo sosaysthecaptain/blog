@@ -148,7 +148,7 @@ export default function FolderTree({
                 } ${isDragging ? "opacity-50" : ""}`}
                 style={{
                   paddingLeft: `${level * 12 + 8}px`,
-                  backgroundColor: isSelected ? 'var(--accent)' : isDropTarget ? '#3b82f6' : undefined,
+                  backgroundColor: isSelected ? 'var(--accent-muted)' : isDropTarget ? 'var(--accent-muted)' : undefined,
                   color: isSelected || isDropTarget ? 'white' : 'var(--foreground)',
                 }}
               >
@@ -230,7 +230,7 @@ export default function FolderTree({
             } ${isDragging ? "opacity-50" : ""}`}
             style={{
               paddingLeft: `${level * 12 + 20}px`,
-              backgroundColor: isSelected ? 'var(--accent)' : undefined,
+              backgroundColor: isSelected ? 'var(--accent-muted)' : undefined,
               color: isSelected ? 'white' : 'var(--foreground)',
             }}
           >

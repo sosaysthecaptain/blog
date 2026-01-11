@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
-import { getPostBySlug, Post, getAdjacentPosts } from "@/lib/firestore";
+import { getPublishedBlogPostBySlug, getAdjacentBlogPosts, NoteItem } from "@/lib/notes";
+import { getPostBySlug, getAdjacentPosts } from "@/lib/firestore";
 import { posts as fallbackPosts } from "@/lib/posts";
 import Footer from "@/components/Footer";
 
@@ -108,7 +109,7 @@ function ImageModal({
 export default function BlogPostClient() {
   const params = useParams();
   const slug = params.slug as string;
-  const [post, setPost] = useState<Post | null>(null);
+  const [post, setPost] = useState<NoteItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -119,7 +120,7 @@ export default function BlogPostClient() {
   }>({ prev: null, next: null });
 
   // Get all images from current post
-  const allImages = post ? extractImages(post.content) : [];
+  const allImages = post ? extractImages(post.content || "") : [];
 
   const openModal = useCallback((imageSrc: string) => {
     const idx = allImages.indexOf(imageSrc);
@@ -142,66 +143,58 @@ export default function BlogPostClient() {
   useEffect(() => {
     async function loadPost() {
       try {
-        // Try Firestore first
-        const firestorePost = await getPostBySlug(slug);
-        if (firestorePost) {
-          setPost(firestorePost);
-          // Load adjacent posts for navigation
-          const adjacent = await getAdjacentPosts(slug);
+        // Try notes collection first
+        const notePost = await getPublishedBlogPostBySlug(slug);
+        if (notePost) {
+          setPost(notePost);
+          const adjacent = await getAdjacentBlogPosts(slug);
           setAdjacentPosts(adjacent);
         } else {
-          // Fall back to hardcoded posts
-          const fallback = fallbackPosts[slug];
-          if (fallback) {
-            // Convert hardcoded format to Firestore format
-            let content = fallback.content;
-            if (fallback.images) {
-              fallback.images.forEach((img, i) => {
-                content = content.replace(
-                  `[IMAGE:${i}]`,
-                  `![${img.alt}](${img.src})`
-                );
-              });
-            }
+          // Try old posts collection
+          const oldPost = await getPostBySlug(slug);
+          if (oldPost) {
             setPost({
-              slug: fallback.slug,
-              title: fallback.title,
-              date: fallback.date,
-              content,
-              isProject: fallback.isProject,
-              parent: fallback.parent,
-              status: "published",
-            } as Post);
+              slug: oldPost.slug,
+              title: oldPost.title,
+              date: oldPost.date,
+              content: oldPost.content,
+              tags: oldPost.tags,
+              type: "note",
+              parentId: null,
+              published: true,
+            } as unknown as NoteItem);
+            const adjacent = await getAdjacentPosts(slug);
+            setAdjacentPosts(adjacent);
           } else {
-            setNotFound(true);
+            // Fall back to hardcoded posts
+            const fallback = fallbackPosts[slug];
+            if (fallback) {
+              let content = fallback.content;
+              if (fallback.images) {
+                fallback.images.forEach((img, i) => {
+                  content = content.replace(
+                    `[IMAGE:${i}]`,
+                    `![${img.alt}](${img.src})`
+                  );
+                });
+              }
+              setPost({
+                slug: fallback.slug,
+                title: fallback.title,
+                date: fallback.date,
+                content,
+                type: "note",
+                parentId: null,
+                published: true,
+              } as unknown as NoteItem);
+            } else {
+              setNotFound(true);
+            }
           }
         }
       } catch (error) {
         console.error("Error loading post:", error);
-        // Try fallback on error
-        const fallback = fallbackPosts[slug];
-        if (fallback) {
-          let content = fallback.content;
-          if (fallback.images) {
-            fallback.images.forEach((img, i) => {
-              content = content.replace(
-                `[IMAGE:${i}]`,
-                `![${img.alt}](${img.src})`
-              );
-            });
-          }
-          setPost({
-            slug: fallback.slug,
-            title: fallback.title,
-            date: fallback.date,
-            content,
-            isProject: fallback.isProject,
-            parent: fallback.parent,
-            status: "published",
-          } as Post);
-        } else {
-          setNotFound(true);
-        }
+        setNotFound(true);
       } finally {
         setLoading(false);
       }
@@ -243,13 +236,6 @@ export default function BlogPostClient() {
           <header className="mb-8 pb-4 border-b border-[--border]">
             <h1 className="text-2xl font-bold text-[--foreground] mb-2">{post.title}</h1>
             {post.date && <time className="text-sm text-[--muted]">{post.date}</time>}
-            {post.parent && (
-              <div className="mt-2">
-                <Link href={`/blog/${post.parent}`} className="text-sm text-[--accent]">
-                  ← Part of: {post.parent.replace(/-/g, " ")}
-                </Link>
-              </div>
-            )}
           </header>
 
           <div className="prose-terminal font-serif">
@@ -327,7 +313,7 @@ export default function BlogPostClient() {
                 ),
               }}
             >
-              {post.content}
+              {post.content || ""}
             </ReactMarkdown>
           </div>
         </article>

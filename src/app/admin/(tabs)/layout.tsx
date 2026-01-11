@@ -76,19 +76,6 @@ export default function AdminTabsLayout({
       {/* Vertical Tab Bar */}
       <div className="w-14 bg-gray-50 border-r border-[--border] flex flex-col h-screen">
         <Link
-          href="/admin/cms"
-          className={`p-4 transition-colors ${
-            isActive("/admin/cms")
-              ? "bg-white text-blue-600 border-l-2 border-blue-600"
-              : "text-[--muted] hover:bg-gray-100"
-          }`}
-          title="Posts"
-        >
-          <svg className="w-5 h-5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-        </Link>
-        <Link
           href="/admin/carousel"
           className={`p-4 transition-colors ${
             isActive("/admin/carousel")

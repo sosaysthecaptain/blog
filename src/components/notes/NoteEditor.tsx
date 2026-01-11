@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { NoteItem, updateNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap } from "@/lib/notes";
+import { NoteItem, updateNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap, generateSlug, blogSlugExists } from "@/lib/notes";
+import { getCurrentUser, isAdminEmail } from "@/lib/auth";
 import TiptapEditor from "./TiptapEditor";
 import TagInput from "./TagInput";
 
@@ -18,12 +19,20 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
   const [content, setContent] = useState(note.content || "");
   const [date, setDate] = useState(note.date || new Date().toISOString().split("T")[0]);
   const [tags, setTags] = useState<string[]>(note.tags || []);
+  const [published, setPublished] = useState(note.published || false);
+  const [slug, setSlug] = useState(note.slug || "");
+  const [slugError, setSlugError] = useState<string | null>(null);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [tagColors, setTagColors] = useState<TagColorsMap>({});
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
 
+  // Check if this note is in the blog folder and user can publish
+  const isBlogNote = parentFolder?.title === "blog" && parentFolder?.parentId === null;
+  const currentUser = getCurrentUser();
+  const canPublish = isBlogNote && isAdminEmail(currentUser?.email || null);
+
   // Track previous note to save when switching
-  const prevNoteRef = useRef<{ id: string; title: string; content: string; date: string; tags: string[] } | null>(null);
+  const prevNoteRef = useRef<{ id: string; title: string; content: string; date: string; tags: string[]; published: boolean; slug: string } | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef(true);
 
@@ -36,7 +45,7 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
   // Save function
   const saveNoteData = useCallback(async (
     noteId: string,
-    data: { title: string; content: string; date: string; tags: string[] }
+    data: { title: string; content: string; date: string; tags: string[]; published: boolean; slug: string }
   ) => {
     try {
       await updateNote(noteId, {
@@ -44,6 +53,8 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
         content: data.content,
         date: data.date,
         tags: data.tags,
+        published: data.published,
+        slug: data.slug,
       });
       return true;
     } catch (error) {
@@ -70,6 +81,8 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
         content: prevNote.content,
         date: prevNote.date,
         tags: prevNote.tags,
+        published: prevNote.published,
+        slug: prevNote.slug,
       });
     }
 
@@ -78,6 +91,9 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
     setContent(note.content || "");
     setDate(note.date || new Date().toISOString().split("T")[0]);
     setTags(note.tags || []);
+    setPublished(note.published || false);
+    setSlug(note.slug || "");
+    setSlugError(null);
     setSaveStatus("saved");
 
     // Update ref with new note's initial data
@@ -87,15 +103,17 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
       content: note.content || "",
       date: note.date || new Date().toISOString().split("T")[0],
       tags: note.tags || [],
+      published: note.published || false,
+      slug: note.slug || "",
     };
-  }, [note.id, note.title, note.content, note.date, note.tags, saveNoteData]);
+  }, [note.id, note.title, note.content, note.date, note.tags, note.published, note.slug, saveNoteData]);
 
   // Update prevNoteRef when data changes (for autosave and switch-save)
   useEffect(() => {
     if (prevNoteRef.current && prevNoteRef.current.id === note.id) {
-      prevNoteRef.current = { id: note.id || "", title, content, date, tags };
+      prevNoteRef.current = { id: note.id || "", title, content, date, tags, published, slug };
     }
-  }, [note.id, title, content, date, tags]);
+  }, [note.id, title, content, date, tags, published, slug]);
 
   // Mark as unsaved when data changes
   useEffect(() => {
@@ -104,12 +122,14 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
       title !== note.title ||
       content !== (note.content || "") ||
       date !== (note.date || new Date().toISOString().split("T")[0]) ||
-      JSON.stringify(tags) !== JSON.stringify(note.tags || []);
+      JSON.stringify(tags) !== JSON.stringify(note.tags || []) ||
+      published !== (note.published || false) ||
+      slug !== (note.slug || "");
 
     if (hasChanges) {
       setSaveStatus("unsaved");
     }
-  }, [title, content, date, tags, note]);
+  }, [title, content, date, tags, published, slug, note]);
 
   // Autosave with debounce
   useEffect(() => {
@@ -125,11 +145,11 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
       if (!isMountedRef.current) return;
 
       setSaveStatus("saving");
-      const success = await saveNoteData(note.id!, { title, content, date, tags });
+      const success = await saveNoteData(note.id!, { title, content, date, tags, published, slug });
 
       if (isMountedRef.current && success) {
         setSaveStatus("saved");
-        onUpdate({ ...note, title, content, date, tags });
+        onUpdate({ ...note, title, content, date, tags, published, slug });
       }
     }, 2000); // 2 second debounce - much faster than before
 
@@ -138,7 +158,7 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [saveStatus, note, title, content, date, tags, saveNoteData, onUpdate]);
+  }, [saveStatus, note, title, content, date, tags, published, slug, saveNoteData, onUpdate]);
 
   // Save on unmount
   useEffect(() => {
@@ -160,6 +180,8 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
           content: currentNote.content,
           date: currentNote.date,
           tags: currentNote.tags,
+          published: currentNote.published,
+          slug: currentNote.slug,
         });
       }
     };
@@ -168,15 +190,76 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
   const handleBack = () => {
     // Save before navigating back
     if (saveStatus === "unsaved" && note.id) {
-      saveNoteData(note.id, { title, content, date, tags });
+      saveNoteData(note.id, { title, content, date, tags, published, slug });
     }
     onBack();
+  };
+
+  // Handle publish toggle
+  const handlePublishToggle = async () => {
+    const newPublished = !published;
+
+    // Auto-generate slug if publishing and no slug set
+    if (newPublished && !slug) {
+      const newSlug = generateSlug(title);
+      const exists = await blogSlugExists(newSlug, note.id);
+      if (exists) {
+        setSlugError("This slug is already in use");
+        return;
+      }
+      setSlug(newSlug);
+      setSlugError(null);
+    }
+
+    setPublished(newPublished);
+  };
+
+  // Validate slug when it changes
+  const handleSlugChange = async (newSlug: string) => {
+    setSlug(newSlug);
+    if (newSlug && published) {
+      const exists = await blogSlugExists(newSlug, note.id);
+      setSlugError(exists ? "This slug is already in use" : null);
+    } else {
+      setSlugError(null);
+    }
   };
 
   const handleTagColorChange = async (tag: string, colorIndex: number) => {
     await setTagColor(tag, colorIndex);
     setTagColors(prev => ({ ...prev, [tag]: colorIndex }));
   };
+
+  // Save immediately (for Cmd+S)
+  const saveNow = useCallback(async () => {
+    if (!note.id) return;
+
+    // Clear any pending autosave
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+
+    setSaveStatus("saving");
+    const success = await saveNoteData(note.id, { title, content, date, tags, published, slug });
+    if (success) {
+      setSaveStatus("saved");
+      onUpdate({ ...note, title, content, date, tags, published, slug });
+    }
+  }, [note, title, content, date, tags, published, slug, saveNoteData, onUpdate]);
+
+  // Keyboard shortcut: Cmd+S to save
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        saveNow();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [saveNow]);
 
   return (
     <div className="flex-1 h-full overflow-y-auto bg-[--background]">
@@ -219,15 +302,49 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
           </span>
         </div>
 
-        {/* Tags */}
-        <div className="mb-8">
-          <TagInput
-            tags={tags}
-            availableTags={availableTags}
-            tagColors={tagColors}
-            onChange={setTags}
-            onTagColorChange={handleTagColorChange}
-          />
+        {/* Tags and Publish */}
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <TagInput
+              tags={tags}
+              availableTags={availableTags}
+              tagColors={tagColors}
+              onChange={setTags}
+              onTagColorChange={handleTagColorChange}
+            />
+          </div>
+
+          {/* Publish controls - only for blog notes */}
+          {canPublish && (
+            <div className="flex items-center gap-3 shrink-0">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={published}
+                  onChange={handlePublishToggle}
+                  className="w-4 h-4 rounded border-[--border] accent-[--accent]"
+                />
+                <span className="text-sm text-[--foreground]">
+                  Published
+                </span>
+              </label>
+              {published && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[--muted]">/blog/</span>
+                  <input
+                    type="text"
+                    value={slug}
+                    onChange={(e) => handleSlugChange(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))}
+                    placeholder={generateSlug(title)}
+                    className="w-32 px-2 py-0.5 text-xs bg-[--background] border border-[--border] rounded outline-none focus:border-[--accent]"
+                  />
+                  {slugError && (
+                    <span className="text-xs text-red-500">{slugError}</span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Divider */}

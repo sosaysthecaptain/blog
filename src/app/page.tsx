@@ -3,7 +3,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useState, useEffect, useCallback } from "react";
-import { getPublishedPosts, getProjects, Post, getCarouselImages, CarouselImage, getFirstImageFromContent, getBlurbFromContent } from "@/lib/firestore";
+import { getProjects, Post, getCarouselImages, CarouselImage, getFirstImageFromContent, getBlurbFromContent, getPublishedPosts } from "@/lib/firestore";
+import { getPublishedBlogPosts, NoteItem } from "@/lib/notes";
 import Footer from "@/components/Footer";
 
 // Format date as "14 March 2018"
@@ -21,7 +22,7 @@ const POSTS_PER_PAGE = 10;
 export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [carouselImages, setCarouselImages] = useState<CarouselImage[]>([]);
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [posts, setPosts] = useState<(NoteItem | Post)[]>([]);
   const [projects, setProjects] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -65,15 +66,21 @@ export default function Home() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [firestorePosts, firestoreProjects, carousel] = await Promise.all([
+        const [blogPosts, oldPosts, firestoreProjects, carousel] = await Promise.all([
+          getPublishedBlogPosts(),
           getPublishedPosts(),
           getProjects(),
           getCarouselImages(),
         ]);
 
-        // Filter to only top-level posts (no parent)
-        const topLevelPosts = firestorePosts.filter((p) => !p.parent);
-        setPosts(topLevelPosts);
+        // Use notes if any are published, otherwise fall back to old posts
+        if (blogPosts.length > 0) {
+          setPosts(blogPosts);
+        } else {
+          // Filter to only top-level posts (no parent)
+          const topLevelPosts = oldPosts.filter((p) => !p.parent);
+          setPosts(topLevelPosts);
+        }
         setProjects(firestoreProjects);
         setCarouselImages(carousel);
       } catch (error) {
@@ -204,8 +211,8 @@ export default function Home() {
                 {posts
                   .slice((currentPage - 1) * POSTS_PER_PAGE, currentPage * POSTS_PER_PAGE)
                   .map((post) => {
-                    const thumbnail = getFirstImageFromContent(post.content);
-                    const blurb = getBlurbFromContent(post.content);
+                    const thumbnail = getFirstImageFromContent(post.content || "");
+                    const blurb = getBlurbFromContent(post.content || "");
                     return (
                       <article key={post.slug} className="py-6 first:pt-0">
                         <div className="flex gap-4">
@@ -230,10 +237,10 @@ export default function Home() {
                               {blurb}
                             </p>
                             <div className="flex items-center gap-2 mt-2 flex-wrap">
-                              <span className="text-xs text-[--muted]">{formatDate(post.date)}</span>
+                              <span className="text-xs text-[--muted]">{formatDate(post.date || "")}</span>
                               {post.tags && post.tags.length > 0 && (
                                 <>
-                                  {post.tags.slice(0, 2).map((tag, i) => {
+                                  {post.tags.slice(0, 2).map((tag) => {
                                     const colors = [
                                       "bg-amber-50 text-amber-700 border-amber-200",
                                       "bg-emerald-50 text-emerald-700 border-emerald-200",

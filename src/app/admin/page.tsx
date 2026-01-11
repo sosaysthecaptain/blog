@@ -7,7 +7,7 @@ export default function AdminPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/admin/cms");
+    router.replace("/admin/carousel");
   }, [router]);
 
   return (

@@ -26,6 +26,10 @@ export interface NoteItem {
   content?: string;
   date?: string;
   tags?: string[];
+
+  // Publishing fields (for blog folder)
+  published?: boolean;
+  slug?: string;
 }
 
 // Get all notes and folders
@@ -205,4 +209,109 @@ export async function setTagColor(tag: string, colorIndex: number): Promise<void
   const colors = await getTagColors();
   colors[tag] = colorIndex;
   await saveTagColors(colors);
+}
+
+// ============ BLOG PUBLISHING ============
+
+// The hardcoded blog folder name
+const BLOG_FOLDER_NAME = "blog";
+
+// Get the blog folder ID
+export async function getBlogFolderId(): Promise<string | null> {
+  const q = query(
+    collection(db, NOTES_COLLECTION),
+    where("type", "==", "folder"),
+    where("title", "==", BLOG_FOLDER_NAME),
+    where("parentId", "==", null)
+  );
+  const snapshot = await getDocs(q);
+  if (snapshot.empty) return null;
+  return snapshot.docs[0].id;
+}
+
+// Get all published blog posts (for public blog)
+export async function getPublishedBlogPosts(): Promise<NoteItem[]> {
+  const blogFolderId = await getBlogFolderId();
+  if (!blogFolderId) return [];
+
+  const q = query(
+    collection(db, NOTES_COLLECTION),
+    where("parentId", "==", blogFolderId),
+    where("type", "==", "note"),
+    where("published", "==", true)
+  );
+  const snapshot = await getDocs(q);
+  const posts = snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as NoteItem[];
+
+  // Sort by date descending
+  return posts.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+}
+
+// Get a single published blog post by slug
+export async function getPublishedBlogPostBySlug(slug: string): Promise<NoteItem | null> {
+  const blogFolderId = await getBlogFolderId();
+  if (!blogFolderId) return null;
+
+  const q = query(
+    collection(db, NOTES_COLLECTION),
+    where("parentId", "==", blogFolderId),
+    where("slug", "==", slug),
+    where("published", "==", true)
+  );
+  const snapshot = await getDocs(q);
+  if (snapshot.empty) return null;
+  return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as NoteItem;
+}
+
+// Generate a slug from title
+export function generateSlug(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 60);
+}
+
+// Check if slug exists in blog folder
+export async function blogSlugExists(slug: string, excludeId?: string): Promise<boolean> {
+  const blogFolderId = await getBlogFolderId();
+  if (!blogFolderId) return false;
+
+  const q = query(
+    collection(db, NOTES_COLLECTION),
+    where("parentId", "==", blogFolderId),
+    where("slug", "==", slug)
+  );
+  const snapshot = await getDocs(q);
+  if (snapshot.empty) return false;
+  if (excludeId && snapshot.docs.length === 1 && snapshot.docs[0].id === excludeId) {
+    return false;
+  }
+  return true;
+}
+
+// Get adjacent blog posts for navigation
+export async function getAdjacentBlogPosts(currentSlug: string): Promise<{
+  prev: { slug: string; title: string } | null;
+  next: { slug: string; title: string } | null;
+}> {
+  const posts = await getPublishedBlogPosts();
+  const currentIndex = posts.findIndex((p) => p.slug === currentSlug);
+
+  if (currentIndex === -1) {
+    return { prev: null, next: null };
+  }
+
+  // Posts are sorted newest first, so "next" is older (higher index), "prev" is newer (lower index)
+  const prev = currentIndex > 0
+    ? { slug: posts[currentIndex - 1].slug!, title: posts[currentIndex - 1].title }
+    : null;
+  const next = currentIndex < posts.length - 1
+    ? { slug: posts[currentIndex + 1].slug!, title: posts[currentIndex + 1].title }
+    : null;
+
+  return { prev, next };
 }

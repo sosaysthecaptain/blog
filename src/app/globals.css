@@ -6,6 +6,8 @@
   --background: #ffffff;
   --foreground: #1a1a1a;
   --accent: #0066cc;
+  --accent-muted: #3d8bd4;
+  --selection: #0066cc;
   --muted: #666666;
   --border: #e0e0e0;
   --sidebar-bg: #f9fafb;
@@ -16,16 +18,18 @@
 }
 
 :root.dark {
-  --background: #1a1a1a;
-  --foreground: #e5e5e5;
-  --accent: #60a5fa;
-  --muted: #9ca3af;
-  --border: #374151;
-  --sidebar-bg: #111827;
-  --editor-bg: #1f2937;
-  --hover: #374151;
-  --success: #4ade80;
-  --warning: #fbbf24;
+  --background: #1e1e1e;
+  --foreground: #d4d4d4;
+  --accent: #569cd6;
+  --accent-muted: #264f78;
+  --selection: #264f78;
+  --muted: #6a737d;
+  --border: #2a2a2a;
+  --sidebar-bg: #181818;
+  --editor-bg: #1e1e1e;
+  --hover: #2a2a2a;
+  --success: #4ec9b0;
+  --warning: #ce9178;
 }
 
 body {
@@ -52,8 +56,22 @@ a:hover {
 }
 
 ::selection {
-  background: var(--accent);
-  color: var(--background);
+  background: var(--selection);
+  color: #ffffff;
+}
+
+/* Tiptap editor selection */
+.tiptap-editor .ProseMirror ::selection {
+  background: var(--selection);
+  color: #ffffff;
+}
+
+.tiptap-editor .ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+}
+
+.tiptap-editor .ProseMirror .imageWithCaption.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
 }
 
 /* Context menu items */

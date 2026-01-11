@@ -23,6 +23,12 @@ export default function TiptapEditor({
   placeholder = "Start typing...",
 }: TiptapEditorProps) {
   const placeholderIdRef = useRef(0);
+  const noteIdRef = useRef(noteId);
+
+  // Keep noteId ref in sync
+  useEffect(() => {
+    noteIdRef.current = noteId;
+  }, [noteId]);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -51,35 +57,6 @@ export default function TiptapEditor({
     editorProps: {
       attributes: {
         class: "outline-none min-h-[400px]",
-      },
-      handlePaste: (view, event) => {
-        const items = event.clipboardData?.items;
-        if (!items) return false;
-
-        for (const item of items) {
-          if (item.type.startsWith("image/")) {
-            event.preventDefault();
-            const blob = item.getAsFile();
-            if (blob) {
-              handleImageUpload(blob);
-            }
-            return true;
-          }
-        }
-        return false;
-      },
-      handleDrop: (view, event) => {
-        const files = event.dataTransfer?.files;
-        if (!files || files.length === 0) return false;
-
-        for (const file of files) {
-          if (file.type.startsWith("image/")) {
-            event.preventDefault();
-            handleImageUpload(file);
-            return true;
-          }
-        }
-        return false;
       },
     },
   });
@@ -160,6 +137,49 @@ export default function TiptapEditor({
     },
     [editor, noteId]
   );
+
+  // Handle image paste/drop events
+  useEffect(() => {
+    if (!editor) return;
+
+    const editorElement = editor.view.dom;
+
+    const handlePaste = (event: ClipboardEvent) => {
+      const files = event.clipboardData?.files;
+      if (files && files.length > 0) {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          if (file.type.startsWith("image/")) {
+            event.preventDefault();
+            handleImageUpload(file);
+            return;
+          }
+        }
+      }
+    };
+
+    const handleDrop = (event: DragEvent) => {
+      const files = event.dataTransfer?.files;
+      if (files && files.length > 0) {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          if (file.type.startsWith("image/")) {
+            event.preventDefault();
+            handleImageUpload(file);
+            return;
+          }
+        }
+      }
+    };
+
+    editorElement.addEventListener("paste", handlePaste);
+    editorElement.addEventListener("drop", handleDrop);
+
+    return () => {
+      editorElement.removeEventListener("paste", handlePaste);
+      editorElement.removeEventListener("drop", handleDrop);
+    };
+  }, [editor, handleImageUpload]);
 
   // Update content when it changes externally
   useEffect(() => {
