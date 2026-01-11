@@ -202,13 +202,14 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
     // Auto-generate slug if publishing and no slug set
     if (newPublished && !slug) {
       const newSlug = generateSlug(title);
+      setSlug(newSlug);
+      // Check if this slug exists
       const exists = await blogSlugExists(newSlug, note.id);
       if (exists) {
-        setSlugError("This slug is already in use");
-        return;
+        setSlugError("This slug is already in use - edit it before publishing");
+      } else {
+        setSlugError(null);
       }
-      setSlug(newSlug);
-      setSlugError(null);
     }
 
     setPublished(newPublished);
@@ -217,7 +218,7 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
   // Validate slug when it changes
   const handleSlugChange = async (newSlug: string) => {
     setSlug(newSlug);
-    if (newSlug && published) {
+    if (newSlug) {
       const exists = await blogSlugExists(newSlug, note.id);
       setSlugError(exists ? "This slug is already in use" : null);
     } else {
@@ -316,33 +317,31 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
 
           {/* Publish controls - only for blog notes */}
           {canPublish && (
-            <div className="flex items-center gap-3 shrink-0">
-              <label className="flex items-center gap-2 cursor-pointer">
+            <div className="flex items-center gap-4 shrink-0 text-sm">
+              <div className="flex items-center gap-1.5 text-[--muted]">
+                <span>/blog/</span>
                 <input
-                  type="checkbox"
-                  checked={published}
-                  onChange={handlePublishToggle}
-                  className="w-4 h-4 rounded border-[--border] accent-[--accent]"
+                  type="text"
+                  value={slug}
+                  onChange={(e) => handleSlugChange(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))}
+                  placeholder={generateSlug(title)}
+                  className="w-40 px-2 py-1 bg-[--sidebar-bg] border border-[--border] rounded outline-none focus:border-[--accent] text-[--foreground]"
                 />
-                <span className="text-sm text-[--foreground]">
-                  Published
-                </span>
-              </label>
-              {published && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-[--muted]">/blog/</span>
-                  <input
-                    type="text"
-                    value={slug}
-                    onChange={(e) => handleSlugChange(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))}
-                    placeholder={generateSlug(title)}
-                    className="w-32 px-2 py-0.5 text-xs bg-[--background] border border-[--border] rounded outline-none focus:border-[--accent]"
-                  />
-                  {slugError && (
-                    <span className="text-xs text-red-500">{slugError}</span>
-                  )}
-                </div>
+              </div>
+              {slugError && (
+                <span className="text-xs text-red-500">{slugError}</span>
               )}
+              <button
+                type="button"
+                onClick={handlePublishToggle}
+                className={`px-3 py-1 text-xs rounded border ${
+                  published
+                    ? "border-[--success] text-[--success] hover:bg-[--success] hover:text-white"
+                    : "border-[--border] text-[--muted] hover:border-[--accent] hover:text-[--accent]"
+                }`}
+              >
+                {published ? "Unpublish" : "Publish"}
+              </button>
             </div>
           )}
         </div>

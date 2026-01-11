@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useState, useEffect, useCallback } from "react";
-import { getProjects, Post, getCarouselImages, CarouselImage, getFirstImageFromContent, getBlurbFromContent, getPublishedPosts } from "@/lib/firestore";
+import { getProjects, Post, getCarouselImages, CarouselImage, getFirstImageFromContent, getBlurbFromContent } from "@/lib/firestore";
 import { getPublishedBlogPosts, NoteItem } from "@/lib/notes";
 import Footer from "@/components/Footer";
 
@@ -66,21 +66,15 @@ export default function Home() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [blogPosts, oldPosts, firestoreProjects, carousel] = await Promise.all([
+        const [blogPosts, firestoreProjects, carousel] = await Promise.all([
           getPublishedBlogPosts(),
-          getPublishedPosts(),
           getProjects(),
           getCarouselImages(),
         ]);
 
-        // Use notes if any are published, otherwise fall back to old posts
-        if (blogPosts.length > 0) {
-          setPosts(blogPosts);
-        } else {
-          // Filter to only top-level posts (no parent)
-          const topLevelPosts = oldPosts.filter((p) => !p.parent);
-          setPosts(topLevelPosts);
-        }
+        // Only use notes - filter to those with valid slugs
+        const validPosts = blogPosts.filter(note => note.slug);
+        setPosts(validPosts);
         setProjects(firestoreProjects);
         setCarouselImages(carousel);
       } catch (error) {

@@ -1,22 +1,42 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import { getPublishedBlogPostBySlug, getAdjacentBlogPosts, NoteItem } from "@/lib/notes";
-import { getPostBySlug, getAdjacentPosts } from "@/lib/firestore";
-import { posts as fallbackPosts } from "@/lib/posts";
 import Footer from "@/components/Footer";
 
-// Extract all image URLs from markdown content
+// Check if content is HTML (from Tiptap) vs Markdown
+function isHtmlContent(content: string): boolean {
+  return /<[a-z][\s\S]*>/i.test(content) && (
+    content.includes('<p>') ||
+    content.includes('<figure') ||
+    content.includes('<h1>') ||
+    content.includes('<h2>') ||
+    content.includes('<h3>')
+  );
+}
+
+// Extract all image URLs from content (handles both markdown and HTML)
 function extractImages(content: string): string[] {
-  const regex = /!\[[^\]]*\]\(([^)]+)\)/g;
   const images: string[] = [];
+
+  // Markdown format: ![alt](url)
+  const mdRegex = /!\[[^\]]*\]\(([^)]+)\)/g;
   let match;
-  while ((match = regex.exec(content)) !== null) {
+  while ((match = mdRegex.exec(content)) !== null) {
     images.push(match[1]);
   }
+
+  // HTML format: <img src="url">
+  const htmlRegex = /<img[^>]+src=["']([^"']+)["']/g;
+  while ((match = htmlRegex.exec(content)) !== null) {
+    if (!images.includes(match[1])) {
+      images.push(match[1]);
+    }
+  }
+
   return images;
 }
 
@@ -106,6 +126,33 @@ function ImageModal({
   );
 }
 
+// HTML Content Renderer with proper styling
+function HtmlContent({ content, onImageClick }: { content: string; onImageClick: (src: string) => void }) {
+  // Process HTML to add click handlers to images via event delegation
+  useEffect(() => {
+    const handleClick = (e: Event) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'IMG') {
+        const src = target.getAttribute('src');
+        if (src) {
+          onImageClick(src);
+        }
+      }
+    };
+
+    const container = document.querySelector('.html-content');
+    container?.addEventListener('click', handleClick);
+    return () => container?.removeEventListener('click', handleClick);
+  }, [onImageClick]);
+
+  return (
+    <div
+      className="html-content prose-html"
+      dangerouslySetInnerHTML={{ __html: content }}
+    />
+  );
+}
+
 export default function BlogPostClient() {
   const params = useParams();
   const slug = params.slug as string;
@@ -118,6 +165,11 @@ export default function BlogPostClient() {
     prev: { slug: string; title: string } | null;
     next: { slug: string; title: string } | null;
   }>({ prev: null, next: null });
+
+  // Determine if content is HTML or Markdown
+  const contentIsHtml = useMemo(() => {
+    return post ? isHtmlContent(post.content || "") : false;
+  }, [post]);
 
   // Get all images from current post
   const allImages = post ? extractImages(post.content || "") : [];
@@ -143,54 +195,13 @@ export default function BlogPostClient() {
   useEffect(() => {
     async function loadPost() {
       try {
-        // Try notes collection first
         const notePost = await getPublishedBlogPostBySlug(slug);
         if (notePost) {
           setPost(notePost);
           const adjacent = await getAdjacentBlogPosts(slug);
           setAdjacentPosts(adjacent);
         } else {
-          // Try old posts collection
-          const oldPost = await getPostBySlug(slug);
-          if (oldPost) {
-            setPost({
-              slug: oldPost.slug,
-              title: oldPost.title,
-              date: oldPost.date,
-              content: oldPost.content,
-              tags: oldPost.tags,
-              type: "note",
-              parentId: null,
-              published: true,
-            } as unknown as NoteItem);
-            const adjacent = await getAdjacentPosts(slug);
-            setAdjacentPosts(adjacent);
-          } else {
-            // Fall back to hardcoded posts
-            const fallback = fallbackPosts[slug];
-            if (fallback) {
-              let content = fallback.content;
-              if (fallback.images) {
-                fallback.images.forEach((img, i) => {
-                  content = content.replace(
-                    `[IMAGE:${i}]`,
-                    `![${img.alt}](${img.src})`
-                  );
-                });
-              }
-              setPost({
-                slug: fallback.slug,
-                title: fallback.title,
-                date: fallback.date,
-                content,
-                type: "note",
-                parentId: null,
-                published: true,
-              } as unknown as NoteItem);
-            } else {
-              setNotFound(true);
-            }
-          }
+          setNotFound(true);
         }
       } catch (error) {
         console.error("Error loading post:", error);
@@ -239,82 +250,86 @@ export default function BlogPostClient() {
           </header>
 
           <div className="prose-terminal font-serif">
-            <ReactMarkdown
-              components={{
-                h1: ({ children }) => (
-                  <h1 className="text-2xl font-bold text-[--foreground] mt-8 mb-4 font-sans">{children}</h1>
-                ),
-                h2: ({ children }) => (
-                  <h2 className="text-xl font-bold text-[--foreground] mt-8 mb-4 font-sans">{children}</h2>
-                ),
-                h3: ({ children }) => (
-                  <h3 className="text-lg font-bold text-[--foreground] mt-6 mb-3 font-sans">{children}</h3>
-                ),
-                p: ({ children }) => (
-                  <p className="text-[--foreground] text-base my-4 leading-relaxed">{children}</p>
-                ),
-                a: ({ href, children }) => {
-                  const isInternal = href?.startsWith("/");
-                  if (isInternal) {
+            {contentIsHtml ? (
+              <HtmlContent content={post.content || ""} onImageClick={openModal} />
+            ) : (
+              <ReactMarkdown
+                components={{
+                  h1: ({ children }) => (
+                    <h1 className="text-2xl font-bold text-[--foreground] mt-8 mb-4 font-sans">{children}</h1>
+                  ),
+                  h2: ({ children }) => (
+                    <h2 className="text-xl font-bold text-[--foreground] mt-8 mb-4 font-sans">{children}</h2>
+                  ),
+                  h3: ({ children }) => (
+                    <h3 className="text-lg font-bold text-[--foreground] mt-6 mb-3 font-sans">{children}</h3>
+                  ),
+                  p: ({ children }) => (
+                    <p className="text-[--foreground] text-base my-4 leading-relaxed">{children}</p>
+                  ),
+                  a: ({ href, children }) => {
+                    const isInternal = href?.startsWith("/");
+                    if (isInternal) {
+                      return (
+                        <Link href={href || "/"} className="text-[--accent] hover:underline">
+                          {children}
+                        </Link>
+                      );
+                    }
                     return (
-                      <Link href={href || "/"} className="text-[--accent] hover:underline">
+                      <a href={href} target="_blank" rel="noopener noreferrer" className="text-[--accent] hover:underline">
                         {children}
-                      </Link>
+                      </a>
                     );
-                  }
-                  return (
-                    <a href={href} target="_blank" rel="noopener noreferrer" className="text-[--accent] hover:underline">
-                      {children}
-                    </a>
-                  );
-                },
-                strong: ({ children }) => (
-                  <strong className="font-bold">{children}</strong>
-                ),
-                em: ({ children }) => (
-                  <em className="italic">{children}</em>
-                ),
-                code: ({ children }) => (
-                  <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono">{children}</code>
-                ),
-                pre: ({ children }) => (
-                  <pre className="bg-gray-100 p-4 rounded overflow-x-auto my-4 text-sm">{children}</pre>
-                ),
-                ul: ({ children }) => (
-                  <ul className="list-disc list-inside my-4 space-y-1 text-[--foreground]">{children}</ul>
-                ),
-                ol: ({ children }) => (
-                  <ol className="list-decimal list-inside my-4 space-y-1 text-[--foreground]">{children}</ol>
-                ),
-                li: ({ children }) => (
-                  <li className="text-[--foreground]">{children}</li>
-                ),
-                blockquote: ({ children }) => (
-                  <blockquote className="border-l-4 border-[--accent] pl-4 my-4 italic text-[--muted]">{children}</blockquote>
-                ),
-                img: ({ src, alt }) => (
-                  <figure className="my-6 flex flex-col items-center">
-                    <img
-                      src={typeof src === 'string' ? src : undefined}
-                      alt={alt || ""}
-                      className="max-w-full h-auto border border-[--border] rounded cursor-pointer hover:opacity-90 transition-opacity"
-                      style={{ width: 'auto', maxWidth: '100%' }}
-                      onClick={() => typeof src === 'string' && openModal(src)}
-                    />
-                    {alt && (
-                      <figcaption className="text-sm text-[--muted] mt-2 text-center">
-                        {alt}
-                      </figcaption>
-                    )}
-                  </figure>
-                ),
-                hr: () => (
-                  <hr className="my-8 border-[--border]" />
-                ),
-              }}
-            >
-              {post.content || ""}
-            </ReactMarkdown>
+                  },
+                  strong: ({ children }) => (
+                    <strong className="font-bold">{children}</strong>
+                  ),
+                  em: ({ children }) => (
+                    <em className="italic">{children}</em>
+                  ),
+                  code: ({ children }) => (
+                    <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono">{children}</code>
+                  ),
+                  pre: ({ children }) => (
+                    <pre className="bg-gray-100 p-4 rounded overflow-x-auto my-4 text-sm">{children}</pre>
+                  ),
+                  ul: ({ children }) => (
+                    <ul className="list-disc list-inside my-4 space-y-1 text-[--foreground]">{children}</ul>
+                  ),
+                  ol: ({ children }) => (
+                    <ol className="list-decimal list-inside my-4 space-y-1 text-[--foreground]">{children}</ol>
+                  ),
+                  li: ({ children }) => (
+                    <li className="text-[--foreground]">{children}</li>
+                  ),
+                  blockquote: ({ children }) => (
+                    <blockquote className="border-l-4 border-[--accent] pl-4 my-4 italic text-[--muted]">{children}</blockquote>
+                  ),
+                  img: ({ src, alt }) => (
+                    <figure className="my-6 flex flex-col items-center">
+                      <img
+                        src={typeof src === 'string' ? src : undefined}
+                        alt={alt || ""}
+                        className="max-w-full h-auto border border-[--border] rounded cursor-pointer hover:opacity-90 transition-opacity"
+                        style={{ width: 'auto', maxWidth: '100%' }}
+                        onClick={() => typeof src === 'string' && openModal(src)}
+                      />
+                      {alt && (
+                        <figcaption className="text-sm text-[--muted] mt-2 text-center">
+                          {alt}
+                        </figcaption>
+                      )}
+                    </figure>
+                  ),
+                  hr: () => (
+                    <hr className="my-8 border-[--border]" />
+                  ),
+                }}
+              >
+                {post.content || ""}
+              </ReactMarkdown>
+            )}
           </div>
         </article>
 

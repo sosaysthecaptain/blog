@@ -35,22 +35,51 @@ export interface Post {
   updatedAt: Timestamp;
 }
 
-// Extract first image URL from markdown content
+// Extract first image URL from content (handles both markdown and HTML)
 export function getFirstImageFromContent(content: string): string | null {
-  const match = content.match(/!\[[^\]]*\]\(([^)]+)\)/);
-  return match ? match[1] : null;
+  // Try markdown format first: ![alt](url)
+  const mdMatch = content.match(/!\[[^\]]*\]\(([^)]+)\)/);
+  if (mdMatch) return mdMatch[1];
+
+  // Try HTML format: <img src="url">
+  const htmlMatch = content.match(/<img[^>]+src=["']([^"']+)["']/);
+  return htmlMatch ? htmlMatch[1] : null;
 }
 
-// Extract blurb (first paragraph of text) from markdown content
+// Extract blurb (first paragraph of text) from content (handles both markdown and HTML)
 export function getBlurbFromContent(content: string, maxLength: number = 160): string {
-  // Remove images, headers, and other markdown syntax
-  let text = content
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, '') // Remove images
-    .replace(/^#{1,6}\s+.*$/gm, '') // Remove headers
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Convert links to text
-    .replace(/[*_`]/g, '') // Remove emphasis markers
-    .replace(/^\s*[-*+]\s+/gm, '') // Remove list markers
-    .replace(/^\s*\d+\.\s+/gm, '') // Remove numbered list markers
+  let text = content;
+
+  // Check if content is HTML (contains HTML tags)
+  const isHtml = /<[a-z][\s\S]*>/i.test(content);
+
+  if (isHtml) {
+    // Strip HTML tags and decode entities
+    text = text
+      .replace(/<figure[^>]*>[\s\S]*?<\/figure>/gi, '') // Remove figures (images with captions)
+      .replace(/<img[^>]*>/gi, '') // Remove images
+      .replace(/<br\s*\/?>/gi, ' ') // Replace <br> with space
+      .replace(/<\/p>\s*<p>/gi, ' ') // Replace paragraph breaks with space
+      .replace(/<[^>]+>/g, '') // Remove all remaining HTML tags
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+  } else {
+    // Markdown processing
+    text = text
+      .replace(/!\[[^\]]*\]\([^)]+\)/g, '') // Remove images
+      .replace(/^#{1,6}\s+.*$/gm, '') // Remove headers
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Convert links to text
+      .replace(/[*_`]/g, '') // Remove emphasis markers
+      .replace(/^\s*[-*+]\s+/gm, '') // Remove list markers
+      .replace(/^\s*\d+\.\s+/gm, ''); // Remove numbered list markers
+  }
+
+  // Common cleanup
+  text = text
     .replace(/\n+/g, ' ') // Replace newlines with spaces
     .replace(/\s+/g, ' ') // Collapse whitespace
     .trim();

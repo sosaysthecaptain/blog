@@ -91,6 +91,7 @@ export default function NotesPage() {
       content: "",
       date: now.toISOString().split("T")[0],
       tags: [],
+      published: false,
       createdAt: now as any,
       updatedAt: now as any,
     };
@@ -406,6 +407,7 @@ ${content}`;
           content: markdownToHtml(post.content || ""),
           date: post.date,
           tags: post.tags || [],
+          published: false,
           createdAt: now as any,
           updatedAt: now as any,
         };
