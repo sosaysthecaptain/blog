@@ -336,20 +336,45 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
         />
 
         {/* Subtitle / Date & Time */}
-        <div className="flex items-center gap-4 mb-6 text-sm text-[--muted] italic">
+        <div className="flex items-center gap-4 mb-6 text-sm text-[--muted]">
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="bg-transparent outline-none"
+            className="bg-transparent outline-none italic cursor-pointer"
+            style={{ colorScheme: 'light dark' }}
           />
-          <input
-            type="time"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-            placeholder="--:--"
-            className="bg-transparent outline-none w-20"
-          />
+          <div className="flex items-center gap-1">
+            {time ? (
+              <>
+                <input
+                  type="time"
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                  className="bg-transparent outline-none italic cursor-pointer"
+                  style={{ colorScheme: 'light dark' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setTime("")}
+                  className="p-0.5 hover:bg-[--hover] rounded text-[--muted] hover:text-[--foreground]"
+                  title="Clear time"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setTime(new Date().toTimeString().slice(0, 5))}
+                className="px-2 py-0.5 text-xs border border-dashed border-[--border] rounded hover:border-[--accent] hover:text-[--accent] italic"
+              >
+                + time
+              </button>
+            )}
+          </div>
           {saveStatus === "saving" && (
             <svg className="w-4 h-4 text-[--muted] animate-pulse" fill="currentColor" viewBox="0 0 24 24">
               <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/>

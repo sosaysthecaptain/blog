@@ -334,6 +334,49 @@ function InputsSection() {
           </select>
         </div>
       </ComponentBlock>
+
+      <ComponentBlock title="Date & Time Inputs" description="Date picker and nullable time picker">
+        <div className="max-w-md space-y-4">
+          <div className="flex items-center gap-4 text-sm text-[--muted]">
+            <input
+              type="date"
+              defaultValue="2024-01-15"
+              className="bg-transparent outline-none italic cursor-pointer"
+              style={{ colorScheme: 'light dark' }}
+            />
+            <span className="text-xs text-[--muted]">Date picker (always visible)</span>
+          </div>
+          <div className="flex items-center gap-4 text-sm text-[--muted]">
+            <div className="flex items-center gap-1">
+              <input
+                type="time"
+                defaultValue="14:30"
+                className="bg-transparent outline-none italic cursor-pointer"
+                style={{ colorScheme: 'light dark' }}
+              />
+              <button
+                type="button"
+                className="p-0.5 hover:bg-[--hover] rounded text-[--muted] hover:text-[--foreground]"
+                title="Clear time"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <span className="text-xs text-[--muted]">Time with clear button</span>
+          </div>
+          <div className="flex items-center gap-4 text-sm text-[--muted]">
+            <button
+              type="button"
+              className="px-2 py-0.5 text-xs border border-dashed border-[--border] rounded hover:border-[--accent] hover:text-[--accent] italic"
+            >
+              + time
+            </button>
+            <span className="text-xs text-[--muted]">Add time button (when empty)</span>
+          </div>
+        </div>
+      </ComponentBlock>
     </div>
   );
 }
@@ -657,19 +700,33 @@ function DialogsSection() {
       <p className="text-[--muted] mb-8">
         Custom modal dialogs that replace browser defaults (window.confirm, window.alert).
         Located in <code className="text-sm bg-gray-100 px-1 rounded">@/components/ui/Dialog.tsx</code>.
+        Button styles are in <code className="text-sm bg-gray-100 px-1 rounded">globals.css</code>.
       </p>
+
+      <ComponentBlock title="Dialog Button Styles" description="Early Mac-inspired, monochrome buttons">
+        <div className="space-y-4">
+          <div className="flex gap-3 items-center">
+            <button className="dialog-btn dialog-btn-primary">Primary</button>
+            <button className="dialog-btn dialog-btn-secondary">Secondary</button>
+            <button className="dialog-btn dialog-btn-danger">Danger</button>
+          </div>
+          <p className="text-xs text-[--muted]">
+            CSS classes: <code className="bg-gray-100 px-1 rounded">dialog-btn dialog-btn-primary</code>, etc.
+          </p>
+        </div>
+      </ComponentBlock>
 
       <ComponentBlock title="Confirm Dialog" description="For actions requiring user confirmation">
         <div className="flex gap-4">
           <button
             onClick={() => setShowConfirm(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+            className="dialog-btn dialog-btn-primary"
           >
             Show Confirm Dialog
           </button>
           <button
             onClick={() => setShowDangerConfirm(true)}
-            className="px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700"
+            className="dialog-btn dialog-btn-danger"
           >
             Show Danger Confirm
           </button>
@@ -695,7 +752,7 @@ function DialogsSection() {
       <ComponentBlock title="Alert Dialog" description="For informational messages">
         <button
           onClick={() => setShowAlert(true)}
-          className="px-4 py-2 border border-[--border] rounded text-sm hover:bg-gray-50"
+          className="dialog-btn dialog-btn-secondary"
         >
           Show Alert Dialog
         </button>

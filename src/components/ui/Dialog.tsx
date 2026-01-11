@@ -35,17 +35,19 @@ export function Dialog({ open, onClose, children }: DialogProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      {/* Backdrop */}
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      {/* Backdrop with visible overlay */}
       <div
-        className="absolute inset-0 bg-black/50"
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
         onClick={onClose}
       />
-      {/* Dialog */}
+      {/* Dialog box with classic styling */}
       <div
         ref={dialogRef}
-        className="relative bg-[--background] rounded-lg shadow-xl max-w-md w-full mx-4 animate-in fade-in zoom-in-95 duration-150"
-        style={{ border: "1px solid var(--border)" }}
+        className="relative bg-white dark:bg-[#1a1a1a] rounded-lg max-w-md w-full animate-in fade-in zoom-in-95 duration-150"
+        style={{
+          boxShadow: '0 4px 24px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.1)',
+        }}
       >
         {children}
       </div>
@@ -86,12 +88,12 @@ export function ConfirmDialog({
     <Dialog open={open} onClose={onCancel}>
       <div className="p-6">
         <h2 className="text-lg font-semibold text-[--foreground] mb-2">{title}</h2>
-        <p className="text-sm text-[--muted] mb-6">{message}</p>
-        <div className="flex justify-end gap-3">
+        <p className="text-sm text-[--muted] mb-6 leading-relaxed">{message}</p>
+        <div className="flex justify-end gap-2">
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 text-sm text-[--foreground] border border-[--border] rounded hover:bg-[--hover]"
+            className="dialog-btn dialog-btn-secondary"
           >
             {cancelLabel}
           </button>
@@ -99,11 +101,7 @@ export function ConfirmDialog({
             ref={confirmRef}
             type="button"
             onClick={onConfirm}
-            className={`px-4 py-2 text-sm text-white rounded ${
-              variant === "danger"
-                ? "bg-red-600 hover:bg-red-700"
-                : "bg-blue-600 hover:bg-blue-700"
-            }`}
+            className={`dialog-btn ${variant === "danger" ? "dialog-btn-danger" : "dialog-btn-primary"}`}
           >
             {confirmLabel}
           </button>
@@ -140,13 +138,13 @@ export function AlertDialog({
     <Dialog open={open} onClose={onClose}>
       <div className="p-6">
         <h2 className="text-lg font-semibold text-[--foreground] mb-2">{title}</h2>
-        <p className="text-sm text-[--muted] mb-6">{message}</p>
+        <p className="text-sm text-[--muted] mb-6 leading-relaxed">{message}</p>
         <div className="flex justify-end">
           <button
             ref={buttonRef}
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm text-white bg-blue-600 rounded hover:bg-blue-700"
+            className="dialog-btn dialog-btn-primary"
           >
             {buttonLabel}
           </button>

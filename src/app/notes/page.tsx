@@ -306,10 +306,14 @@ export default function NotesPage() {
       }
     }
 
-    // Download images using Firebase SDK (avoids CORS issues)
+    // Download images
     let imageCount = 0;
+    let failedCount = 0;
+    console.log(`[Export] Found ${allImageUrls.size} images to download`);
+
     for (const url of allImageUrls) {
       try {
+        console.log(`[Export] Downloading image ${imageCount + 1}/${allImageUrls.size}: ${url.substring(0, 80)}...`);
         const blob = await downloadImageBlob(url);
         if (blob && blob.size > 0) {
           // Extract extension from URL, handling query strings
@@ -319,12 +323,19 @@ export default function NotesPage() {
           const imgFilename = `image-${imageCount}.${validExt}`;
           imageMap[url] = imgFilename;
           imagesFolder?.file(imgFilename, blob);
+          console.log(`[Export] ✓ Saved as ${imgFilename} (${blob.size} bytes)`);
           imageCount++;
+        } else {
+          console.warn(`[Export] ✗ Failed: got empty or null blob for ${url.substring(0, 80)}...`);
+          failedCount++;
         }
       } catch (e) {
-        console.warn(`Failed to download: ${url}`, e);
+        console.warn(`[Export] ✗ Exception downloading: ${url.substring(0, 80)}...`, e);
+        failedCount++;
       }
     }
+
+    console.log(`[Export] Images complete: ${imageCount} downloaded, ${failedCount} failed`);
 
     // Build folder structure helper
     const getPath = (item: NoteItem): string => {

@@ -55,16 +55,27 @@ export async function deleteNoteImages(noteId: string): Promise<void> {
 
 // Download an image blob from a Firebase Storage URL
 export async function downloadImageBlob(url: string): Promise<Blob | null> {
+  // Firebase Storage URLs already include a token for access
+  // First try a direct fetch with the full URL (including token)
+  try {
+    const response = await fetch(url, { mode: 'cors' });
+    if (response.ok) {
+      const blob = await response.blob();
+      if (blob.size > 0) {
+        return blob;
+      }
+    }
+  } catch (fetchError) {
+    console.warn("Direct fetch failed, trying Firebase SDK:", fetchError);
+  }
+
+  // Fallback: Try using Firebase SDK getBlob
   try {
     // Extract the storage path from the URL
     // Firebase Storage URLs look like: https://firebasestorage.googleapis.com/v0/b/BUCKET/o/PATH?alt=media&token=TOKEN
     const match = url.match(/\/o\/([^?]+)/);
     if (!match) {
-      // Not a Firebase Storage URL, try regular fetch
-      const response = await fetch(url);
-      if (response.ok) {
-        return response.blob();
-      }
+      console.warn("Could not extract path from URL:", url);
       return null;
     }
 
@@ -72,7 +83,7 @@ export async function downloadImageBlob(url: string): Promise<Blob | null> {
     const storageRef = ref(storage, path);
     return await getBlob(storageRef);
   } catch (error) {
-    console.error("Error downloading image:", error);
+    console.error("Firebase SDK download failed:", error);
     return null;
   }
 }

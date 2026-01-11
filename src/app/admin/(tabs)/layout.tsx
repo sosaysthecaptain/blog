@@ -90,7 +90,11 @@ export default function AdminTabsLayout({
         </Link>
         <Link
           href="/notes"
-          className="p-4 text-[--muted] hover:bg-gray-100 transition-colors"
+          className={`p-4 transition-colors ${
+            pathname === "/notes" || pathname.startsWith("/notes/")
+              ? "bg-white text-blue-600 border-l-2 border-blue-600"
+              : "text-[--muted] hover:bg-gray-100"
+          }`}
           title="Notes"
         >
           <svg className="w-5 h-5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
