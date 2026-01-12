@@ -172,3 +172,73 @@ export function useConfirmDialog() {
 
   return { confirm };
 }
+
+// Progress dialog for long-running operations
+interface ProgressDialogProps {
+  open: boolean;
+  title: string;
+  message: string;
+  progress?: number; // 0-100, or undefined for indeterminate
+  detail?: string; // Current item being processed
+  onCancel?: () => void;
+}
+
+export function ProgressDialog({
+  open,
+  title,
+  message,
+  progress,
+  detail,
+  onCancel,
+}: ProgressDialogProps) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" />
+      <div
+        className="relative bg-white dark:bg-[#1a1a1a] rounded-lg max-w-md w-full"
+        style={{
+          boxShadow: '0 4px 24px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.1)',
+        }}
+      >
+        <div className="p-6">
+          <h2 className="text-lg font-semibold text-[--foreground] mb-2">{title}</h2>
+          <p className="text-sm text-[--muted] mb-4">{message}</p>
+
+          {/* Progress bar */}
+          <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mb-2">
+            {progress !== undefined ? (
+              <div
+                className="h-full bg-[#1a1a1a] dark:bg-[#e5e5e5] transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            ) : (
+              <div className="h-full bg-[#1a1a1a] dark:bg-[#e5e5e5] animate-pulse w-full" />
+            )}
+          </div>
+
+          {progress !== undefined && (
+            <p className="text-xs text-[--muted] text-right mb-2">{Math.round(progress)}%</p>
+          )}
+
+          {detail && (
+            <p className="text-xs text-[--muted] truncate mb-4">{detail}</p>
+          )}
+
+          {onCancel && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={onCancel}
+                className="dialog-btn dialog-btn-secondary"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

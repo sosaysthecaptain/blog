@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ConfirmDialog, AlertDialog } from "@/components/ui/Dialog";
+import { useState, useEffect } from "react";
+import { ConfirmDialog, AlertDialog, ProgressDialog } from "@/components/ui/Dialog";
 
 type Category = "colors" | "typography" | "buttons" | "inputs" | "sidebar" | "tags" | "icons" | "layouts" | "dialogs";
 
@@ -19,14 +19,42 @@ const CATEGORIES: { id: Category; label: string }[] = [
 
 export default function StyleGuidePage() {
   const [selectedCategory, setSelectedCategory] = useState<Category>("colors");
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    // Check initial state
+    setIsDark(document.documentElement.classList.contains("dark"));
+  }, []);
+
+  const toggleDark = () => {
+    document.documentElement.classList.toggle("dark");
+    setIsDark(!isDark);
+  };
 
   return (
-    <div className="flex-1 h-screen bg-white overflow-hidden flex">
+    <div className="flex-1 h-screen bg-[--background] overflow-hidden flex">
       {/* Category List */}
-      <div className="w-48 bg-gray-50 border-r border-[--border] flex flex-col">
-        <div className="p-4 border-b border-[--border]">
-          <h2 className="font-medium text-[--foreground]">Style Guide</h2>
-          <p className="text-xs text-[--muted] mt-1">UI Components</p>
+      <div className="w-48 bg-[--sidebar-bg] border-r border-[--border] flex flex-col">
+        <div className="p-4 border-b border-[--border] flex items-center justify-between">
+          <div>
+            <h2 className="font-medium text-[--foreground]">Style Guide</h2>
+            <p className="text-xs text-[--muted] mt-1">UI Components</p>
+          </div>
+          <button
+            onClick={toggleDark}
+            className="p-1.5 rounded hover:bg-[--hover]"
+            title={isDark ? "Light mode" : "Dark mode"}
+          >
+            {isDark ? (
+              <svg className="w-4 h-4 text-[--foreground]" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4 text-[--foreground]" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+              </svg>
+            )}
+          </button>
         </div>
         <div className="flex-1 overflow-y-auto py-2">
           {CATEGORIES.map((cat) => (
@@ -35,8 +63,8 @@ export default function StyleGuidePage() {
               onClick={() => setSelectedCategory(cat.id)}
               className={`w-full px-4 py-2 text-sm text-left transition-colors ${
                 selectedCategory === cat.id
-                  ? "bg-blue-50 text-blue-600 border-l-2 border-blue-600"
-                  : "text-[--foreground] hover:bg-gray-100"
+                  ? "bg-[--hover] text-[--accent] border-l-2 border-[--accent]"
+                  : "text-[--foreground] hover:bg-[--hover]"
               }`}
             >
               {cat.label}
@@ -70,7 +98,7 @@ function ComponentBlock({ title, description, children }: { title: string; descr
     <div className="mb-8 pb-8 border-b border-[--border] last:border-0">
       <h3 className="font-medium text-[--foreground] mb-1">{title}</h3>
       {description && <p className="text-sm text-[--muted] mb-4">{description}</p>}
-      <div className="p-6 bg-gray-50 rounded-lg border border-[--border]">{children}</div>
+      <div className="p-6 bg-[--sidebar-bg] rounded-lg border border-[--border]">{children}</div>
     </div>
   );
 }
@@ -96,7 +124,7 @@ function ColorsSection() {
     <div>
       <SectionTitle>Colors</SectionTitle>
       <p className="text-[--muted] mb-8">
-        CSS custom properties used throughout the app. Defined in <code className="text-sm bg-gray-100 px-1 rounded">globals.css</code>.
+        CSS custom properties used throughout the app. Defined in <code className="text-sm bg-[--hover] px-1 rounded">globals.css</code>.
       </p>
 
       <ComponentBlock title="Core Colors" description="Primary semantic colors">
@@ -206,7 +234,7 @@ function ButtonsSection() {
 
       <ComponentBlock title="Secondary Buttons" description="Less prominent actions">
         <div className="flex flex-wrap gap-4">
-          <button className="px-4 py-2 border border-[--border] rounded text-sm hover:bg-gray-50 text-[--foreground]">
+          <button className="px-4 py-2 border border-[--border] rounded text-sm hover:bg-[--hover] text-[--foreground]">
             Secondary
           </button>
           <button className="px-4 py-2 text-[--muted] hover:text-[--foreground] text-sm">
@@ -220,7 +248,7 @@ function ButtonsSection() {
 
       <ComponentBlock title="Icon Buttons" description="Square buttons with icons">
         <div className="flex flex-wrap gap-4 items-center">
-          <button className="p-2 text-[--muted] hover:text-[--foreground] hover:bg-gray-100 rounded" title="Edit">
+          <button className="p-2 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded" title="Edit">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
@@ -244,13 +272,13 @@ function ButtonsSection() {
       </ComponentBlock>
 
       <ComponentBlock title="Sidebar Nav Buttons" description="Vertical navigation items">
-        <div className="w-14 bg-gray-50 border border-[--border] rounded">
-          <button className="w-full p-4 bg-white text-blue-600 border-l-2 border-blue-600">
+        <div className="w-14 bg-[--sidebar-bg] border border-[--border] rounded">
+          <button className="w-full p-4 bg-[--background] text-[--accent] border-l-2 border-[--accent]">
             <svg className="w-5 h-5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </button>
-          <button className="w-full p-4 text-[--muted] hover:bg-gray-100">
+          <button className="w-full p-4 text-[--muted] hover:bg-[--hover]">
             <svg className="w-5 h-5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
             </svg>
@@ -289,7 +317,7 @@ function InputsSection() {
             type="text"
             disabled
             placeholder="Disabled"
-            className="w-full px-3 py-2 text-sm border border-[--border] rounded bg-gray-100 text-[--muted]"
+            className="w-full px-3 py-2 text-sm border border-[--border] rounded bg-[--hover] text-[--muted] cursor-not-allowed"
           />
         </div>
       </ComponentBlock>
@@ -493,7 +521,7 @@ function TagsSection() {
 
       <ComponentBlock title="Tag Input" description="Multi-select with autocomplete">
         <div className="max-w-md">
-          <div className="flex flex-wrap gap-1.5 p-2 border border-[--border] rounded bg-white min-h-[38px]">
+          <div className="flex flex-wrap gap-1.5 p-2 border border-[--border] rounded bg-[--background] min-h-[38px]">
             <span
               className="px-2 py-0.5 rounded text-xs font-medium flex items-center gap-1"
               style={{ backgroundColor: getTagColor("react") }}
@@ -562,7 +590,7 @@ function IconsSection() {
       <ComponentBlock title="Icon Gallery" description="Common icons used in the app">
         <div className="grid grid-cols-4 md:grid-cols-6 gap-4">
           {icons.map((icon) => (
-            <div key={icon.name} className="flex flex-col items-center gap-2 p-3 rounded hover:bg-gray-100">
+            <div key={icon.name} className="flex flex-col items-center gap-2 p-3 rounded hover:bg-[--hover]">
               <svg className="w-6 h-6 text-[--foreground]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={icon.path} />
               </svg>
@@ -614,21 +642,21 @@ function LayoutsSection() {
 
       <ComponentBlock title="Two-Column Layout" description="Sidebar + main content (notes, recipes, admin)">
         <div className="border border-[--border] rounded overflow-hidden h-48 flex">
-          <div className="w-48 bg-gray-50 border-r border-[--border] p-3">
+          <div className="w-48 bg-[--sidebar-bg] border-r border-[--border] p-3">
             <div className="text-xs text-[--muted] mb-2">Sidebar (w-48 to w-64)</div>
             <div className="space-y-1">
-              <div className="h-4 bg-gray-200 rounded w-full" />
-              <div className="h-4 bg-blue-100 rounded w-full" />
-              <div className="h-4 bg-gray-200 rounded w-3/4" />
+              <div className="h-4 bg-[--border] rounded w-full" />
+              <div className="h-4 bg-[--accent-muted] rounded w-full opacity-40" />
+              <div className="h-4 bg-[--border] rounded w-3/4" />
             </div>
           </div>
           <div className="flex-1 p-3">
             <div className="text-xs text-[--muted] mb-2">Main Content (flex-1)</div>
             <div className="space-y-2">
-              <div className="h-6 bg-gray-200 rounded w-1/2" />
-              <div className="h-4 bg-gray-100 rounded w-full" />
-              <div className="h-4 bg-gray-100 rounded w-full" />
-              <div className="h-4 bg-gray-100 rounded w-3/4" />
+              <div className="h-6 bg-[--border] rounded w-1/2" />
+              <div className="h-4 bg-[--hover] rounded w-full" />
+              <div className="h-4 bg-[--hover] rounded w-full" />
+              <div className="h-4 bg-[--hover] rounded w-3/4" />
             </div>
           </div>
         </div>
@@ -636,18 +664,18 @@ function LayoutsSection() {
 
       <ComponentBlock title="Three-Column Layout" description="Nav + sidebar + content (admin tabs)">
         <div className="border border-[--border] rounded overflow-hidden h-48 flex">
-          <div className="w-14 bg-gray-100 border-r border-[--border] p-2">
+          <div className="w-14 bg-[--hover] border-r border-[--border] p-2">
             <div className="space-y-2">
-              <div className="w-8 h-8 bg-blue-100 rounded mx-auto" />
-              <div className="w-8 h-8 bg-gray-200 rounded mx-auto" />
-              <div className="w-8 h-8 bg-gray-200 rounded mx-auto" />
+              <div className="w-8 h-8 bg-[--accent-muted] rounded mx-auto opacity-40" />
+              <div className="w-8 h-8 bg-[--border] rounded mx-auto" />
+              <div className="w-8 h-8 bg-[--border] rounded mx-auto" />
             </div>
           </div>
-          <div className="w-48 bg-gray-50 border-r border-[--border] p-3">
+          <div className="w-48 bg-[--sidebar-bg] border-r border-[--border] p-3">
             <div className="text-xs text-[--muted] mb-2">Panel</div>
             <div className="space-y-1">
-              <div className="h-4 bg-gray-200 rounded w-full" />
-              <div className="h-4 bg-gray-200 rounded w-3/4" />
+              <div className="h-4 bg-[--border] rounded w-full" />
+              <div className="h-4 bg-[--border] rounded w-3/4" />
             </div>
           </div>
           <div className="flex-1 p-3">
@@ -660,10 +688,10 @@ function LayoutsSection() {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {[1, 2, 3].map((i) => (
             <div key={i} className="border border-[--border] rounded-lg overflow-hidden">
-              <div className="aspect-video bg-gray-100" />
+              <div className="aspect-video bg-[--hover]" />
               <div className="p-2 space-y-1">
-                <div className="h-3 bg-gray-200 rounded w-full" />
-                <div className="h-3 bg-gray-100 rounded w-2/3" />
+                <div className="h-3 bg-[--border] rounded w-full" />
+                <div className="h-3 bg-[--hover] rounded w-2/3" />
               </div>
             </div>
           ))}
@@ -671,12 +699,12 @@ function LayoutsSection() {
       </ComponentBlock>
 
       <ComponentBlock title="Mobile Drawer" description="Slide-out sidebar for mobile">
-        <div className="relative border border-[--border] rounded overflow-hidden h-48 bg-white">
+        <div className="relative border border-[--border] rounded overflow-hidden h-48 bg-[--background]">
           <div className="absolute inset-y-0 left-0 w-48 bg-[--sidebar-bg] border-r border-[--border] p-3 shadow-lg z-10">
             <div className="text-xs text-[--muted] mb-2">Mobile Drawer</div>
             <div className="space-y-1">
-              <div className="h-4 bg-gray-200 rounded w-full" />
-              <div className="h-4 bg-gray-200 rounded w-3/4" />
+              <div className="h-4 bg-[--border] rounded w-full" />
+              <div className="h-4 bg-[--border] rounded w-3/4" />
             </div>
           </div>
           <div className="absolute inset-0 bg-black/20" />
@@ -693,17 +721,34 @@ function DialogsSection() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [showDangerConfirm, setShowDangerConfirm] = useState(false);
   const [showAlert, setShowAlert] = useState(false);
+  const [showProgress, setShowProgress] = useState(false);
+  const [progressValue, setProgressValue] = useState(0);
+
+  const runProgress = () => {
+    setShowProgress(true);
+    setProgressValue(0);
+    const interval = setInterval(() => {
+      setProgressValue(prev => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          setTimeout(() => setShowProgress(false), 500);
+          return 100;
+        }
+        return prev + 10;
+      });
+    }, 200);
+  };
 
   return (
     <div>
       <SectionTitle>Dialogs</SectionTitle>
       <p className="text-[--muted] mb-8">
         Custom modal dialogs that replace browser defaults (window.confirm, window.alert).
-        Located in <code className="text-sm bg-gray-100 px-1 rounded">@/components/ui/Dialog.tsx</code>.
-        Button styles are in <code className="text-sm bg-gray-100 px-1 rounded">globals.css</code>.
+        Located in <code className="text-sm bg-[--hover] px-1 rounded">@/components/ui/Dialog.tsx</code>.
+        Button styles are in <code className="text-sm bg-[--hover] px-1 rounded">globals.css</code>.
       </p>
 
-      <ComponentBlock title="Dialog Button Styles" description="Early Mac-inspired, monochrome buttons">
+      <ComponentBlock title="Dialog Buttons" description="Monochrome buttons with invert on press">
         <div className="space-y-4">
           <div className="flex gap-3 items-center">
             <button className="dialog-btn dialog-btn-primary">Primary</button>
@@ -711,9 +756,32 @@ function DialogsSection() {
             <button className="dialog-btn dialog-btn-danger">Danger</button>
           </div>
           <p className="text-xs text-[--muted]">
-            CSS classes: <code className="bg-gray-100 px-1 rounded">dialog-btn dialog-btn-primary</code>, etc.
+            CSS classes: <code className="bg-[--hover] px-1 rounded">dialog-btn dialog-btn-primary</code>, etc.
+            Press and hold to see invert effect.
           </p>
         </div>
+      </ComponentBlock>
+
+      <ComponentBlock title="Progress Bar" description="For long-running operations">
+        <div className="space-y-4">
+          <div className="max-w-sm">
+            <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mb-2">
+              <div className="h-full bg-[#1a1a1a] dark:bg-[#e5e5e5]" style={{ width: '65%' }} />
+            </div>
+            <p className="text-xs text-[--muted] text-right">65%</p>
+          </div>
+          <button onClick={runProgress} className="dialog-btn dialog-btn-secondary">
+            Show Progress Dialog
+          </button>
+        </div>
+        <ProgressDialog
+          open={showProgress}
+          title="Processing"
+          message="Please wait..."
+          progress={progressValue}
+          detail={`Step ${Math.ceil(progressValue / 10)} of 10`}
+          onCancel={() => setShowProgress(false)}
+        />
       </ComponentBlock>
 
       <ComponentBlock title="Confirm Dialog" description="For actions requiring user confirmation">
@@ -764,29 +832,6 @@ function DialogsSection() {
         />
       </ComponentBlock>
 
-      <ComponentBlock title="Usage Example" description="How to use dialogs in components">
-        <pre className="text-xs bg-gray-800 text-gray-100 p-4 rounded overflow-x-auto">
-{`// Import the dialog components
-import { ConfirmDialog, AlertDialog } from "@/components/ui/Dialog";
-
-// Add state for dialog visibility
-const [showConfirm, setShowConfirm] = useState(false);
-
-// Render the dialog (anywhere in your component)
-<ConfirmDialog
-  open={showConfirm}
-  title="Delete Item"
-  message="Are you sure?"
-  variant="danger"
-  confirmLabel="Delete"
-  onConfirm={() => {
-    setShowConfirm(false);
-    // Do the action
-  }}
-  onCancel={() => setShowConfirm(false)}
-/>`}
-        </pre>
-      </ComponentBlock>
     </div>
   );
 }

@@ -24,7 +24,7 @@ import { useDarkMode } from "@/hooks/useDarkMode";
 import Sidebar from "@/components/notes/Sidebar";
 import NoteEditor from "@/components/notes/NoteEditor";
 import FolderView from "@/components/notes/FolderView";
-import { ConfirmDialog, AlertDialog } from "@/components/ui/Dialog";
+import { ConfirmDialog, AlertDialog, ProgressDialog } from "@/components/ui/Dialog";
 import JSZip from "jszip";
 
 export default function NotesPage() {
@@ -54,6 +54,13 @@ export default function NotesPage() {
     title: string;
     message: string;
   }>({ open: false, title: "", message: "" });
+  const [exportProgress, setExportProgress] = useState<{
+    open: boolean;
+    message: string;
+    progress: number;
+    detail: string;
+  }>({ open: false, message: "", progress: 0, detail: "" });
+  const [exportCancelled, setExportCancelled] = useState(false);
 
   // Auth
   useEffect(() => {
@@ -288,54 +295,83 @@ export default function NotesPage() {
   };
 
   const exportNotes = async (notesToExport: NoteItem[], filename: string) => {
-    const zip = new JSZip();
-    const imageMap: Record<string, string> = {};
-    const imagesFolder = zip.folder("images");
+    // Reset cancellation flag
+    setExportCancelled(false);
 
-    // Find all image URLs in notes (handle both single and double quotes)
-    const allImageUrls = new Set<string>();
+    // Show progress dialog
+    setExportProgress({
+      open: true,
+      message: "Collecting images...",
+      progress: 0,
+      detail: "Scanning notes for images",
+    });
+
+    await new Promise(r => setTimeout(r, 50));
+
+    const zip = new JSZip();
+    const imagesFolder = zip.folder("images");
+    const imageMap: Record<string, string> = {};
+
+    // Step 1: Find all image URLs
+    const allImageUrls: string[] = [];
     for (const note of notesToExport) {
       if (!note.content) continue;
-      // Match src with double or single quotes
-      const imageMatches = note.content.matchAll(/<img[^>]+src=["']([^"']+)["']/g);
-      for (const match of imageMatches) {
+      const matches = note.content.matchAll(/<img[^>]+src=["']([^"']+)["']/g);
+      for (const match of matches) {
         const url = match[1];
-        if (url.startsWith("http")) {
-          allImageUrls.add(url);
+        if (url.startsWith("http") && !allImageUrls.includes(url)) {
+          allImageUrls.push(url);
         }
       }
     }
 
-    // Download images
-    let imageCount = 0;
+    // Step 2: Download all images
+    let downloadedCount = 0;
     let failedCount = 0;
-    console.log(`[Export] Found ${allImageUrls.size} images to download`);
+    let cancelled = false;
 
-    for (const url of allImageUrls) {
+    for (let i = 0; i < allImageUrls.length; i++) {
+      // Check for cancellation
+      if (exportCancelled) {
+        cancelled = true;
+        break;
+      }
+
+      const url = allImageUrls[i];
+      const progress = Math.round(((i + 1) / allImageUrls.length) * 50);
+
+      setExportProgress({
+        open: true,
+        message: `Downloading images (${i + 1}/${allImageUrls.length})`,
+        progress,
+        detail: `Image ${i + 1}...`,
+      });
+
+      await new Promise(r => setTimeout(r, 10));
+
       try {
-        console.log(`[Export] Downloading image ${imageCount + 1}/${allImageUrls.size}: ${url.substring(0, 80)}...`);
         const blob = await downloadImageBlob(url);
         if (blob && blob.size > 0) {
-          // Extract extension from URL, handling query strings
-          const urlPath = url.split('?')[0];
-          const ext = urlPath.split('.').pop()?.toLowerCase() || 'jpg';
-          const validExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) ? ext : 'jpg';
-          const imgFilename = `image-${imageCount}.${validExt}`;
+          const imgFilename = `image-${downloadedCount}.png`;
           imageMap[url] = imgFilename;
           imagesFolder?.file(imgFilename, blob);
-          console.log(`[Export] ✓ Saved as ${imgFilename} (${blob.size} bytes)`);
-          imageCount++;
+          downloadedCount++;
         } else {
-          console.warn(`[Export] ✗ Failed: got empty or null blob for ${url.substring(0, 80)}...`);
           failedCount++;
+          console.warn(`Failed to download image ${i + 1}: empty blob`);
         }
       } catch (e) {
-        console.warn(`[Export] ✗ Exception downloading: ${url.substring(0, 80)}...`, e);
         failedCount++;
+        console.warn(`Failed to download image ${i + 1}:`, e);
       }
     }
 
-    console.log(`[Export] Images complete: ${imageCount} downloaded, ${failedCount} failed`);
+    if (cancelled) {
+      setExportProgress({ open: false, message: "", progress: 0, detail: "" });
+      return;
+    }
+
+    console.log(`Images: ${downloadedCount} downloaded, ${failedCount} failed`);
 
     // Build folder structure helper
     const getPath = (item: NoteItem): string => {
@@ -346,36 +382,46 @@ export default function NotesPage() {
       return parentPath ? `${parentPath}/${parent.title}` : parent.title;
     };
 
-    // Create markdown files
-    for (const note of notesToExport) {
+    // Step 3: Create markdown files with local image paths
+    for (let i = 0; i < notesToExport.length; i++) {
+      const note = notesToExport[i];
+      const progress = 50 + Math.round(((i + 1) / notesToExport.length) * 40);
+
+      setExportProgress({
+        open: true,
+        message: `Processing notes (${i + 1}/${notesToExport.length})`,
+        progress,
+        detail: note.title || "Untitled",
+      });
+
+      await new Promise(r => setTimeout(r, 5));
+
       let content = note.content || "";
 
-      // First, convert images to markdown format (before stripping other HTML)
-      // Handle figure with figcaption
+      // Convert images to markdown with LOCAL paths (relative from note location)
       content = content.replace(
         /<figure[^>]*>[\s\S]*?<img[^>]+src=["']([^"']+)["'][^>]*>[\s\S]*?<figcaption[^>]*>([\s\S]*?)<\/figcaption>[\s\S]*?<\/figure>/gi,
         (_, src, caption) => {
-          const localPath = imageMap[src] ? `./images/${imageMap[src]}` : src;
+          const localPath = imageMap[src] ? `../images/${imageMap[src]}` : src;
           return caption?.trim() ? `![${caption.trim()}](${localPath})\n\n` : `![](${localPath})\n\n`;
         }
       );
-      // Handle standalone img tags
       content = content.replace(
         /<img[^>]+src=["']([^"']+)["'][^>]*alt=["']([^"']*)["'][^>]*>/gi,
         (_, src, alt) => {
-          const localPath = imageMap[src] ? `./images/${imageMap[src]}` : src;
+          const localPath = imageMap[src] ? `../images/${imageMap[src]}` : src;
           return `![${alt || ""}](${localPath})`;
         }
       );
       content = content.replace(
         /<img[^>]+src=["']([^"']+)["'][^>]*>/gi,
         (_, src) => {
-          const localPath = imageMap[src] ? `./images/${imageMap[src]}` : src;
+          const localPath = imageMap[src] ? `../images/${imageMap[src]}` : src;
           return `![](${localPath})`;
         }
       );
 
-      // Convert HTML to simple markdown
+      // Convert HTML to markdown
       content = content
         .replace(/<h1[^>]*>([\s\S]*?)<\/h1>/g, "# $1\n\n")
         .replace(/<h2[^>]*>([\s\S]*?)<\/h2>/g, "## $1\n\n")
@@ -391,7 +437,6 @@ export default function NotesPage() {
         .replace(/\n{3,}/g, "\n\n")
         .trim();
 
-      // Create frontmatter
       const markdown = `---
 title: "${note.title}"
 date: "${note.date || ""}"
@@ -407,14 +452,35 @@ ${content}`;
       zip.file(filePath, markdown);
     }
 
-    // Generate and download
+    // Generate ZIP
+    setExportProgress({
+      open: true,
+      message: "Creating ZIP...",
+      progress: 95,
+      detail: "Compressing files",
+    });
+
     const blob = await zip.generateAsync({ type: "blob" });
+
+    // Download
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+
+    // Show completion with stats
+    setExportProgress({
+      open: true,
+      message: "Export complete!",
+      progress: 100,
+      detail: `${notesToExport.length} notes, ${downloadedCount} images${failedCount > 0 ? ` (${failedCount} failed)` : ""}`,
+    });
+
+    setTimeout(() => {
+      setExportProgress({ open: false, message: "", progress: 0, detail: "" });
+    }, 1500);
   };
 
   const handleExport = async () => {
@@ -691,6 +757,9 @@ ${content}`;
             onSelect={handleSelect}
             onBack={handleBack}
             onCreateNote={handleCreateNote}
+            onCreateFolder={handleCreateFolder}
+            onDelete={handleDelete}
+            onRename={(item) => setRenamingId(item.id!)}
           />
         )}
       </div>
@@ -710,6 +779,17 @@ ${content}`;
         title={alertDialog.title}
         message={alertDialog.message}
         onClose={() => setAlertDialog(prev => ({ ...prev, open: false }))}
+      />
+      <ProgressDialog
+        open={exportProgress.open}
+        title="Exporting Notes"
+        message={exportProgress.message}
+        progress={exportProgress.progress}
+        detail={exportProgress.detail}
+        onCancel={() => {
+          setExportCancelled(true);
+          setExportProgress({ open: false, message: "", progress: 0, detail: "" });
+        }}
       />
     </div>
   );

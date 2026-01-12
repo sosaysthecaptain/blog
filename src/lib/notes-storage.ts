@@ -53,37 +53,85 @@ export async function deleteNoteImages(noteId: string): Promise<void> {
   }
 }
 
-// Download an image blob from a Firebase Storage URL
+// Helper: wrap a promise with a timeout
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([
+    promise,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+  ]);
+}
+
+// Download an image blob - tries multiple methods with timeouts
 export async function downloadImageBlob(url: string): Promise<Blob | null> {
-  // Firebase Storage URLs already include a token for access
-  // First try a direct fetch with the full URL (including token)
+  // Method 1: Direct fetch (fastest if CORS configured)
   try {
-    const response = await fetch(url, { mode: 'cors' });
-    if (response.ok) {
+    const response = await withTimeout(fetch(url), 5000);
+    if (response && response.ok) {
       const blob = await response.blob();
       if (blob.size > 0) {
+        console.log("✓ fetch worked");
         return blob;
       }
     }
-  } catch (fetchError) {
-    console.warn("Direct fetch failed, trying Firebase SDK:", fetchError);
+  } catch (e) {
+    console.warn("fetch failed:", e);
   }
 
-  // Fallback: Try using Firebase SDK getBlob
+  // Method 2: Firebase SDK getBlob
   try {
-    // Extract the storage path from the URL
-    // Firebase Storage URLs look like: https://firebasestorage.googleapis.com/v0/b/BUCKET/o/PATH?alt=media&token=TOKEN
     const match = url.match(/\/o\/([^?]+)/);
-    if (!match) {
-      console.warn("Could not extract path from URL:", url);
-      return null;
+    if (match) {
+      const path = decodeURIComponent(match[1]);
+      const storageRef = ref(storage, path);
+      const blob = await withTimeout(getBlob(storageRef), 5000);
+      if (blob && blob.size > 0) {
+        console.log("✓ Firebase SDK worked");
+        return blob;
+      }
     }
-
-    const path = decodeURIComponent(match[1]);
-    const storageRef = ref(storage, path);
-    return await getBlob(storageRef);
-  } catch (error) {
-    console.error("Firebase SDK download failed:", error);
-    return null;
+  } catch (e) {
+    console.warn("Firebase SDK failed:", e);
   }
+
+  // Method 3: Canvas (load as image, convert to blob)
+  try {
+    const blob = await withTimeout(loadImageAsBlob(url), 5000);
+    if (blob && blob.size > 0) {
+      console.log("✓ canvas worked");
+      return blob;
+    }
+  } catch (e) {
+    console.warn("canvas failed:", e);
+  }
+
+  console.warn("All methods failed for:", url.substring(0, 60));
+  return null;
+}
+
+// Load image via img element and convert to blob via canvas
+function loadImageAsBlob(url: string): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(null);
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob((blob) => resolve(blob), "image/png");
+      } catch (e) {
+        resolve(null);
+      }
+    };
+
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
 }
