@@ -13,6 +13,11 @@ import {
   SketchEntities,
   ToolType,
   Point,
+  Constraint,
+  LengthConstraint,
+  RadiusConstraint,
+  DistanceConstraint,
+  AngleConstraint,
 } from '@/lib/cad/types';
 
 interface CanvasProps {
@@ -20,6 +25,7 @@ interface CanvasProps {
   viewState: ViewState;
   onViewChange: (view: ViewState) => void;
   entities: SketchEntities;
+  constraints: Map<string, Constraint>;
   activeTool: ToolType;
   constructionMode: boolean;
   onAddPoint: (x: number, y: number) => void;
@@ -27,8 +33,13 @@ interface CanvasProps {
   onAddCircle: (cx: number, cy: number, radius: number) => void;
   onAddRectangle: (x1: number, y1: number, x2: number, y2: number) => void;
   onMovePoint: (pointId: string, x: number, y: number) => void;
+  onAddDimension: (entityId: string, entityType: 'line' | 'circle', offset: number) => string | null; // Returns constraint ID
+  onAddDistanceDimension: (point1Id: string, point2Id: string, offset: number) => string | null;
+  onAddAngleDimension: (line1Id: string, line2Id: string, offset: number) => string | null;
+  onUpdateConstraint: (constraintId: string, value: number) => void;
   selectedEntityId: string | null;
   onSelectEntity: (entityId: string | null) => void;
+  overConstrainedEntities: Set<string>;
 }
 
 // Render entities to Three.js scene
@@ -39,7 +50,9 @@ function renderEntities(
   entityGroupRef: React.MutableRefObject<THREE.Group | null>,
   containerWidth: number,
   containerHeight: number,
-  selectedEntityId: string | null
+  selectedEntityId: string | null,
+  zoom: number,
+  overConstrainedEntities: Set<string>
 ) {
   // Remove old entity group
   if (entityGroupRef.current) {
@@ -62,32 +75,42 @@ function renderEntities(
   // Materials for Line2 (thick lines)
   const lineMaterial = new LineMaterial({
     color: new THREE.Color(colors.underConstrained).getHex(),
-    linewidth: 2, // in pixels
+    linewidth: 3, // heavier lines (3px as requested)
     resolution: resolution,
   });
 
   const constructionLineMaterial = new LineMaterial({
     color: new THREE.Color(colors.construction).getHex(),
-    linewidth: 1,
+    linewidth: 3, // same weight as regular lines
     resolution: resolution,
     dashed: true,
-    dashSize: 4,
-    gapSize: 2,
+    dashSize: 6,
+    gapSize: 4,
+  });
+
+  const overConstrainedLineMaterial = new LineMaterial({
+    color: new THREE.Color(colors.overConstrained).getHex(),
+    linewidth: 3,
+    resolution: resolution,
   });
 
   const pointMaterial = new THREE.MeshBasicMaterial({ color: colors.underConstrained });
   const selectedPointMaterial = new THREE.MeshBasicMaterial({ color: colors.selected });
+  const overConstrainedPointMaterial = new THREE.MeshBasicMaterial({ color: colors.overConstrained });
 
   const selectedLineMaterial = new LineMaterial({
     color: new THREE.Color(colors.selected).getHex(),
-    linewidth: 3, // thicker when selected
+    linewidth: 4, // slightly thicker when selected
     resolution: resolution,
   });
 
-  // Render points
+  // Render points - use screen-relative size (pixels / zoom = world units)
+  const pointRadius = 5 / zoom; // 5 screen pixels
+  const selectedPointRadius = 7 / zoom; // 7 screen pixels when selected
+
   for (const point of entities.points.values()) {
     const isSelected = selectedEntityId === point.id;
-    const geometry = new THREE.CircleGeometry(isSelected ? 6 : 4, 16);
+    const geometry = new THREE.CircleGeometry(isSelected ? selectedPointRadius : pointRadius, 16);
     let material;
     if (isSelected) {
       material = selectedPointMaterial;
@@ -108,6 +131,7 @@ function renderEntities(
     if (!startPoint || !endPoint) continue;
 
     const isSelected = selectedEntityId === line.id;
+    const isOverConstrained = overConstrainedEntities.has(line.id);
     const geometry = new LineGeometry();
     geometry.setPositions([
       startPoint.x, startPoint.y, isSelected ? 0.35 : 0.3,
@@ -117,6 +141,8 @@ function renderEntities(
     let material;
     if (isSelected) {
       material = selectedLineMaterial.clone();
+    } else if (isOverConstrained) {
+      material = overConstrainedLineMaterial.clone();
     } else if (line.construction) {
       material = constructionLineMaterial.clone();
     } else {
@@ -133,6 +159,7 @@ function renderEntities(
     if (!centerPoint) continue;
 
     const isSelected = selectedEntityId === circle.id;
+    const isOverConstrained = overConstrainedEntities.has(circle.id);
     const segments = 64;
     const positions: number[] = [];
     for (let i = 0; i <= segments; i++) {
@@ -150,6 +177,8 @@ function renderEntities(
     let material;
     if (isSelected) {
       material = selectedLineMaterial.clone();
+    } else if (isOverConstrained) {
+      material = overConstrainedLineMaterial.clone();
     } else if (circle.construction) {
       material = constructionLineMaterial.clone();
     } else {
@@ -162,6 +191,390 @@ function renderEntities(
 
   scene.add(group);
   entityGroupRef.current = group;
+}
+
+// Dimension label data for HTML overlay
+interface DimensionLabel {
+  id: string;
+  x: number;
+  y: number;
+  value: string;
+  type: 'length' | 'radius' | 'distance' | 'angle';
+}
+
+// Render dimension annotations - returns label data for HTML overlay
+function renderDimensions(
+  scene: THREE.Scene,
+  entities: SketchEntities,
+  constraints: Map<string, Constraint>,
+  colors: CADColors,
+  dimensionGroupRef: React.MutableRefObject<THREE.Group | null>,
+  zoom: number,
+  containerWidth: number,
+  containerHeight: number
+): DimensionLabel[] {
+  const labels: DimensionLabel[] = [];
+
+  // Remove old dimension group
+  if (dimensionGroupRef.current) {
+    scene.remove(dimensionGroupRef.current);
+    dimensionGroupRef.current.traverse((obj) => {
+      if (obj instanceof THREE.Line || obj instanceof THREE.Mesh || obj instanceof Line2) {
+        obj.geometry.dispose();
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach(m => m.dispose());
+        } else {
+          (obj.material as THREE.Material).dispose();
+        }
+      }
+    });
+  }
+
+  const group = new THREE.Group();
+  const resolution = new THREE.Vector2(containerWidth, containerHeight);
+
+  // Use Line2 for thick dimension lines
+  const dimMaterial = new LineMaterial({
+    color: new THREE.Color(colors.fullyConstrained).getHex(),
+    linewidth: 1.5,
+    resolution: resolution,
+  });
+
+  for (const constraint of constraints.values()) {
+    if (constraint.type === 'length') {
+      const lengthConstraint = constraint as LengthConstraint;
+      const line = entities.lines.get(lengthConstraint.lineId);
+      if (!line) continue;
+
+      const startPoint = entities.points.get(line.startId);
+      const endPoint = entities.points.get(line.endId);
+      if (!startPoint || !endPoint) continue;
+
+      // Calculate line midpoint and perpendicular offset
+      const midX = (startPoint.x + endPoint.x) / 2;
+      const midY = (startPoint.y + endPoint.y) / 2;
+      const dx = endPoint.x - startPoint.x;
+      const dy = endPoint.y - startPoint.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+
+      // Perpendicular direction (normalized)
+      const perpX = -dy / len;
+      const perpY = dx / len;
+
+      // Use stored offset or default
+      const offset = lengthConstraint.offset ?? (30 / zoom);
+
+      // Dimension line endpoints
+      const dim1X = startPoint.x + perpX * offset;
+      const dim1Y = startPoint.y + perpY * offset;
+      const dim2X = endPoint.x + perpX * offset;
+      const dim2Y = endPoint.y + perpY * offset;
+
+      // Draw dimension line using Line2
+      const dimLineGeom = new LineGeometry();
+      dimLineGeom.setPositions([dim1X, dim1Y, 0.7, dim2X, dim2Y, 0.7]);
+      const dimLine = new Line2(dimLineGeom, dimMaterial.clone());
+      dimLine.computeLineDistances();
+      group.add(dimLine);
+
+      // Draw extension lines
+      const ext1Geom = new LineGeometry();
+      ext1Geom.setPositions([startPoint.x, startPoint.y, 0.7, dim1X, dim1Y, 0.7]);
+      const ext1Line = new Line2(ext1Geom, dimMaterial.clone());
+      ext1Line.computeLineDistances();
+      group.add(ext1Line);
+
+      const ext2Geom = new LineGeometry();
+      ext2Geom.setPositions([endPoint.x, endPoint.y, 0.7, dim2X, dim2Y, 0.7]);
+      const ext2Line = new Line2(ext2Geom, dimMaterial.clone());
+      ext2Line.computeLineDistances();
+      group.add(ext2Line);
+
+      // Draw arrows (filled triangles)
+      const arrowSize = 10 / zoom;
+      const arrowAngle = Math.PI / 6;
+      const angle1 = Math.atan2(dim2Y - dim1Y, dim2X - dim1X);
+
+      // Arrow at start - filled triangle
+      const arrow1Shape = new THREE.Shape();
+      arrow1Shape.moveTo(dim1X, dim1Y);
+      arrow1Shape.lineTo(
+        dim1X + arrowSize * Math.cos(angle1 + Math.PI - arrowAngle),
+        dim1Y + arrowSize * Math.sin(angle1 + Math.PI - arrowAngle)
+      );
+      arrow1Shape.lineTo(
+        dim1X + arrowSize * Math.cos(angle1 + Math.PI + arrowAngle),
+        dim1Y + arrowSize * Math.sin(angle1 + Math.PI + arrowAngle)
+      );
+      arrow1Shape.closePath();
+      const arrow1Geom = new THREE.ShapeGeometry(arrow1Shape);
+      const arrow1Mat = new THREE.MeshBasicMaterial({ color: colors.fullyConstrained });
+      const arrow1Mesh = new THREE.Mesh(arrow1Geom, arrow1Mat);
+      arrow1Mesh.position.z = 0.71;
+      group.add(arrow1Mesh);
+
+      // Arrow at end - filled triangle
+      const arrow2Shape = new THREE.Shape();
+      arrow2Shape.moveTo(dim2X, dim2Y);
+      arrow2Shape.lineTo(
+        dim2X + arrowSize * Math.cos(angle1 - arrowAngle),
+        dim2Y + arrowSize * Math.sin(angle1 - arrowAngle)
+      );
+      arrow2Shape.lineTo(
+        dim2X + arrowSize * Math.cos(angle1 + arrowAngle),
+        dim2Y + arrowSize * Math.sin(angle1 + arrowAngle)
+      );
+      arrow2Shape.closePath();
+      const arrow2Geom = new THREE.ShapeGeometry(arrow2Shape);
+      const arrow2Mat = new THREE.MeshBasicMaterial({ color: colors.fullyConstrained });
+      const arrow2Mesh = new THREE.Mesh(arrow2Geom, arrow2Mat);
+      arrow2Mesh.position.z = 0.71;
+      group.add(arrow2Mesh);
+
+      // Add label data for HTML overlay
+      const textX = midX + perpX * offset;
+      const textY = midY + perpY * offset;
+      labels.push({
+        id: constraint.id,
+        x: textX,
+        y: textY,
+        value: lengthConstraint.value.toFixed(1),
+        type: 'length',
+      });
+    }
+
+    if (constraint.type === 'radius') {
+      const radiusConstraint = constraint as RadiusConstraint;
+      const circle = entities.circles.get(radiusConstraint.circleId);
+      if (!circle) continue;
+
+      const centerPoint = entities.points.get(circle.centerId);
+      if (!centerPoint) continue;
+
+      // Draw radius line from center to edge
+      const angle = Math.PI / 4; // 45 degrees
+      const edgeX = centerPoint.x + Math.cos(angle) * circle.radius;
+      const edgeY = centerPoint.y + Math.sin(angle) * circle.radius;
+
+      const radiusLineGeom = new LineGeometry();
+      radiusLineGeom.setPositions([centerPoint.x, centerPoint.y, 0.7, edgeX, edgeY, 0.7]);
+      const radiusLine = new Line2(radiusLineGeom, dimMaterial.clone());
+      radiusLine.computeLineDistances();
+      group.add(radiusLine);
+
+      // Draw arrow at edge - filled triangle
+      const arrowSize = 10 / zoom;
+      const arrowAngle = Math.PI / 6;
+
+      const arrowShape = new THREE.Shape();
+      arrowShape.moveTo(edgeX, edgeY);
+      arrowShape.lineTo(
+        edgeX + arrowSize * Math.cos(angle + Math.PI - arrowAngle),
+        edgeY + arrowSize * Math.sin(angle + Math.PI - arrowAngle)
+      );
+      arrowShape.lineTo(
+        edgeX + arrowSize * Math.cos(angle + Math.PI + arrowAngle),
+        edgeY + arrowSize * Math.sin(angle + Math.PI + arrowAngle)
+      );
+      arrowShape.closePath();
+      const arrowGeom = new THREE.ShapeGeometry(arrowShape);
+      const arrowMat = new THREE.MeshBasicMaterial({ color: colors.fullyConstrained });
+      const arrowMesh = new THREE.Mesh(arrowGeom, arrowMat);
+      arrowMesh.position.z = 0.71;
+      group.add(arrowMesh);
+
+      // Add label data for HTML overlay
+      const textX = centerPoint.x + Math.cos(angle) * (circle.radius / 2);
+      const textY = centerPoint.y + Math.sin(angle) * (circle.radius / 2);
+      labels.push({
+        id: constraint.id,
+        x: textX,
+        y: textY,
+        value: 'R' + radiusConstraint.value.toFixed(1),
+        type: 'radius',
+      });
+    }
+
+    // Render distance constraint (point-to-point)
+    if (constraint.type === 'distance') {
+      const distanceConstraint = constraint as DistanceConstraint;
+      const point1 = entities.points.get(distanceConstraint.point1Id);
+      const point2 = entities.points.get(distanceConstraint.point2Id);
+      if (!point1 || !point2) continue;
+
+      // Calculate perpendicular offset
+      const midX = (point1.x + point2.x) / 2;
+      const midY = (point1.y + point2.y) / 2;
+      const dx = point2.x - point1.x;
+      const dy = point2.y - point1.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+
+      // Perpendicular direction
+      const perpX = -dy / len;
+      const perpY = dx / len;
+
+      const offset = distanceConstraint.offset ?? (30 / zoom);
+
+      // Dimension line endpoints
+      const dim1X = point1.x + perpX * offset;
+      const dim1Y = point1.y + perpY * offset;
+      const dim2X = point2.x + perpX * offset;
+      const dim2Y = point2.y + perpY * offset;
+
+      // Draw dimension line
+      const dimLineGeom = new LineGeometry();
+      dimLineGeom.setPositions([dim1X, dim1Y, 0.7, dim2X, dim2Y, 0.7]);
+      const dimLine = new Line2(dimLineGeom, dimMaterial.clone());
+      dimLine.computeLineDistances();
+      group.add(dimLine);
+
+      // Draw extension lines
+      const ext1Geom = new LineGeometry();
+      ext1Geom.setPositions([point1.x, point1.y, 0.7, dim1X, dim1Y, 0.7]);
+      const ext1Line = new Line2(ext1Geom, dimMaterial.clone());
+      ext1Line.computeLineDistances();
+      group.add(ext1Line);
+
+      const ext2Geom = new LineGeometry();
+      ext2Geom.setPositions([point2.x, point2.y, 0.7, dim2X, dim2Y, 0.7]);
+      const ext2Line = new Line2(ext2Geom, dimMaterial.clone());
+      ext2Line.computeLineDistances();
+      group.add(ext2Line);
+
+      // Draw arrows
+      const arrowSize = 10 / zoom;
+      const arrowAngle = Math.PI / 6;
+      const angle1 = Math.atan2(dim2Y - dim1Y, dim2X - dim1X);
+
+      // Arrow at start
+      const arrow1Shape = new THREE.Shape();
+      arrow1Shape.moveTo(dim1X, dim1Y);
+      arrow1Shape.lineTo(
+        dim1X + arrowSize * Math.cos(angle1 + Math.PI - arrowAngle),
+        dim1Y + arrowSize * Math.sin(angle1 + Math.PI - arrowAngle)
+      );
+      arrow1Shape.lineTo(
+        dim1X + arrowSize * Math.cos(angle1 + Math.PI + arrowAngle),
+        dim1Y + arrowSize * Math.sin(angle1 + Math.PI + arrowAngle)
+      );
+      arrow1Shape.closePath();
+      const arrow1Geom = new THREE.ShapeGeometry(arrow1Shape);
+      const arrow1Mat = new THREE.MeshBasicMaterial({ color: colors.fullyConstrained });
+      const arrow1Mesh = new THREE.Mesh(arrow1Geom, arrow1Mat);
+      arrow1Mesh.position.z = 0.71;
+      group.add(arrow1Mesh);
+
+      // Arrow at end
+      const arrow2Shape = new THREE.Shape();
+      arrow2Shape.moveTo(dim2X, dim2Y);
+      arrow2Shape.lineTo(
+        dim2X + arrowSize * Math.cos(angle1 - arrowAngle),
+        dim2Y + arrowSize * Math.sin(angle1 - arrowAngle)
+      );
+      arrow2Shape.lineTo(
+        dim2X + arrowSize * Math.cos(angle1 + arrowAngle),
+        dim2Y + arrowSize * Math.sin(angle1 + arrowAngle)
+      );
+      arrow2Shape.closePath();
+      const arrow2Geom = new THREE.ShapeGeometry(arrow2Shape);
+      const arrow2Mat = new THREE.MeshBasicMaterial({ color: colors.fullyConstrained });
+      const arrow2Mesh = new THREE.Mesh(arrow2Geom, arrow2Mat);
+      arrow2Mesh.position.z = 0.71;
+      group.add(arrow2Mesh);
+
+      // Add label
+      const textX = midX + perpX * offset;
+      const textY = midY + perpY * offset;
+      labels.push({
+        id: constraint.id,
+        x: textX,
+        y: textY,
+        value: distanceConstraint.value.toFixed(1),
+        type: 'distance',
+      });
+    }
+
+    // Render angle constraint
+    if (constraint.type === 'angle') {
+      const angleConstraint = constraint as AngleConstraint;
+      const line1 = entities.lines.get(angleConstraint.line1Id);
+      const line2 = entities.lines.get(angleConstraint.line2Id);
+      if (!line1 || !line2) continue;
+
+      const p1Start = entities.points.get(line1.startId);
+      const p1End = entities.points.get(line1.endId);
+      const p2Start = entities.points.get(line2.startId);
+      const p2End = entities.points.get(line2.endId);
+      if (!p1Start || !p1End || !p2Start || !p2End) continue;
+
+      // Find intersection point of the two lines
+      const dx1 = p1End.x - p1Start.x;
+      const dy1 = p1End.y - p1Start.y;
+      const dx2 = p2End.x - p2Start.x;
+      const dy2 = p2End.y - p2Start.y;
+
+      // Find intersection using parametric form
+      const det = dx1 * dy2 - dy1 * dx2;
+      let centerX: number, centerY: number;
+
+      if (Math.abs(det) < 0.001) {
+        // Lines are parallel, use midpoint of closest endpoints
+        centerX = (p1Start.x + p2Start.x) / 2;
+        centerY = (p1Start.y + p2Start.y) / 2;
+      } else {
+        const t = ((p2Start.x - p1Start.x) * dy2 - (p2Start.y - p1Start.y) * dx2) / det;
+        centerX = p1Start.x + t * dx1;
+        centerY = p1Start.y + t * dy1;
+      }
+
+      // Calculate angles
+      const angle1 = Math.atan2(dy1, dx1);
+      const angle2 = Math.atan2(dy2, dx2);
+
+      // Draw arc
+      const arcRadius = 25 / zoom;
+      const startAngle = Math.min(angle1, angle2);
+      const endAngle = Math.max(angle1, angle2);
+      let sweepAngle = endAngle - startAngle;
+      if (sweepAngle > Math.PI) {
+        sweepAngle = 2 * Math.PI - sweepAngle;
+      }
+
+      const segments = 32;
+      const positions: number[] = [];
+      for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        const theta = startAngle + t * sweepAngle;
+        positions.push(
+          centerX + Math.cos(theta) * arcRadius,
+          centerY + Math.sin(theta) * arcRadius,
+          0.7
+        );
+      }
+
+      const arcGeom = new LineGeometry();
+      arcGeom.setPositions(positions);
+      const arcLine = new Line2(arcGeom, dimMaterial.clone());
+      arcLine.computeLineDistances();
+      group.add(arcLine);
+
+      // Add label at arc midpoint
+      const midAngle = startAngle + sweepAngle / 2;
+      const textX = centerX + Math.cos(midAngle) * arcRadius * 1.3;
+      const textY = centerY + Math.sin(midAngle) * arcRadius * 1.3;
+      labels.push({
+        id: constraint.id,
+        x: textX,
+        y: textY,
+        value: angleConstraint.value.toFixed(1) + '°',
+        type: 'angle',
+      });
+    }
+  }
+
+  scene.add(group);
+  dimensionGroupRef.current = group;
+  return labels;
 }
 
 // Snap point detection
@@ -392,6 +805,68 @@ function renderSnapIndicator(
   snapIndicatorRef.current = group;
 }
 
+// Angle snap - snap to horizontal/vertical/45degrees when within threshold
+interface AngleSnapResult {
+  x: number;
+  y: number;
+  snappedAngle: 'horizontal' | 'vertical' | 'diagonal' | null;
+}
+
+function applyAngleSnap(
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  angleThresholdDegrees: number = 3
+): AngleSnapResult {
+  const dx = endX - startX;
+  const dy = endY - startY;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+
+  if (distance < 0.001) {
+    return { x: endX, y: endY, snappedAngle: null };
+  }
+
+  const angleRad = Math.atan2(dy, dx);
+  const angleDeg = angleRad * 180 / Math.PI;
+
+  // Normalize to 0-360
+  const normalizedAngle = ((angleDeg % 360) + 360) % 360;
+
+  // Check for horizontal (0°, 180°)
+  if (Math.abs(normalizedAngle) < angleThresholdDegrees ||
+      Math.abs(normalizedAngle - 180) < angleThresholdDegrees ||
+      Math.abs(normalizedAngle - 360) < angleThresholdDegrees) {
+    // Snap to horizontal
+    const snappedX = endX;
+    const snappedY = startY;
+    return { x: snappedX, y: snappedY, snappedAngle: 'horizontal' };
+  }
+
+  // Check for vertical (90°, 270°)
+  if (Math.abs(normalizedAngle - 90) < angleThresholdDegrees ||
+      Math.abs(normalizedAngle - 270) < angleThresholdDegrees) {
+    // Snap to vertical
+    const snappedX = startX;
+    const snappedY = endY;
+    return { x: snappedX, y: snappedY, snappedAngle: 'vertical' };
+  }
+
+  // Check for 45° angles (45°, 135°, 225°, 315°)
+  const diagonal45 = [45, 135, 225, 315];
+  for (const targetAngle of diagonal45) {
+    if (Math.abs(normalizedAngle - targetAngle) < angleThresholdDegrees) {
+      // Snap to 45 degree angle
+      const targetRad = targetAngle * Math.PI / 180;
+      const snappedX = startX + distance * Math.cos(targetRad);
+      const snappedY = startY + distance * Math.sin(targetRad);
+      return { x: snappedX, y: snappedY, snappedAngle: 'diagonal' };
+    }
+  }
+
+  return { x: endX, y: endY, snappedAngle: null };
+}
+
 // Render preview geometry (while drawing)
 function renderPreview(
   scene: THREE.Scene,
@@ -399,64 +874,252 @@ function renderPreview(
   activeTool: ToolType,
   pendingPoints: Array<{ x: number; y: number }>,
   currentMouse: { x: number; y: number } | null,
-  colors: CADColors
+  colors: CADColors,
+  pendingDimension: { mode: 'line' | 'circle' | 'point-to-point' | 'angle'; entityId: string; offset: number } | null,
+  entities: SketchEntities,
+  zoom: number,
+  containerWidth: number,
+  containerHeight: number
 ) {
   // Remove old preview
   if (previewGroupRef.current) {
     scene.remove(previewGroupRef.current);
     previewGroupRef.current.traverse((obj) => {
-      if (obj instanceof THREE.Line || obj instanceof THREE.Mesh) {
+      if (obj instanceof THREE.Line || obj instanceof THREE.Mesh || obj instanceof Line2) {
         obj.geometry.dispose();
-        (obj.material as THREE.Material).dispose();
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach(m => m.dispose());
+        } else {
+          (obj.material as THREE.Material).dispose();
+        }
       }
     });
+  }
+
+  // Handle dimension preview
+  if (pendingDimension && currentMouse) {
+    const group = new THREE.Group();
+    const dimMaterial = new THREE.LineBasicMaterial({ color: colors.fullyConstrained, linewidth: 2 });
+
+    if (pendingDimension.mode === 'line') {
+      const line = entities.lines.get(pendingDimension.entityId);
+      if (line) {
+        const startPoint = entities.points.get(line.startId);
+        const endPoint = entities.points.get(line.endId);
+        if (startPoint && endPoint) {
+          // Calculate perpendicular offset from mouse position
+          const dx = endPoint.x - startPoint.x;
+          const dy = endPoint.y - startPoint.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          const perpX = -dy / len;
+          const perpY = dx / len;
+          const midX = (startPoint.x + endPoint.x) / 2;
+          const midY = (startPoint.y + endPoint.y) / 2;
+
+          // Calculate offset from current mouse
+          const offset = (currentMouse.x - midX) * perpX + (currentMouse.y - midY) * perpY;
+
+          // Dimension line endpoints
+          const dim1X = startPoint.x + perpX * offset;
+          const dim1Y = startPoint.y + perpY * offset;
+          const dim2X = endPoint.x + perpX * offset;
+          const dim2Y = endPoint.y + perpY * offset;
+
+          // Draw dimension line
+          const dimLineGeom = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(dim1X, dim1Y, 0.7),
+            new THREE.Vector3(dim2X, dim2Y, 0.7),
+          ]);
+          group.add(new THREE.Line(dimLineGeom, dimMaterial));
+
+          // Draw extension lines
+          const ext1Geom = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(startPoint.x, startPoint.y, 0.7),
+            new THREE.Vector3(dim1X, dim1Y, 0.7),
+          ]);
+          group.add(new THREE.Line(ext1Geom, dimMaterial));
+
+          const ext2Geom = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(endPoint.x, endPoint.y, 0.7),
+            new THREE.Vector3(dim2X, dim2Y, 0.7),
+          ]);
+          group.add(new THREE.Line(ext2Geom, dimMaterial));
+
+          // Draw arrows
+          const arrowSize = 8 / zoom;
+          const arrowAngle = Math.PI / 6;
+          const angle1 = Math.atan2(dim2Y - dim1Y, dim2X - dim1X);
+
+          // Arrow at start
+          const arrow1a = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(dim1X, dim1Y, 0.7),
+            new THREE.Vector3(
+              dim1X + arrowSize * Math.cos(angle1 + Math.PI - arrowAngle),
+              dim1Y + arrowSize * Math.sin(angle1 + Math.PI - arrowAngle),
+              0.7
+            ),
+          ]);
+          group.add(new THREE.Line(arrow1a, dimMaterial));
+
+          const arrow1b = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(dim1X, dim1Y, 0.7),
+            new THREE.Vector3(
+              dim1X + arrowSize * Math.cos(angle1 + Math.PI + arrowAngle),
+              dim1Y + arrowSize * Math.sin(angle1 + Math.PI + arrowAngle),
+              0.7
+            ),
+          ]);
+          group.add(new THREE.Line(arrow1b, dimMaterial));
+
+          // Arrow at end
+          const arrow2a = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(dim2X, dim2Y, 0.7),
+            new THREE.Vector3(
+              dim2X + arrowSize * Math.cos(angle1 - arrowAngle),
+              dim2Y + arrowSize * Math.sin(angle1 - arrowAngle),
+              0.7
+            ),
+          ]);
+          group.add(new THREE.Line(arrow2a, dimMaterial));
+
+          const arrow2b = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(dim2X, dim2Y, 0.7),
+            new THREE.Vector3(
+              dim2X + arrowSize * Math.cos(angle1 + arrowAngle),
+              dim2Y + arrowSize * Math.sin(angle1 + arrowAngle),
+              0.7
+            ),
+          ]);
+          group.add(new THREE.Line(arrow2b, dimMaterial));
+
+          // Text background at center
+          const textX = midX + perpX * offset;
+          const textY = midY + perpY * offset;
+          const valueText = len.toFixed(1);
+          const textBgSize = (valueText.length * 6 + 8) / zoom;
+          const textBgHeight = 14 / zoom;
+          const bgGeom = new THREE.PlaneGeometry(textBgSize, textBgHeight);
+          const bgMat = new THREE.MeshBasicMaterial({ color: colors.background });
+          const bgMesh = new THREE.Mesh(bgGeom, bgMat);
+          bgMesh.position.set(textX, textY, 0.75);
+          group.add(bgMesh);
+        }
+      }
+    }
+
+    scene.add(group);
+    previewGroupRef.current = group;
+    return;
   }
 
   if (!currentMouse || pendingPoints.length === 0) return;
 
   const group = new THREE.Group();
-  const previewMaterial = new THREE.LineDashedMaterial({
+  const resolution = new THREE.Vector2(containerWidth, containerHeight);
+
+  // Use light blue color for preview lines (same weight as final)
+  const previewColor = '#93c5fd'; // Light blue for preview
+  const previewMaterial = new LineMaterial({
+    color: new THREE.Color(previewColor).getHex(),
+    linewidth: 3, // Same weight as final lines
+    resolution: resolution,
+    opacity: 0.9,
+    transparent: true,
+  });
+
+  // Dashed material for snap indicators
+  const dashedMaterial = new THREE.LineDashedMaterial({
     color: colors.underConstrained,
     dashSize: 5,
     gapSize: 3,
-    opacity: 0.7,
+    opacity: 0.5,
     transparent: true,
   });
 
   if (activeTool === 'line' && pendingPoints.length === 1) {
-    // Preview line from first point to cursor
-    const geometry = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(pendingPoints[0].x, pendingPoints[0].y, 0.4),
-      new THREE.Vector3(currentMouse.x, currentMouse.y, 0.4),
+    // Apply angle snapping
+    const angleSnap = applyAngleSnap(
+      pendingPoints[0].x, pendingPoints[0].y,
+      currentMouse.x, currentMouse.y
+    );
+
+    // Preview line from first point to (angle-snapped) cursor using Line2
+    const geometry = new LineGeometry();
+    geometry.setPositions([
+      pendingPoints[0].x, pendingPoints[0].y, 0.4,
+      angleSnap.x, angleSnap.y, 0.4,
     ]);
-    const line = new THREE.Line(geometry, previewMaterial);
+    const line = new Line2(geometry, previewMaterial.clone());
     line.computeLineDistances();
     group.add(line);
+
+    // Draw start point indicator
+    const startPointGeom = new THREE.CircleGeometry(6 / zoom, 16);
+    const startPointMat = new THREE.MeshBasicMaterial({ color: previewColor, opacity: 0.9, transparent: true });
+    const startPoint = new THREE.Mesh(startPointGeom, startPointMat);
+    startPoint.position.set(pendingPoints[0].x, pendingPoints[0].y, 0.45);
+    group.add(startPoint);
+
+    // Draw a visual indicator when angle is snapped
+    if (angleSnap.snappedAngle) {
+      const indicatorMaterial = new THREE.LineDashedMaterial({
+        color: '#22c55e', // Green for snap indicator
+        dashSize: 3,
+        gapSize: 2,
+        opacity: 0.5,
+        transparent: true,
+      });
+
+      // Draw a dotted line showing the constraint direction
+      const indicatorLength = 50;
+      if (angleSnap.snappedAngle === 'horizontal') {
+        const hLineGeom = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(pendingPoints[0].x - indicatorLength, pendingPoints[0].y, 0.35),
+          new THREE.Vector3(pendingPoints[0].x + indicatorLength, pendingPoints[0].y, 0.35),
+        ]);
+        const hLine = new THREE.Line(hLineGeom, indicatorMaterial);
+        hLine.computeLineDistances();
+        group.add(hLine);
+      } else {
+        const vLineGeom = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(pendingPoints[0].x, pendingPoints[0].y - indicatorLength, 0.35),
+          new THREE.Vector3(pendingPoints[0].x, pendingPoints[0].y + indicatorLength, 0.35),
+        ]);
+        const vLine = new THREE.Line(vLineGeom, indicatorMaterial);
+        vLine.computeLineDistances();
+        group.add(vLine);
+      }
+    }
   }
 
   if (activeTool === 'circle' && pendingPoints.length === 1) {
-    // Preview circle from center to cursor
+    // Preview circle from center to cursor using Line2
     const radius = Math.sqrt(
       Math.pow(currentMouse.x - pendingPoints[0].x, 2) +
       Math.pow(currentMouse.y - pendingPoints[0].y, 2)
     );
-    const geometry = new THREE.BufferGeometry();
     const segments = 64;
-    const points: THREE.Vector3[] = [];
+    const positions: number[] = [];
     for (let i = 0; i <= segments; i++) {
       const theta = (i / segments) * Math.PI * 2;
-      points.push(
-        new THREE.Vector3(
-          pendingPoints[0].x + Math.cos(theta) * radius,
-          pendingPoints[0].y + Math.sin(theta) * radius,
-          0.4
-        )
+      positions.push(
+        pendingPoints[0].x + Math.cos(theta) * radius,
+        pendingPoints[0].y + Math.sin(theta) * radius,
+        0.4
       );
     }
-    geometry.setFromPoints(points);
-    const circle = new THREE.Line(geometry, previewMaterial);
+    const geometry = new LineGeometry();
+    geometry.setPositions(positions);
+    const circle = new Line2(geometry, previewMaterial.clone());
     circle.computeLineDistances();
     group.add(circle);
+
+    // Draw center point indicator
+    const centerPointGeom = new THREE.CircleGeometry(6 / zoom, 16);
+    const centerPointMat = new THREE.MeshBasicMaterial({ color: previewColor, opacity: 0.9, transparent: true });
+    const centerPoint = new THREE.Mesh(centerPointGeom, centerPointMat);
+    centerPoint.position.set(pendingPoints[0].x, pendingPoints[0].y, 0.45);
+    group.add(centerPoint);
   }
 
   if ((activeTool === 'rectangle-corner' || activeTool === 'rectangle-center') && pendingPoints.length === 1) {
@@ -476,16 +1139,25 @@ function renderPreview(
       y2 = pendingPoints[0].y + halfH;
     }
 
-    const geometry = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(x1, y1, 0.4),
-      new THREE.Vector3(x2, y1, 0.4),
-      new THREE.Vector3(x2, y2, 0.4),
-      new THREE.Vector3(x1, y2, 0.4),
-      new THREE.Vector3(x1, y1, 0.4),
+    // Use Line2 for thick rectangle preview
+    const geometry = new LineGeometry();
+    geometry.setPositions([
+      x1, y1, 0.4,
+      x2, y1, 0.4,
+      x2, y2, 0.4,
+      x1, y2, 0.4,
+      x1, y1, 0.4,
     ]);
-    const rect = new THREE.Line(geometry, previewMaterial);
+    const rect = new Line2(geometry, previewMaterial.clone());
     rect.computeLineDistances();
     group.add(rect);
+
+    // Draw corner point indicator
+    const cornerPointGeom = new THREE.CircleGeometry(6 / zoom, 16);
+    const cornerPointMat = new THREE.MeshBasicMaterial({ color: previewColor, opacity: 0.9, transparent: true });
+    const cornerPoint = new THREE.Mesh(cornerPointGeom, cornerPointMat);
+    cornerPoint.position.set(pendingPoints[0].x, pendingPoints[0].y, 0.45);
+    group.add(cornerPoint);
   }
 
   scene.add(group);
@@ -602,6 +1274,7 @@ export default function Canvas({
   viewState,
   onViewChange,
   entities,
+  constraints,
   activeTool,
   constructionMode,
   onAddPoint,
@@ -609,8 +1282,13 @@ export default function Canvas({
   onAddCircle,
   onAddRectangle,
   onMovePoint,
+  onAddDimension,
+  onAddDistanceDimension,
+  onAddAngleDimension,
+  onUpdateConstraint,
   selectedEntityId,
   onSelectEntity,
+  overConstrainedEntities,
 }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -621,11 +1299,17 @@ export default function Canvas({
   const entityGroupRef = useRef<THREE.Group | null>(null);
   const previewGroupRef = useRef<THREE.Group | null>(null);
   const snapIndicatorRef = useRef<THREE.Group | null>(null);
+  const dimensionGroupRef = useRef<THREE.Group | null>(null);
 
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [pendingPoints, setPendingPoints] = useState<Array<{ x: number; y: number }>>([]);
   const [currentMouse, setCurrentMouse] = useState<{ x: number; y: number } | null>(null);
   const [snapPoint, setSnapPoint] = useState<SnapResult | null>(null);
+  const [dimensionLabels, setDimensionLabels] = useState<DimensionLabel[]>([]);
+
+  // Editing state for dimension values
+  const [editingDimension, setEditingDimension] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
 
   const isDraggingRef = useRef(false);
   const lastMouseRef = useRef({ x: 0, y: 0 });
@@ -634,6 +1318,14 @@ export default function Canvas({
   // Drag state for moving entities
   const isDraggingEntityRef = useRef(false);
   const draggingPointIdRef = useRef<string | null>(null);
+  const didDragRef = useRef(false); // Track if a drag occurred to skip click
+
+  // Dimension creation state - supports different dimension modes
+  const [pendingDimension, setPendingDimension] = useState<{
+    mode: 'line' | 'circle' | 'point-to-point' | 'angle';
+    entityId: string;  // For line/circle, the entity ID. For point-to-point, first point ID. For angle, first line ID.
+    offset: number;
+  } | null>(null);
 
   const colors = isDarkMode ? DARK_COLORS : LIGHT_COLORS;
 
@@ -650,6 +1342,13 @@ export default function Canvas({
 
     return { x: worldX, y: worldY };
   }, [viewState]);
+
+  // Convert world coordinates to screen coordinates for HTML overlay
+  const worldToScreen = useCallback((worldX: number, worldY: number) => {
+    const screenX = worldX * viewState.zoom + viewState.panX + containerSize.width / 2;
+    const screenY = -worldY * viewState.zoom - viewState.panY + containerSize.height / 2;
+    return { x: screenX, y: screenY };
+  }, [viewState, containerSize]);
 
   // Initialize Three.js
   useEffect(() => {
@@ -757,13 +1456,17 @@ export default function Canvas({
     originRef.current = origin;
 
     // Render entities
-    renderEntities(scene, entities, colors, entityGroupRef, containerSize.width, containerSize.height, selectedEntityId);
+    renderEntities(scene, entities, colors, entityGroupRef, containerSize.width, containerSize.height, selectedEntityId, viewState.zoom, overConstrainedEntities);
+
+    // Render dimensions and get label data for HTML overlay
+    const labels = renderDimensions(scene, entities, constraints, colors, dimensionGroupRef, viewState.zoom, containerSize.width, containerSize.height);
+    setDimensionLabels(labels);
 
     // Use snapped position for preview if available
     const previewMouse = snapPoint ? { x: snapPoint.x, y: snapPoint.y } : currentMouse;
 
     // Render preview
-    renderPreview(scene, previewGroupRef, activeTool, pendingPoints, previewMouse, colors);
+    renderPreview(scene, previewGroupRef, activeTool, pendingPoints, previewMouse, colors, pendingDimension, entities, viewState.zoom, containerSize.width, containerSize.height);
 
     // Render snap indicator
     renderSnapIndicator(scene, snapIndicatorRef, snapPoint, colors, viewState.zoom);
@@ -778,11 +1481,12 @@ export default function Canvas({
     camera.updateProjectionMatrix();
 
     renderer.render(scene, camera);
-  }, [viewState, colors, containerSize, entities, pendingPoints, currentMouse, activeTool, snapPoint, selectedEntityId]);
+  }, [viewState, colors, containerSize, entities, constraints, pendingPoints, currentMouse, activeTool, snapPoint, selectedEntityId, pendingDimension, overConstrainedEntities]);
 
-  // Clear pending points when tool changes
+  // Clear pending points and dimension when tool changes
   useEffect(() => {
     setPendingPoints([]);
+    setPendingDimension(null);
   }, [activeTool]);
 
   // Handle resize
@@ -847,6 +1551,12 @@ export default function Canvas({
     // Don't handle if we were dragging (panning or entity)
     if (isDraggingRef.current || isDraggingEntityRef.current) return;
 
+    // Skip click if we just finished dragging
+    if (didDragRef.current) {
+      didDragRef.current = false;
+      return;
+    }
+
     const world = screenToWorld(e.clientX, e.clientY);
 
     // Use snapped coordinates if available
@@ -856,7 +1566,7 @@ export default function Canvas({
     switch (activeTool) {
       case 'select': {
         // Hit test to find entity
-        const hitThreshold = 10 / viewState.zoom;
+        const hitThreshold = 20 / viewState.zoom; // 20 screen pixels
         const hit = hitTest(world.x, world.y, entities, hitThreshold);
         if (hit) {
           onSelectEntity(hit.entityId);
@@ -874,7 +1584,12 @@ export default function Canvas({
         if (pendingPoints.length === 0) {
           setPendingPoints([{ x: clickX, y: clickY }]);
         } else {
-          onAddLine(pendingPoints[0].x, pendingPoints[0].y, clickX, clickY);
+          // Apply angle snapping
+          const angleSnap = applyAngleSnap(
+            pendingPoints[0].x, pendingPoints[0].y,
+            clickX, clickY
+          );
+          onAddLine(pendingPoints[0].x, pendingPoints[0].y, angleSnap.x, angleSnap.y);
           setPendingPoints([]);
         }
         break;
@@ -916,8 +1631,230 @@ export default function Canvas({
           setPendingPoints([]);
         }
         break;
+
+      case 'dimension': {
+        if (!pendingDimension) {
+          // Phase 1: Click on an entity to start dimensioning (or select existing)
+          const hitThreshold = 20 / viewState.zoom;
+          const hit = hitTest(world.x, world.y, entities, hitThreshold);
+
+          // Check if clicking on a point (for point-to-point dimension)
+          if (hit && hit.entityType === 'point') {
+            // Store first point for point-to-point dimension
+            setPendingDimension({
+              mode: 'point-to-point',
+              entityId: hit.entityId,
+              offset: 30 / viewState.zoom,
+            });
+            break;
+          }
+
+          if (hit && (hit.entityType === 'line' || hit.entityType === 'circle')) {
+            // Check if entity already has a dimension - if so, select and edit it
+            let existingConstraintId: string | null = null;
+            let existingValue: string | null = null;
+
+            for (const [constraintId, constraint] of constraints) {
+              if (constraint.type === 'length' && (constraint as LengthConstraint).lineId === hit.entityId) {
+                existingConstraintId = constraintId;
+                existingValue = (constraint as LengthConstraint).value.toString();
+                break;
+              }
+              if (constraint.type === 'radius' && (constraint as RadiusConstraint).circleId === hit.entityId) {
+                existingConstraintId = constraintId;
+                existingValue = (constraint as RadiusConstraint).value.toString();
+                break;
+              }
+            }
+
+            if (existingConstraintId && existingValue) {
+              // Select and edit existing dimension
+              onSelectEntity(existingConstraintId);
+              setEditingDimension(existingConstraintId);
+              setEditValue(existingValue);
+              break;
+            }
+
+            // Check if Shift is held - if so, start angle dimension mode (line only)
+            if (e.shiftKey && hit.entityType === 'line') {
+              setPendingDimension({
+                mode: 'angle',
+                entityId: hit.entityId,
+                offset: 30 / viewState.zoom,
+              });
+              break;
+            }
+
+            // No existing dimension - create new one
+            // Calculate initial offset based on click position
+            let offset = 30 / viewState.zoom; // Default offset
+
+            if (hit.entityType === 'line') {
+              const line = entities.lines.get(hit.entityId);
+              if (line) {
+                const startPoint = entities.points.get(line.startId);
+                const endPoint = entities.points.get(line.endId);
+                if (startPoint && endPoint) {
+                  // Calculate perpendicular distance from click to line
+                  const dx = endPoint.x - startPoint.x;
+                  const dy = endPoint.y - startPoint.y;
+                  const len = Math.sqrt(dx * dx + dy * dy);
+                  if (len > 0) {
+                    const perpX = -dy / len;
+                    const perpY = dx / len;
+                    // Project click onto perpendicular
+                    const midX = (startPoint.x + endPoint.x) / 2;
+                    const midY = (startPoint.y + endPoint.y) / 2;
+                    offset = (world.x - midX) * perpX + (world.y - midY) * perpY;
+                    if (Math.abs(offset) < 20 / viewState.zoom) {
+                      offset = offset >= 0 ? 30 / viewState.zoom : -30 / viewState.zoom;
+                    }
+                  }
+                }
+              }
+            }
+
+            setPendingDimension({
+              mode: hit.entityType as 'line' | 'circle',
+              entityId: hit.entityId,
+              offset,
+            });
+          }
+        } else if (pendingDimension.mode === 'point-to-point') {
+          // Point-to-point dimension: second point clicked
+          const hitThreshold = 20 / viewState.zoom;
+          const hit = hitTest(world.x, world.y, entities, hitThreshold);
+
+          if (hit && hit.entityType === 'point' && hit.entityId !== pendingDimension.entityId) {
+            // Create distance dimension between two points
+            const point1 = entities.points.get(pendingDimension.entityId);
+            const point2 = entities.points.get(hit.entityId);
+
+            if (point1 && point2) {
+              // Calculate offset based on mouse position
+              const midX = (point1.x + point2.x) / 2;
+              const midY = (point1.y + point2.y) / 2;
+              const dx = point2.x - point1.x;
+              const dy = point2.y - point1.y;
+              const len = Math.sqrt(dx * dx + dy * dy);
+              let finalOffset = pendingDimension.offset;
+              if (len > 0) {
+                const perpX = -dy / len;
+                const perpY = dx / len;
+                finalOffset = (world.x - midX) * perpX + (world.y - midY) * perpY;
+              }
+
+              const constraintId = onAddDistanceDimension(pendingDimension.entityId, hit.entityId, finalOffset);
+
+              // Auto-start editing the new dimension
+              if (constraintId) {
+                const distance = Math.sqrt(
+                  Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2)
+                );
+                setEditValue((Math.round(distance * 10) / 10).toString());
+                setEditingDimension(constraintId);
+              }
+            }
+          } else if (hit && hit.entityType === 'line') {
+            // User clicked a line after a point - switch to angle dimension mode
+            // First we need two lines for an angle, so check if we can find the other line
+            // For now, require explicit two-line selection for angles
+          }
+
+          setPendingDimension(null);
+        } else if (pendingDimension.mode === 'angle') {
+          // Angle dimension: second line clicked
+          const hitThreshold = 20 / viewState.zoom;
+          const hit = hitTest(world.x, world.y, entities, hitThreshold);
+
+          if (hit && hit.entityType === 'line' && hit.entityId !== pendingDimension.entityId) {
+            // Create angle dimension between two lines
+            const constraintId = onAddAngleDimension(pendingDimension.entityId, hit.entityId, pendingDimension.offset);
+
+            // Auto-start editing the new dimension
+            if (constraintId) {
+              // Calculate angle between lines
+              const line1 = entities.lines.get(pendingDimension.entityId);
+              const line2 = entities.lines.get(hit.entityId);
+              if (line1 && line2) {
+                const p1Start = entities.points.get(line1.startId);
+                const p1End = entities.points.get(line1.endId);
+                const p2Start = entities.points.get(line2.startId);
+                const p2End = entities.points.get(line2.endId);
+                if (p1Start && p1End && p2Start && p2End) {
+                  const dx1 = p1End.x - p1Start.x;
+                  const dy1 = p1End.y - p1Start.y;
+                  const dx2 = p2End.x - p2Start.x;
+                  const dy2 = p2End.y - p2Start.y;
+                  const angle1 = Math.atan2(dy1, dx1);
+                  const angle2 = Math.atan2(dy2, dx2);
+                  let angleDiff = Math.abs(angle2 - angle1) * 180 / Math.PI;
+                  if (angleDiff > 180) angleDiff = 360 - angleDiff;
+                  setEditValue((Math.round(angleDiff * 10) / 10).toString());
+                  setEditingDimension(constraintId);
+                }
+              }
+            }
+          }
+
+          setPendingDimension(null);
+        } else {
+          // Phase 2: Click to place the dimension (line or circle mode)
+          // Calculate final offset from mouse position
+          let finalOffset = pendingDimension.offset;
+
+          if (pendingDimension.mode === 'line') {
+            const line = entities.lines.get(pendingDimension.entityId);
+            if (line) {
+              const startPoint = entities.points.get(line.startId);
+              const endPoint = entities.points.get(line.endId);
+              if (startPoint && endPoint) {
+                const dx = endPoint.x - startPoint.x;
+                const dy = endPoint.y - startPoint.y;
+                const len = Math.sqrt(dx * dx + dy * dy);
+                if (len > 0) {
+                  const perpX = -dy / len;
+                  const perpY = dx / len;
+                  const midX = (startPoint.x + endPoint.x) / 2;
+                  const midY = (startPoint.y + endPoint.y) / 2;
+                  finalOffset = (world.x - midX) * perpX + (world.y - midY) * perpY;
+                }
+              }
+            }
+          }
+
+          const constraintId = onAddDimension(pendingDimension.entityId, pendingDimension.mode as 'line' | 'circle', finalOffset);
+          setPendingDimension(null);
+
+          // Auto-start editing the new dimension
+          if (constraintId) {
+            // Get the current value for the edit input
+            if (pendingDimension.mode === 'line') {
+              const line = entities.lines.get(pendingDimension.entityId);
+              if (line) {
+                const startPoint = entities.points.get(line.startId);
+                const endPoint = entities.points.get(line.endId);
+                if (startPoint && endPoint) {
+                  const len = Math.sqrt(
+                    Math.pow(endPoint.x - startPoint.x, 2) +
+                    Math.pow(endPoint.y - startPoint.y, 2)
+                  );
+                  setEditValue((Math.round(len * 10) / 10).toString());
+                }
+              }
+            } else if (pendingDimension.mode === 'circle') {
+              const circle = entities.circles.get(pendingDimension.entityId);
+              if (circle) {
+                setEditValue((Math.round(circle.radius * 10) / 10).toString());
+              }
+            }
+            setEditingDimension(constraintId);
+          }
+        }
+        break;
+      }
     }
-  }, [activeTool, pendingPoints, screenToWorld, snapPoint, viewState.zoom, entities, onAddPoint, onAddLine, onAddCircle, onAddRectangle, onSelectEntity]);
+  }, [activeTool, pendingPoints, pendingDimension, screenToWorld, snapPoint, viewState.zoom, entities, constraints, onAddPoint, onAddLine, onAddCircle, onAddRectangle, onAddDimension, onAddDistanceDimension, onAddAngleDimension, onSelectEntity]);
 
   // Pan and drag handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -933,7 +1870,7 @@ export default function Canvas({
     // Left button - check for entity dragging in select mode
     if (e.button === 0 && activeTool === 'select') {
       const world = screenToWorld(e.clientX, e.clientY);
-      const hitThreshold = 10 / viewState.zoom;
+      const hitThreshold = 20 / viewState.zoom; // 20 screen pixels
       const hit = hitTest(world.x, world.y, entities, hitThreshold);
 
       // If we hit a point, start dragging it
@@ -953,13 +1890,42 @@ export default function Canvas({
 
     // Handle entity dragging
     if (isDraggingEntityRef.current && draggingPointIdRef.current) {
+      didDragRef.current = true; // Mark that we dragged
+
       // Use snap while dragging
       const snapThreshold = 15 / viewState.zoom;
       const snap = findSnapPoint(world.x, world.y, entities, snapThreshold);
       setSnapPoint(snap);
 
-      const moveX = snap ? snap.x : world.x;
-      const moveY = snap ? snap.y : world.y;
+      let moveX = snap ? snap.x : world.x;
+      let moveY = snap ? snap.y : world.y;
+
+      // Apply angle snapping relative to connected lines
+      // Find lines connected to this point
+      if (!snap) {
+        for (const line of entities.lines.values()) {
+          let otherPointId: string | null = null;
+          if (line.startId === draggingPointIdRef.current) {
+            otherPointId = line.endId;
+          } else if (line.endId === draggingPointIdRef.current) {
+            otherPointId = line.startId;
+          }
+
+          if (otherPointId) {
+            const otherPoint = entities.points.get(otherPointId);
+            if (otherPoint) {
+              // Check angle snapping relative to other point
+              const angleSnap = applyAngleSnap(otherPoint.x, otherPoint.y, world.x, world.y, 3);
+              if (angleSnap.snappedAngle) {
+                moveX = angleSnap.x;
+                moveY = angleSnap.y;
+                break; // Use first angle snap found
+              }
+            }
+          }
+        }
+      }
+
       onMovePoint(draggingPointIdRef.current, moveX, moveY);
       return;
     }
@@ -1017,6 +1983,8 @@ export default function Canvas({
     const handleGlobalMouseUp = () => {
       isDraggingRef.current = false;
       dragButtonRef.current = null;
+      isDraggingEntityRef.current = false;
+      draggingPointIdRef.current = null;
     };
 
     window.addEventListener('mouseup', handleGlobalMouseUp);
@@ -1042,16 +2010,98 @@ export default function Canvas({
   };
 
   return (
-    <div
-      ref={containerRef}
-      className="w-full h-full"
-      style={{ cursor: getCursor() }}
-      onClick={handleCanvasClick}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseLeave}
-      onContextMenu={handleContextMenu}
-    />
+    <div className="w-full h-full relative">
+      <div
+        ref={containerRef}
+        className="w-full h-full"
+        style={{ cursor: getCursor() }}
+        onClick={handleCanvasClick}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        onContextMenu={handleContextMenu}
+      />
+      {/* HTML overlay for dimension labels */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {dimensionLabels.map((label) => {
+          const screen = worldToScreen(label.x, label.y);
+          const isEditing = editingDimension === label.id;
+
+          if (isEditing) {
+            return (
+              <input
+                key={label.id}
+                type="text"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onFocus={(e) => e.target.select()} // Auto-select text for immediate typing
+                onBlur={() => {
+                  const num = parseFloat(editValue);
+                  if (!isNaN(num) && num > 0) {
+                    onUpdateConstraint(label.id, num);
+                  }
+                  setEditingDimension(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const num = parseFloat(editValue);
+                    if (!isNaN(num) && num > 0) {
+                      onUpdateConstraint(label.id, num);
+                    }
+                    setEditingDimension(null);
+                  } else if (e.key === 'Escape') {
+                    setEditingDimension(null);
+                  }
+                }}
+                autoFocus
+                className="absolute transform -translate-x-1/2 -translate-y-1/2 px-2 py-0.5 rounded text-xs font-medium text-center outline-none pointer-events-auto"
+                style={{
+                  left: screen.x,
+                  top: screen.y,
+                  backgroundColor: colors.background,
+                  color: colors.fullyConstrained,
+                  border: `2px solid ${colors.selected}`,
+                  fontSize: '12px',
+                  width: '60px',
+                }}
+              />
+            );
+          }
+
+          const isSelected = selectedEntityId === label.id;
+          const isOverConstrained = overConstrainedEntities.has(label.id);
+          const labelColor = isSelected ? colors.selected : isOverConstrained ? colors.overConstrained : colors.fullyConstrained;
+
+          return (
+            <div
+              key={label.id}
+              className="absolute transform -translate-x-1/2 -translate-y-1/2 px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap cursor-pointer pointer-events-auto hover:opacity-80"
+              style={{
+                left: screen.x,
+                top: screen.y,
+                backgroundColor: colors.background,
+                color: labelColor,
+                border: `2px solid ${labelColor}`,
+                fontSize: '12px',
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                // Single click selects
+                onSelectEntity(label.id);
+              }}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                // Double click edits
+                setEditingDimension(label.id);
+                setEditValue(label.value.replace('R', '')); // Remove 'R' prefix for radius
+              }}
+            >
+              {label.value}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

@@ -95,6 +95,7 @@ export interface LengthConstraint extends ConstraintBase {
   type: 'length';
   lineId: string;
   value: number;
+  offset?: number;   // Perpendicular offset for dimension display
   driven?: boolean;  // If true, this is a reference dimension, not a driving one
 }
 
@@ -102,6 +103,7 @@ export interface RadiusConstraint extends ConstraintBase {
   type: 'radius';
   circleId: string;
   value: number;
+  offset?: number;   // Display offset
   driven?: boolean;
 }
 
@@ -134,6 +136,16 @@ export interface AngleConstraint extends ConstraintBase {
   line1Id: string;
   line2Id: string;
   value: number;  // In degrees
+  offset?: number;  // Display offset for dimension arc
+  driven?: boolean;
+}
+
+export interface DistanceConstraint extends ConstraintBase {
+  type: 'distance';
+  point1Id: string;
+  point2Id: string;
+  value: number;
+  offset?: number;  // Perpendicular offset for dimension display
   driven?: boolean;
 }
 
@@ -163,6 +175,7 @@ export type Constraint =
   | TangentConstraint
   | EqualConstraint
   | AngleConstraint
+  | DistanceConstraint
   | MidpointConstraint
   | ConcentricConstraint;
 
