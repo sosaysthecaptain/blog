@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { NoteItem, updateNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap, generateSlug, blogSlugExists, recipeSlugExists } from "@/lib/notes";
+import { NoteItem, updateNote, getNoteById, getAllNoteTags, getTagColors, setTagColor, TagColorsMap, generateSlug, blogSlugExists, recipeSlugExists } from "@/lib/notes";
 import { getCurrentUser, isAdminEmail } from "@/lib/auth";
 import TiptapEditor from "./TiptapEditor";
 import TagInput from "./TagInput";
@@ -296,6 +296,73 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
     }
   }, [note, title, content, date, time, tags, published, slug, saveNoteData, onUpdate]);
 
+  // Refresh: save if not stale, then reload from server
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    if (!note.id) return;
+
+    setIsRefreshing(true);
+
+    try {
+      // Fetch the latest version from server
+      const serverNote = await getNoteById(note.id);
+      if (!serverNote) {
+        setIsRefreshing(false);
+        return;
+      }
+
+      // Compare updatedAt timestamps
+      const localUpdatedAt = note.updatedAt?.toDate?.() || note.updatedAt;
+      const serverUpdatedAt = serverNote.updatedAt?.toDate?.() || serverNote.updatedAt;
+
+      // If we have unsaved changes and server isn't newer, save first
+      if (saveStatus === "unsaved" && localUpdatedAt && serverUpdatedAt) {
+        const localTime = new Date(localUpdatedAt).getTime();
+        const serverTime = new Date(serverUpdatedAt).getTime();
+
+        if (serverTime <= localTime) {
+          // Server version is same or older - safe to save our changes
+          await saveNoteData(note.id, { title, content, date, time, tags, published, slug });
+        }
+        // If server is newer, we skip saving to avoid overwriting
+      }
+
+      // Now reload the note from server
+      const freshNote = await getNoteById(note.id);
+      if (freshNote) {
+        // Update local state with fresh data
+        setTitle(freshNote.title);
+        setContent(freshNote.content || "");
+        setDate(freshNote.date || new Date().toISOString().split("T")[0]);
+        setTime(freshNote.time || "");
+        setTags(freshNote.tags || []);
+        setPublished(freshNote.published || false);
+        setSlug(freshNote.slug || "");
+        setSaveStatus("saved");
+
+        // Update the ref
+        prevNoteRef.current = {
+          id: freshNote.id || "",
+          title: freshNote.title,
+          content: freshNote.content || "",
+          date: freshNote.date || new Date().toISOString().split("T")[0],
+          time: freshNote.time || "",
+          tags: freshNote.tags || [],
+          published: freshNote.published || false,
+          slug: freshNote.slug || "",
+        };
+
+        // Notify parent
+        onUpdate(freshNote);
+      }
+    } catch (error) {
+      console.error("Refresh failed:", error);
+    }
+
+    setIsRefreshing(false);
+  }, [note, saveStatus, title, content, date, time, tags, published, slug, saveNoteData, onUpdate]);
+
   // Keyboard shortcut: Cmd+S to save
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -375,11 +442,27 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
               </button>
             )}
           </div>
-          {saveStatus === "saving" && (
-            <svg className="w-4 h-4 text-[--muted] animate-pulse" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/>
-            </svg>
-          )}
+          <div className="flex items-center gap-2">
+            {saveStatus === "saving" && (
+              <svg className="w-4 h-4 text-[--muted] animate-pulse" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/>
+              </svg>
+            )}
+            {saveStatus === "unsaved" && (
+              <span className="w-2 h-2 rounded-full bg-[--warning]" title="Unsaved changes" />
+            )}
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="p-1 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded disabled:opacity-50"
+              title="Save & Refresh"
+            >
+              <svg className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Tags and Publish */}

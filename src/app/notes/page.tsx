@@ -85,7 +85,85 @@ export default function NotesPage() {
   const loadNotes = async () => {
     const notes = await getAllNotes();
     setItems(notes);
+    return notes;
   };
+
+  // URL routing helpers
+  const slugify = (text: string): string => {
+    return text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  };
+
+  const getNotePath = useCallback((item: NoteItem, allItems: NoteItem[]): string => {
+    const parts: string[] = [];
+    let current: NoteItem | undefined = item;
+
+    while (current) {
+      parts.unshift(slugify(current.title || "untitled"));
+      current = allItems.find((i) => i.id === current?.parentId);
+    }
+
+    return parts.join("/");
+  }, []);
+
+  const findNoteByPath = useCallback((path: string, allItems: NoteItem[]): NoteItem | null => {
+    const parts = path.split("/").filter(Boolean);
+    if (parts.length === 0) return null;
+
+    let currentParentId: string | null = null;
+    let foundItem: NoteItem | null = null;
+
+    for (const part of parts) {
+      foundItem = allItems.find((item) => {
+        const itemSlug = slugify(item.title || "untitled");
+        return itemSlug === part && item.parentId === currentParentId;
+      }) || null;
+
+      if (!foundItem) return null;
+      currentParentId = foundItem.id!;
+    }
+
+    return foundItem;
+  }, []);
+
+  // Sync URL with selected item (using hash for static export compatibility)
+  const updateUrlForItem = useCallback((item: NoteItem | null, allItems: NoteItem[]) => {
+    if (!item) {
+      window.history.replaceState({}, "", "/notes");
+      return;
+    }
+    const path = getNotePath(item, allItems);
+    window.history.replaceState({}, "", `/notes#${path}`);
+  }, [getNotePath]);
+
+  // Parse URL hash on initial load and hash changes
+  useEffect(() => {
+    if (!user || items.length === 0) return;
+
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace(/^#/, "");
+      if (hash) {
+        const item = findNoteByPath(hash, items);
+        if (item) {
+          setSelectedItem(item);
+          if (item.type === "folder") {
+            setCurrentFolderId(item.id!);
+          } else if (item.parentId) {
+            setCurrentFolderId(item.parentId);
+          }
+        }
+      }
+    };
+
+    // Check on initial load
+    handleHashChange();
+
+    // Listen for hash changes (browser back/forward)
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, [user, items, findNoteByPath]);
 
   const handleSignIn = async () => {
     try {
@@ -104,6 +182,7 @@ export default function NotesPage() {
     if (item.type === "folder") {
       setCurrentFolderId(item.id!);
     }
+    updateUrlForItem(item, items);
   };
 
   const handleCreateNote = async (parentId: string | null) => {
@@ -157,6 +236,7 @@ export default function NotesPage() {
 
       if (selectedItem?.id === item.id) {
         setSelectedItem(null);
+        updateUrlForItem(null, items);
       }
       await loadNotes();
     };
@@ -214,8 +294,10 @@ export default function NotesPage() {
       const parent = items.find((i) => i.id === selectedItem.parentId);
       setSelectedItem(parent || null);
       setCurrentFolderId(parent?.id || null);
+      updateUrlForItem(parent || null, items);
     } else {
       setSelectedItem(null);
+      updateUrlForItem(null, items);
     }
   };
 
@@ -495,6 +577,65 @@ ${content}`;
     await exportNotes(notes, `${folderName}-export-${new Date().toISOString().split("T")[0]}.zip`);
   };
 
+  const handleExportArchivable = async (folderId: string) => {
+    const folder = items.find((i) => i.id === folderId);
+    const notes = getNotesInFolder(folderId);
+    const folderName = folder?.title || "folder";
+
+    // Build a single markdown file with all notes
+    let archiveContent = `# ${folderName}\n\nExported: ${new Date().toLocaleDateString()}\n\n---\n\n`;
+
+    for (const note of notes) {
+      let content = note.content || "";
+
+      // Convert HTML to markdown
+      content = content
+        // Remove images entirely for print version
+        .replace(/<figure[^>]*>[\s\S]*?<\/figure>/gi, "")
+        .replace(/<img[^>]*>/gi, "")
+        // Convert headers
+        .replace(/<h1[^>]*>([\s\S]*?)<\/h1>/g, "# $1\n\n")
+        .replace(/<h2[^>]*>([\s\S]*?)<\/h2>/g, "## $1\n\n")
+        .replace(/<h3[^>]*>([\s\S]*?)<\/h3>/g, "### $1\n\n")
+        .replace(/<p[^>]*>([\s\S]*?)<\/p>/g, "$1\n\n")
+        .replace(/<strong[^>]*>([\s\S]*?)<\/strong>/g, "**$1**")
+        .replace(/<em[^>]*>([\s\S]*?)<\/em>/g, "*$1*")
+        .replace(/<ul[^>]*>([\s\S]*?)<\/ul>/g, "$1")
+        .replace(/<li[^>]*>([\s\S]*?)<\/li>/g, "- $1\n")
+        .replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/g, "> $1\n\n")
+        .replace(/<code[^>]*>([\s\S]*?)<\/code>/g, "`$1`")
+        .replace(/<pre[^>]*>([\s\S]*?)<\/pre>/g, "```\n$1\n```\n\n")
+        .replace(/<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, "[$2]($1)")
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+
+      // Add note header
+      archiveContent += `## ${note.title || "Untitled"}\n\n`;
+      if (note.date) {
+        archiveContent += `*${note.date}*\n\n`;
+      }
+      if (note.tags && note.tags.length > 0) {
+        archiveContent += `Tags: ${note.tags.join(", ")}\n\n`;
+      }
+      archiveContent += `${content}\n\n---\n\n`;
+    }
+
+    // Download as .md file
+    const blob = new Blob([archiveContent], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${folderName}-archive-${new Date().toISOString().split("T")[0]}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Convert markdown to simple HTML for TipTap
   const markdownToHtml = (md: string): string => {
     return md
@@ -696,10 +837,12 @@ ${content}`;
             // Clear selection when searching so results are visible
             if (query) {
               setSelectedItem(null);
+              updateUrlForItem(null, items);
             }
           }}
           onExport={handleExport}
           onExportFolder={handleExportFolder}
+          onExportArchivable={handleExportArchivable}
           onImportBlogPosts={handleImportBlogPosts}
           onToggleDarkMode={toggleDarkMode}
           onSignOut={handleSignOut}
@@ -740,9 +883,11 @@ ${content}`;
               if (parent) {
                 setSelectedItem(parent);
                 setCurrentFolderId(parent.id!);
+                updateUrlForItem(parent, items);
               } else {
                 setSelectedItem(null);
                 setCurrentFolderId(null);
+                updateUrlForItem(null, items);
               }
             }}
             isFullWidth={isFullWidth}

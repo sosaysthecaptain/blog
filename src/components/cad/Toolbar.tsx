@@ -21,13 +21,14 @@ interface ToolButtonProps {
 function ToolButton({ icon, label, shortcut, active, onClick }: ToolButtonProps) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={`
-        flex items-center justify-center w-8 h-8 rounded
+        flex items-center justify-center w-8 h-8 rounded cursor-pointer
         transition-colors
         ${active
-          ? 'bg-[--accent] text-white'
-          : 'hover:bg-[--hover] text-[--foreground]'
+          ? 'bg-blue-600 text-white'
+          : 'hover:bg-[var(--hover)] text-[var(--foreground)]'
         }
       `}
       title={`${label}${shortcut ? ` (${shortcut})` : ''}`}
@@ -70,13 +71,14 @@ function ToolDropdown({ tools, activeTool, onToolChange, lastUsed }: ToolDropdow
     <div ref={dropdownRef} className="relative">
       <div className="flex">
         <button
+          type="button"
           onClick={() => onToolChange(currentTool.id)}
           className={`
-            flex items-center justify-center w-8 h-8 rounded-l
+            flex items-center justify-center w-8 h-8 rounded-l cursor-pointer
             transition-colors
             ${isActive
-              ? 'bg-[--accent] text-white'
-              : 'hover:bg-[--hover] text-[--foreground]'
+              ? 'bg-blue-600 text-white'
+              : 'hover:bg-[var(--hover)] text-[var(--foreground)]'
             }
           `}
           title={`${currentTool.label}${currentTool.shortcut ? ` (${currentTool.shortcut})` : ''}`}
@@ -84,13 +86,14 @@ function ToolDropdown({ tools, activeTool, onToolChange, lastUsed }: ToolDropdow
           {currentTool.icon}
         </button>
         <button
+          type="button"
           onClick={() => setIsOpen(!isOpen)}
           className={`
-            flex items-center justify-center w-4 h-8 rounded-r border-l border-[--border]
+            flex items-center justify-center w-4 h-8 rounded-r border-l border-[var(--border)] cursor-pointer
             transition-colors
             ${isActive
-              ? 'bg-[--accent] text-white'
-              : 'hover:bg-[--hover] text-[--foreground]'
+              ? 'bg-blue-600 text-white'
+              : 'hover:bg-[var(--hover)] text-[var(--foreground)]'
             }
           `}
         >
@@ -103,13 +106,14 @@ function ToolDropdown({ tools, activeTool, onToolChange, lastUsed }: ToolDropdow
         <div className="absolute top-full left-0 mt-1 bg-[--background] border border-[--border] rounded shadow-lg z-50 min-w-[160px]">
           {tools.map((tool) => (
             <button
+              type="button"
               key={tool.id}
               onClick={() => {
                 onToolChange(tool.id);
                 setIsOpen(false);
               }}
               className={`
-                flex items-center gap-2 w-full px-3 py-2 text-left text-sm
+                flex items-center gap-2 w-full px-3 py-2 text-left text-sm cursor-pointer
                 ${activeTool === tool.id ? 'bg-[--hover]' : 'hover:bg-[--hover]'}
               `}
             >
@@ -227,7 +231,7 @@ export default function Toolbar({
   };
 
   return (
-    <div className="flex items-center gap-1 px-2 py-1.5 bg-[--sidebar-bg] border-b border-[--border]">
+    <div className="flex items-center gap-1 px-2 py-1.5 bg-[--sidebar-bg] border-b border-[--border] relative z-10">
       {/* Selection */}
       <ToolButton
         icon={Icons.select}

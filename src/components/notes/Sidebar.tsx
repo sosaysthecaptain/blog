@@ -28,6 +28,7 @@ interface SidebarProps {
   onSearch: (query: string) => void;
   onExport: () => void;
   onExportFolder: (folderId: string) => void;
+  onExportArchivable: (folderId: string) => void;
   onImportBlogPosts: () => void;
   onToggleDarkMode: () => void;
   onToggleFullWidth: () => void;
@@ -59,6 +60,7 @@ export default function Sidebar({
   onSearch,
   onExport,
   onExportFolder,
+  onExportArchivable,
   onImportBlogPosts,
   onToggleDarkMode,
   onToggleFullWidth,
@@ -446,7 +448,7 @@ export default function Sidebar({
       {/* Context Menu */}
       {contextMenu && (
         <div
-          className="fixed rounded shadow-lg py-1 z-50 min-w-[140px]"
+          className="fixed rounded shadow-lg py-1 z-50 min-w-[160px]"
           style={{
             left: contextMenu.x,
             top: contextMenu.y,
@@ -489,16 +491,28 @@ export default function Sidebar({
                 Rename
               </button>
               {contextMenu.item.type === "folder" && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onExportFolder(contextMenu.item!.id!);
-                    closeContextMenu();
-                  }}
-                  className="context-menu-item"
-                >
-                  Export Folder
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onExportFolder(contextMenu.item!.id!);
+                      closeContextMenu();
+                    }}
+                    className="context-menu-item"
+                  >
+                    Export Folder
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onExportArchivable(contextMenu.item!.id!);
+                      closeContextMenu();
+                    }}
+                    className="context-menu-item"
+                  >
+                    Export Archivable
+                  </button>
+                </>
               )}
               <button
                 type="button"

@@ -10,7 +10,20 @@ import {
   ToolType,
   ViewState,
   ConstraintStatus,
+  SketchEntities,
+  Constraint,
 } from '@/lib/cad/types';
+import {
+  createEmptyEntities,
+  addPoint,
+  addLine,
+  addCircle,
+  addRectangle,
+  movePoint,
+  calculateDOF,
+  getConstraintStatus,
+  generateCode,
+} from '@/lib/cad/sketch';
 
 // Dynamic import for Canvas to avoid SSR issues with Three.js
 const Canvas = dynamic(() => import('@/components/cad/Canvas'), {
@@ -21,26 +34,6 @@ const Canvas = dynamic(() => import('@/components/cad/Canvas'), {
     </div>
   ),
 });
-
-// Generate placeholder code for the sketch
-function generateSketchCode(): string {
-  return `// Sketch API
-const sketch = new Sketch();
-
-// Origin is fixed at (0, 0)
-const origin = sketch.origin;
-
-// Add geometry here...
-// const p1 = sketch.addPoint(10, 20);
-// const line = sketch.addLine(origin, p1);
-
-// Add constraints...
-// sketch.constrain.horizontal(line);
-// sketch.constrain.length(line, 50);
-
-sketch.solve();
-`;
-}
 
 export default function CADPage() {
   const { isDark, toggle: toggleDarkMode, mounted } = useDarkMode();
@@ -56,24 +49,24 @@ export default function CADPage() {
   const [activeTool, setActiveTool] = useState<ToolType>('select');
   const [constructionMode, setConstructionMode] = useState(false);
 
-  // Sketch state (placeholder for now)
-  const [degreesOfFreedom] = useState(0);
-  const [constraintStatus] = useState<ConstraintStatus>('fully-constrained');
+  // Sketch state
+  const [entities, setEntities] = useState<SketchEntities>(createEmptyEntities);
+  const [constraints, setConstraints] = useState<Map<string, Constraint>>(new Map());
+
+  // Computed sketch status
+  const degreesOfFreedom = calculateDOF(entities, constraints);
+  const constraintStatus = getConstraintStatus(degreesOfFreedom);
 
   // Cursor position
   const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
 
   // Code representation
-  const [code, setCode] = useState(generateSketchCode());
+  const [code, setCode] = useState('');
 
-  // Don't render until mounted to avoid hydration issues
-  if (!mounted) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-[--background]">
-        <span className="text-[--muted]">Loading CAD...</span>
-      </div>
-    );
-  }
+  // Update code when entities or constraints change
+  useEffect(() => {
+    setCode(generateCode(entities, constraints));
+  }, [entities, constraints]);
 
   // Handle view changes from canvas
   const handleViewChange = useCallback((newView: ViewState) => {
@@ -85,8 +78,47 @@ export default function CADPage() {
     setActiveTool(tool);
   }, []);
 
+  // Drawing handlers
+  const handleAddPoint = useCallback((x: number, y: number) => {
+    setEntities(prev => {
+      const { entities: newEntities } = addPoint(prev, x, y, constructionMode);
+      return newEntities;
+    });
+  }, [constructionMode]);
+
+  const handleAddLine = useCallback((x1: number, y1: number, x2: number, y2: number) => {
+    setEntities(prev => {
+      const { entities: newEntities } = addLine(prev, x1, y1, x2, y2, constructionMode);
+      return newEntities;
+    });
+  }, [constructionMode]);
+
+  const handleAddCircle = useCallback((cx: number, cy: number, radius: number) => {
+    setEntities(prev => {
+      const { entities: newEntities } = addCircle(prev, cx, cy, radius, constructionMode);
+      return newEntities;
+    });
+  }, [constructionMode]);
+
+  const handleAddRectangle = useCallback((x1: number, y1: number, x2: number, y2: number) => {
+    setEntities(prev => {
+      const { entities: newEntities } = addRectangle(prev, x1, y1, x2, y2, constructionMode);
+      return newEntities;
+    });
+  }, [constructionMode]);
+
+  // Selection state
+  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+
+  // Move point handler
+  const handleMovePoint = useCallback((pointId: string, x: number, y: number) => {
+    setEntities(prev => movePoint(prev, pointId, x, y));
+  }, []);
+
   // Handle keyboard shortcuts
   useEffect(() => {
+    if (!mounted) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore if typing in an input
       if (
@@ -126,12 +158,13 @@ export default function CADPage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [mounted]);
 
   // Track mouse position for status bar
   useEffect(() => {
+    if (!mounted) return;
+
     const handleMouseMove = (e: MouseEvent) => {
-      // Convert screen coords to world coords
       const rect = document.querySelector('.cad-canvas-container')?.getBoundingClientRect();
       if (!rect) return;
 
@@ -160,7 +193,16 @@ export default function CADPage() {
         container.removeEventListener('mouseleave', handleMouseLeave);
       }
     };
-  }, [viewState]);
+  }, [viewState, mounted]);
+
+  // Don't render main content until mounted to avoid hydration issues
+  if (!mounted) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-[--background]">
+        <span className="text-[--muted]">Loading CAD...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen flex flex-col bg-[--background] overflow-hidden">
@@ -211,6 +253,16 @@ export default function CADPage() {
             isDarkMode={isDark}
             viewState={viewState}
             onViewChange={handleViewChange}
+            entities={entities}
+            activeTool={activeTool}
+            constructionMode={constructionMode}
+            onAddPoint={handleAddPoint}
+            onAddLine={handleAddLine}
+            onAddCircle={handleAddCircle}
+            onAddRectangle={handleAddRectangle}
+            onMovePoint={handleMovePoint}
+            selectedEntityId={selectedEntityId}
+            onSelectEntity={setSelectedEntityId}
           />
         </div>
 
