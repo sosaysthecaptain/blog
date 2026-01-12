@@ -63,8 +63,8 @@ export default function StyleGuidePage() {
               onClick={() => setSelectedCategory(cat.id)}
               className={`w-full px-4 py-2 text-sm text-left transition-colors ${
                 selectedCategory === cat.id
-                  ? "bg-[--hover] text-[--accent] border-l-2 border-[--accent]"
-                  : "text-[--foreground] hover:bg-[--hover]"
+                  ? "bg-blue-50 text-blue-600 border-l-2 border-blue-600"
+                  : "text-[--foreground] hover:bg-gray-100"
               }`}
             >
               {cat.label}
@@ -218,31 +218,17 @@ function ButtonsSection() {
         Button variants used across the application.
       </p>
 
-      <ComponentBlock title="Primary Buttons" description="Main call-to-action buttons">
-        <div className="flex flex-wrap gap-4">
-          <button className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
-            Primary Button
-          </button>
-          <button className="px-4 py-2 bg-blue-600 text-white rounded text-sm opacity-50 cursor-not-allowed">
-            Disabled
-          </button>
-          <button className="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700">
-            Large Button
-          </button>
-        </div>
-      </ComponentBlock>
-
-      <ComponentBlock title="Secondary Buttons" description="Less prominent actions">
-        <div className="flex flex-wrap gap-4">
-          <button className="px-4 py-2 border border-[--border] rounded text-sm hover:bg-[--hover] text-[--foreground]">
-            Secondary
-          </button>
-          <button className="px-4 py-2 text-[--muted] hover:text-[--foreground] text-sm">
-            Text Button
-          </button>
-          <button className="px-4 py-2 text-red-600 hover:bg-red-50 rounded text-sm">
-            Danger Text
-          </button>
+      <ComponentBlock title="Primary Buttons" description="Monochrome buttons with invert on press">
+        <div className="space-y-4">
+          <div className="flex gap-3 items-center">
+            <button className="dialog-btn dialog-btn-primary">Primary</button>
+            <button className="dialog-btn dialog-btn-secondary">Secondary</button>
+            <button className="dialog-btn dialog-btn-danger">Danger</button>
+          </div>
+          <p className="text-xs text-[--muted]">
+            CSS classes: <code className="bg-[--hover] px-1 rounded">dialog-btn dialog-btn-primary</code>, etc.
+            Press and hold to see invert effect.
+          </p>
         </div>
       </ComponentBlock>
 
@@ -272,13 +258,13 @@ function ButtonsSection() {
       </ComponentBlock>
 
       <ComponentBlock title="Sidebar Nav Buttons" description="Vertical navigation items">
-        <div className="w-14 bg-[--sidebar-bg] border border-[--border] rounded">
-          <button className="w-full p-4 bg-[--background] text-[--accent] border-l-2 border-[--accent]">
+        <div className="w-14 bg-gray-50 border border-[--border] rounded">
+          <button className="w-full p-4 bg-white text-blue-600 border-l-2 border-blue-600">
             <svg className="w-5 h-5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </button>
-          <button className="w-full p-4 text-[--muted] hover:bg-[--hover]">
+          <button className="w-full p-4 text-[--muted] hover:bg-gray-100">
             <svg className="w-5 h-5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
             </svg>
