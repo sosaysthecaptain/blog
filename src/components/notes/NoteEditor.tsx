@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { NoteItem, updateNote, subscribeToNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap, generateSlug, blogSlugExists, recipeSlugExists } from "@/lib/notes";
+import { findRemovedFiles, deleteFileByUrl } from "@/lib/notes-storage";
 import { getCurrentUser, isAdminEmail } from "@/lib/auth";
 import TiptapEditor from "./TiptapEditor";
 import TagInput from "./TagInput";
@@ -37,6 +38,10 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
   const [remoteNote, setRemoteNote] = useState<NoteItem | null>(null);
   const [hasRemoteChanges, setHasRemoteChanges] = useState(false);
   const [showConflictDialog, setShowConflictDialog] = useState(false);
+
+  // File cleanup state
+  const [pendingDeleteFiles, setPendingDeleteFiles] = useState<string[]>([]);
+  const [showDeleteFilesDialog, setShowDeleteFilesDialog] = useState(false);
 
   // Lightbox state
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -127,11 +132,11 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
           (updatedNote.slug || "") !== saved.slug;
 
         if (remoteChanged) {
-          // Only show as remote changes if we don't have local changes
-          // If we have local changes, this becomes a conflict
-          if (hasLocalChanges) {
+          // Only show conflict if we have local changes AND we're not currently saving
+          // (our own save triggers the listener too, so ignore during save)
+          if (hasLocalChanges && !isSaving) {
             setShowConflictDialog(true);
-          } else {
+          } else if (!hasLocalChanges) {
             // No local changes - auto-apply remote changes
             setTitle(updatedNote.title);
             setContent(updatedNote.content || "");
@@ -159,7 +164,7 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
     });
 
     return () => unsubscribe();
-  }, [note.id, hasLocalChanges, onUpdate]);
+  }, [note.id, hasLocalChanges, isSaving, onUpdate]);
 
   // Track local changes
   useEffect(() => {
@@ -178,17 +183,22 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
     setHasLocalChanges(changed);
   }, [title, content, date, time, tags, published, slug]);
 
-  // Save function
-  const handleSave = useCallback(async () => {
+  // Core save function (actually performs the save)
+  const performSave = useCallback(async (filesToDelete: string[] = []) => {
     if (!note.id || isSaving) return;
 
     setIsSaving(true);
     try {
+      // Delete removed files from storage
+      for (const url of filesToDelete) {
+        await deleteFileByUrl(url);
+      }
+
       await updateNote(note.id, {
         title,
         content,
         date,
-        time: time || undefined,
+        time: time || null, // Firestore accepts null but not undefined
         tags,
         published,
         slug,
@@ -205,6 +215,38 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
     }
     setIsSaving(false);
   }, [note, title, content, date, time, tags, published, slug, isSaving, onUpdate]);
+
+  // Save function - checks for removed files first
+  const handleSave = useCallback(async () => {
+    if (!note.id || isSaving) return;
+
+    // Check for removed files
+    const savedContent = savedVersionRef.current?.content || "";
+    const removedFiles = findRemovedFiles(savedContent, content);
+
+    if (removedFiles.length > 0) {
+      // Show confirmation dialog
+      setPendingDeleteFiles(removedFiles);
+      setShowDeleteFilesDialog(true);
+    } else {
+      // No files to delete, save directly
+      await performSave();
+    }
+  }, [note.id, isSaving, content, performSave]);
+
+  // Handle confirming file deletion
+  const handleConfirmDeleteFiles = useCallback(async () => {
+    setShowDeleteFilesDialog(false);
+    await performSave(pendingDeleteFiles);
+    setPendingDeleteFiles([]);
+  }, [pendingDeleteFiles, performSave]);
+
+  // Handle skipping file deletion (save without deleting)
+  const handleSkipDeleteFiles = useCallback(async () => {
+    setShowDeleteFilesDialog(false);
+    await performSave();
+    setPendingDeleteFiles([]);
+  }, [performSave]);
 
   // Discard local changes and load remote version
   const handleDiscardLocal = useCallback(() => {
@@ -474,6 +516,18 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
         variant="danger"
         onConfirm={handleOverwriteRemote}
         onCancel={handleDiscardLocal}
+      />
+
+      {/* Delete Files Dialog */}
+      <ConfirmDialog
+        open={showDeleteFilesDialog}
+        title="Delete Removed Files?"
+        message={`You removed ${pendingDeleteFiles.length} file${pendingDeleteFiles.length === 1 ? '' : 's'} from this note. Do you want to permanently delete ${pendingDeleteFiles.length === 1 ? 'it' : 'them'} from storage?`}
+        confirmLabel="Delete Files"
+        cancelLabel="Keep Files"
+        variant="danger"
+        onConfirm={handleConfirmDeleteFiles}
+        onCancel={handleSkipDeleteFiles}
       />
     </div>
   );

@@ -8,6 +8,65 @@ import {
 } from "firebase/storage";
 import { storage } from "./firebase";
 
+// Extract all Firebase Storage URLs from HTML content (images and file attachments)
+export function extractStorageUrls(html: string): string[] {
+  if (!html) return [];
+
+  const urls: string[] = [];
+
+  // Match Firebase Storage URLs in img src and a href
+  // Firebase Storage URLs look like: https://firebasestorage.googleapis.com/v0/b/...
+  const regex = /https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/[^"'\s<>]+/g;
+  const matches = html.match(regex);
+
+  if (matches) {
+    // Dedupe
+    const seen = new Set<string>();
+    for (const url of matches) {
+      // Clean up any HTML entities or trailing characters
+      const cleanUrl = url.split('&quot;')[0].split('"')[0];
+      if (!seen.has(cleanUrl)) {
+        seen.add(cleanUrl);
+        urls.push(cleanUrl);
+      }
+    }
+  }
+
+  return urls;
+}
+
+// Delete a file from storage by its download URL
+export async function deleteFileByUrl(url: string): Promise<boolean> {
+  try {
+    // Extract the storage path from the URL
+    // URL format: https://firebasestorage.googleapis.com/v0/b/BUCKET/o/PATH?token=...
+    const match = url.match(/\/o\/([^?]+)/);
+    if (!match) return false;
+
+    const path = decodeURIComponent(match[1]);
+    const storageRef = ref(storage, path);
+    await deleteObject(storageRef);
+    return true;
+  } catch (error) {
+    console.error("Error deleting file:", error);
+    return false;
+  }
+}
+
+// Find files that were removed (in oldUrls but not in newUrls)
+export function findRemovedFiles(oldContent: string, newContent: string): string[] {
+  const oldUrls = new Set(extractStorageUrls(oldContent));
+  const newUrls = new Set(extractStorageUrls(newContent));
+
+  const removed: string[] = [];
+  for (const url of oldUrls) {
+    if (!newUrls.has(url)) {
+      removed.push(url);
+    }
+  }
+  return removed;
+}
+
 // Upload an image for a note
 export async function uploadNoteImage(
   blob: Blob,
@@ -19,6 +78,21 @@ export async function uploadNoteImage(
   const storageRef = ref(storage, path);
   await uploadBytes(storageRef, blob);
   return getDownloadURL(storageRef);
+}
+
+// Upload a file (any type) for a note
+export async function uploadNoteFile(
+  file: File,
+  noteId: string
+): Promise<{ url: string; filename: string; size: number }> {
+  const timestamp = Date.now();
+  // Preserve original filename but prefix with timestamp for uniqueness
+  const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+  const path = `notes/${noteId}/files/${timestamp}_${sanitizedName}`;
+  const storageRef = ref(storage, path);
+  await uploadBytes(storageRef, file);
+  const url = await getDownloadURL(storageRef);
+  return { url, filename: file.name, size: file.size };
 }
 
 // Delete a single image

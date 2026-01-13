@@ -26,7 +26,7 @@ export interface NoteItem {
   // Note-specific fields
   content?: string;
   date?: string;
-  time?: string; // HH:MM format, optional
+  time?: string | null; // HH:MM format, optional
   tags?: string[];
 
   // Publishing fields (for blog folder)

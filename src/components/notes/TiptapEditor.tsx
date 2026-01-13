@@ -4,10 +4,12 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
-import { useEffect, useCallback, useRef } from "react";
-import { uploadNoteImage } from "@/lib/notes-storage";
+import { useEffect, useCallback, useRef, useState } from "react";
+import { uploadNoteImage, uploadNoteFile } from "@/lib/notes-storage";
 import { ImagePlaceholder } from "./ImagePlaceholder";
 import { ImageWithCaption } from "./ImageWithCaption";
+import { FilePlaceholder } from "./FilePlaceholder";
+import { FileAttachment } from "./FileAttachment";
 
 interface TiptapEditorProps {
   content: string;
@@ -45,6 +47,8 @@ export default function TiptapEditor({
       }),
       ImagePlaceholder,
       ImageWithCaption,
+      FilePlaceholder,
+      FileAttachment,
       Link.configure({
         openOnClick: false,
         HTMLAttributes: {
@@ -140,7 +144,85 @@ export default function TiptapEditor({
     [editor, noteId]
   );
 
-  // Handle image paste/drop events
+  // Handle generic file upload (non-images)
+  const handleFileUpload = useCallback(
+    async (file: File) => {
+      if (!editor) return;
+
+      // Generate unique ID for this placeholder
+      const placeholderId = `file-upload-${Date.now()}-${placeholderIdRef.current++}`;
+
+      // Insert placeholder at cursor position
+      editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: "filePlaceholder",
+          attrs: { id: placeholderId, filename: file.name },
+        })
+        .run();
+
+      const id = noteId || `temp-${Date.now()}`;
+      try {
+        const { url, filename, size } = await uploadNoteFile(file, id);
+
+        // Find and replace the placeholder with the actual file attachment
+        const { doc } = editor.state;
+        let placeholderPos: number | null = null;
+
+        doc.descendants((node, pos) => {
+          if (
+            node.type.name === "filePlaceholder" &&
+            node.attrs.id === placeholderId
+          ) {
+            placeholderPos = pos;
+            return false;
+          }
+          return true;
+        });
+
+        if (placeholderPos !== null) {
+          // Delete placeholder and insert file attachment
+          editor
+            .chain()
+            .focus()
+            .setNodeSelection(placeholderPos)
+            .deleteSelection()
+            .setFileAttachment({ url, filename, size })
+            .run();
+        } else {
+          // Fallback: just insert at current position
+          editor
+            .chain()
+            .focus()
+            .setFileAttachment({ url, filename, size })
+            .run();
+        }
+      } catch (error) {
+        console.error("Failed to upload file:", error);
+        // Remove the placeholder on error
+        const { doc } = editor.state;
+        doc.descendants((node, pos) => {
+          if (
+            node.type.name === "filePlaceholder" &&
+            node.attrs.id === placeholderId
+          ) {
+            editor
+              .chain()
+              .focus()
+              .setNodeSelection(pos)
+              .deleteSelection()
+              .run();
+            return false;
+          }
+          return true;
+        });
+      }
+    },
+    [editor, noteId]
+  );
+
+  // Handle file paste/drop events (images and other files)
   useEffect(() => {
     if (!editor) return;
 
@@ -151,11 +233,13 @@ export default function TiptapEditor({
       if (files && files.length > 0) {
         for (let i = 0; i < files.length; i++) {
           const file = files[i];
+          event.preventDefault();
           if (file.type.startsWith("image/")) {
-            event.preventDefault();
             handleImageUpload(file);
-            return;
+          } else {
+            handleFileUpload(file);
           }
+          return;
         }
       }
     };
@@ -163,12 +247,13 @@ export default function TiptapEditor({
     const handleDrop = (event: DragEvent) => {
       const files = event.dataTransfer?.files;
       if (files && files.length > 0) {
+        event.preventDefault();
         for (let i = 0; i < files.length; i++) {
           const file = files[i];
           if (file.type.startsWith("image/")) {
-            event.preventDefault();
             handleImageUpload(file);
-            return;
+          } else {
+            handleFileUpload(file);
           }
         }
       }
@@ -181,7 +266,7 @@ export default function TiptapEditor({
       editorElement.removeEventListener("paste", handlePaste);
       editorElement.removeEventListener("drop", handleDrop);
     };
-  }, [editor, handleImageUpload]);
+  }, [editor, handleImageUpload, handleFileUpload]);
 
   // Update content when it changes externally
   useEffect(() => {
@@ -212,6 +297,26 @@ export default function TiptapEditor({
     return () => editorElement.removeEventListener("dblclick", handleDoubleClick);
   }, [editor, onImageClick]);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showUploadMenu, setShowUploadMenu] = useState(false);
+
+  const handleFileInputChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.type.startsWith("image/")) {
+          handleImageUpload(file);
+        } else {
+          handleFileUpload(file);
+        }
+      }
+    }
+    // Reset input so same file can be selected again
+    event.target.value = "";
+    setShowUploadMenu(false);
+  }, [handleImageUpload, handleFileUpload]);
+
   if (!editor) {
     return (
       <div className="min-h-[400px]">
@@ -223,6 +328,75 @@ export default function TiptapEditor({
   return (
     <div className="tiptap-editor font-serif relative">
       <EditorContent editor={editor} />
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept="*/*"
+        onChange={handleFileInputChange}
+        style={{ display: "none" }}
+      />
+
+      {/* Upload button - floating action button */}
+      <div className="fixed bottom-6 right-6 sm:absolute sm:bottom-4 sm:right-4 z-50">
+        <button
+          type="button"
+          onClick={() => setShowUploadMenu(!showUploadMenu)}
+          className="w-12 h-12 sm:w-10 sm:h-10 rounded-full bg-[--accent] text-white shadow-lg hover:opacity-90 transition-all flex items-center justify-center"
+          title="Add image or file"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6 sm:w-5 sm:h-5">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+          </svg>
+        </button>
+
+        {/* Upload menu dropdown */}
+        {showUploadMenu && (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setShowUploadMenu(false)}
+            />
+            <div className="absolute bottom-14 sm:bottom-12 right-0 bg-[--background] border border-[--border] rounded-lg shadow-xl overflow-hidden z-50 min-w-[160px]">
+              <button
+                type="button"
+                onClick={() => {
+                  if (fileInputRef.current) {
+                    fileInputRef.current.accept = "image/*";
+                    fileInputRef.current.click();
+                  }
+                }}
+                className="w-full px-4 py-3 text-left text-sm hover:bg-[--hover] flex items-center gap-3 transition-colors"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 text-[--accent]">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <path d="M21 15l-5-5L5 21" />
+                </svg>
+                <span>Add Image</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (fileInputRef.current) {
+                    fileInputRef.current.accept = "*/*";
+                    fileInputRef.current.click();
+                  }
+                }}
+                className="w-full px-4 py-3 text-left text-sm hover:bg-[--hover] flex items-center gap-3 transition-colors border-t border-[--border]"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 text-[--accent]">
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                  <path d="M14 2v6h6M12 18v-6M9 15l3-3 3 3" />
+                </svg>
+                <span>Add File</span>
+              </button>
+            </div>
+          </>
+        )}
+      </div>
 
       <style jsx global>{`
         .tiptap-editor .ProseMirror {
