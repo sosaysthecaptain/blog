@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { NoteItem, updateNote, getNoteById, getAllNoteTags, getTagColors, setTagColor, TagColorsMap, generateSlug, blogSlugExists, recipeSlugExists } from "@/lib/notes";
+import { NoteItem, updateNote, subscribeToNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap, generateSlug, blogSlugExists, recipeSlugExists } from "@/lib/notes";
 import { getCurrentUser, isAdminEmail } from "@/lib/auth";
 import TiptapEditor from "./TiptapEditor";
 import TagInput from "./TagInput";
 import ImageLightbox, { extractImagesFromHtml } from "@/components/ImageLightbox";
+import { ConfirmDialog } from "@/components/ui/Dialog";
 
 interface NoteEditorProps {
   note: NoteItem;
@@ -16,6 +17,7 @@ interface NoteEditorProps {
 }
 
 export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFullWidth }: NoteEditorProps) {
+  // Local editing state
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content || "");
   const [date, setDate] = useState(note.date || new Date().toISOString().split("T")[0]);
@@ -26,11 +28,32 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
   const [slugError, setSlugError] = useState<string | null>(null);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [tagColors, setTagColors] = useState<TagColorsMap>({});
-  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
+
+  // Save state
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasLocalChanges, setHasLocalChanges] = useState(false);
+
+  // Remote sync state
+  const [remoteNote, setRemoteNote] = useState<NoteItem | null>(null);
+  const [hasRemoteChanges, setHasRemoteChanges] = useState(false);
+  const [showConflictDialog, setShowConflictDialog] = useState(false);
+
+  // Lightbox state
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
 
-  // Check if this note is in a publishable folder (blog or recipes)
+  // Track the "saved" version to compare against
+  const savedVersionRef = useRef<{
+    title: string;
+    content: string;
+    date: string;
+    time: string;
+    tags: string[];
+    published: boolean;
+    slug: string;
+  } | null>(null);
+
+  // Check if this note is in a publishable folder
   const isBlogNote = parentFolder?.title === "blog" && parentFolder?.parentId === null;
   const isRecipeNote = parentFolder?.title === "recipes" && parentFolder?.parentId === null;
   const currentUser = getCurrentUser();
@@ -50,64 +73,14 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
   const nextImage = useCallback(() => setLightboxIndex((i) => (i + 1) % allImages.length), [allImages.length]);
   const prevImage = useCallback(() => setLightboxIndex((i) => (i - 1 + allImages.length) % allImages.length), [allImages.length]);
 
-  // Track previous note to save when switching
-  const prevNoteRef = useRef<{ id: string; title: string; content: string; date: string; time: string; tags: string[]; published: boolean; slug: string } | null>(null);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isMountedRef = useRef(true);
-
   // Load available tags and tag colors
   useEffect(() => {
     getAllNoteTags().then(setAvailableTags);
     getTagColors().then(setTagColors);
   }, []);
 
-  // Save function
-  const saveNoteData = useCallback(async (
-    noteId: string,
-    data: { title: string; content: string; date: string; time: string; tags: string[]; published: boolean; slug: string }
-  ) => {
-    try {
-      await updateNote(noteId, {
-        title: data.title,
-        content: data.content,
-        date: data.date,
-        time: data.time || undefined, // Don't store empty string
-        tags: data.tags,
-        published: data.published,
-        slug: data.slug,
-      });
-      return true;
-    } catch (error) {
-      console.error("Failed to save note:", error);
-      return false;
-    }
-  }, []);
-
-  // When note changes, save the previous note first
+  // Initialize state when note changes
   useEffect(() => {
-    const prevNote = prevNoteRef.current;
-
-    // If we have a previous note with different ID, save it
-    if (prevNote && prevNote.id && prevNote.id !== note.id) {
-      // Clear any pending autosave for the old note
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = null;
-      }
-
-      // Save the previous note immediately
-      saveNoteData(prevNote.id, {
-        title: prevNote.title,
-        content: prevNote.content,
-        date: prevNote.date,
-        time: prevNote.time,
-        tags: prevNote.tags,
-        published: prevNote.published,
-        slug: prevNote.slug,
-      });
-    }
-
-    // Reset state for new note
     setTitle(note.title);
     setContent(note.content || "");
     setDate(note.date || new Date().toISOString().split("T")[0]);
@@ -116,11 +89,12 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
     setPublished(note.published || false);
     setSlug(note.slug || "");
     setSlugError(null);
-    setSaveStatus("saved");
+    setHasLocalChanges(false);
+    setHasRemoteChanges(false);
+    setRemoteNote(null);
 
-    // Update ref with new note's initial data
-    prevNoteRef.current = {
-      id: note.id || "",
+    // Store the saved version for comparison
+    savedVersionRef.current = {
       title: note.title,
       content: note.content || "",
       date: note.date || new Date().toISOString().split("T")[0],
@@ -129,105 +103,159 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
       published: note.published || false,
       slug: note.slug || "",
     };
-  }, [note.id, note.title, note.content, note.date, note.time, note.tags, note.published, note.slug, saveNoteData]);
+  }, [note.id]); // Only reset when note ID changes
 
-  // Update prevNoteRef when data changes (for autosave and switch-save)
+  // Subscribe to real-time updates
   useEffect(() => {
-    if (prevNoteRef.current && prevNoteRef.current.id === note.id) {
-      prevNoteRef.current = { id: note.id || "", title, content, date, time, tags, published, slug };
-    }
-  }, [note.id, title, content, date, time, tags, published, slug]);
+    if (!note.id) return;
 
-  // Mark as unsaved when data changes
-  useEffect(() => {
-    // Check if data actually changed from the note prop
-    const hasChanges =
-      title !== note.title ||
-      content !== (note.content || "") ||
-      date !== (note.date || new Date().toISOString().split("T")[0]) ||
-      time !== (note.time || "") ||
-      JSON.stringify(tags) !== JSON.stringify(note.tags || []) ||
-      published !== (note.published || false) ||
-      slug !== (note.slug || "");
+    const unsubscribe = subscribeToNote(note.id, (updatedNote) => {
+      if (!updatedNote) return;
 
-    if (hasChanges) {
-      setSaveStatus("unsaved");
-    }
-  }, [title, content, date, time, tags, published, slug, note]);
+      setRemoteNote(updatedNote);
 
-  // Autosave with debounce
-  useEffect(() => {
-    if (saveStatus !== "unsaved" || !note.id) return;
+      // Check if remote has changes compared to our saved version
+      const saved = savedVersionRef.current;
+      if (saved) {
+        const remoteChanged =
+          updatedNote.title !== saved.title ||
+          (updatedNote.content || "") !== saved.content ||
+          (updatedNote.date || "") !== saved.date ||
+          (updatedNote.time || "") !== saved.time ||
+          JSON.stringify(updatedNote.tags || []) !== JSON.stringify(saved.tags) ||
+          (updatedNote.published || false) !== saved.published ||
+          (updatedNote.slug || "") !== saved.slug;
 
-    // Clear existing timeout
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
+        if (remoteChanged) {
+          // Only show as remote changes if we don't have local changes
+          // If we have local changes, this becomes a conflict
+          if (hasLocalChanges) {
+            setShowConflictDialog(true);
+          } else {
+            // No local changes - auto-apply remote changes
+            setTitle(updatedNote.title);
+            setContent(updatedNote.content || "");
+            setDate(updatedNote.date || new Date().toISOString().split("T")[0]);
+            setTime(updatedNote.time || "");
+            setTags(updatedNote.tags || []);
+            setPublished(updatedNote.published || false);
+            setSlug(updatedNote.slug || "");
 
-    // Set new timeout for autosave
-    saveTimeoutRef.current = setTimeout(async () => {
-      if (!isMountedRef.current) return;
+            // Update saved version
+            savedVersionRef.current = {
+              title: updatedNote.title,
+              content: updatedNote.content || "",
+              date: updatedNote.date || new Date().toISOString().split("T")[0],
+              time: updatedNote.time || "",
+              tags: updatedNote.tags || [],
+              published: updatedNote.published || false,
+              slug: updatedNote.slug || "",
+            };
 
-      setSaveStatus("saving");
-      const success = await saveNoteData(note.id!, { title, content, date, time, tags, published, slug });
-
-      if (isMountedRef.current && success) {
-        setSaveStatus("saved");
-        onUpdate({ ...note, title, content, date, time, tags, published, slug });
+            onUpdate(updatedNote);
+          }
+        }
       }
-    }, 2000); // 2 second debounce - much faster than before
+    });
 
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
+    return () => unsubscribe();
+  }, [note.id, hasLocalChanges, onUpdate]);
+
+  // Track local changes
+  useEffect(() => {
+    const saved = savedVersionRef.current;
+    if (!saved) return;
+
+    const changed =
+      title !== saved.title ||
+      content !== saved.content ||
+      date !== saved.date ||
+      time !== saved.time ||
+      JSON.stringify(tags) !== JSON.stringify(saved.tags) ||
+      published !== saved.published ||
+      slug !== saved.slug;
+
+    setHasLocalChanges(changed);
+  }, [title, content, date, time, tags, published, slug]);
+
+  // Save function
+  const handleSave = useCallback(async () => {
+    if (!note.id || isSaving) return;
+
+    setIsSaving(true);
+    try {
+      await updateNote(note.id, {
+        title,
+        content,
+        date,
+        time: time || undefined,
+        tags,
+        published,
+        slug,
+      });
+
+      // Update saved version reference
+      savedVersionRef.current = { title, content, date, time, tags, published, slug };
+      setHasLocalChanges(false);
+
+      // Notify parent
+      onUpdate({ ...note, title, content, date, time, tags, published, slug });
+    } catch (error) {
+      console.error("Failed to save note:", error);
+    }
+    setIsSaving(false);
+  }, [note, title, content, date, time, tags, published, slug, isSaving, onUpdate]);
+
+  // Discard local changes and load remote version
+  const handleDiscardLocal = useCallback(() => {
+    if (!remoteNote) return;
+
+    setTitle(remoteNote.title);
+    setContent(remoteNote.content || "");
+    setDate(remoteNote.date || new Date().toISOString().split("T")[0]);
+    setTime(remoteNote.time || "");
+    setTags(remoteNote.tags || []);
+    setPublished(remoteNote.published || false);
+    setSlug(remoteNote.slug || "");
+
+    savedVersionRef.current = {
+      title: remoteNote.title,
+      content: remoteNote.content || "",
+      date: remoteNote.date || new Date().toISOString().split("T")[0],
+      time: remoteNote.time || "",
+      tags: remoteNote.tags || [],
+      published: remoteNote.published || false,
+      slug: remoteNote.slug || "",
     };
-  }, [saveStatus, note, title, content, date, tags, published, slug, saveNoteData, onUpdate]);
 
-  // Save on unmount
-  useEffect(() => {
-    isMountedRef.current = true;
+    setHasLocalChanges(false);
+    setShowConflictDialog(false);
+    onUpdate(remoteNote);
+  }, [remoteNote, onUpdate]);
 
-    return () => {
-      isMountedRef.current = false;
+  // Overwrite remote with local changes
+  const handleOverwriteRemote = useCallback(async () => {
+    setShowConflictDialog(false);
+    await handleSave();
+  }, [handleSave]);
 
-      // Clear any pending autosave
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-
-      // Save current note on unmount
-      const currentNote = prevNoteRef.current;
-      if (currentNote && currentNote.id) {
-        saveNoteData(currentNote.id, {
-          title: currentNote.title,
-          content: currentNote.content,
-          date: currentNote.date,
-          time: currentNote.time,
-          tags: currentNote.tags,
-          published: currentNote.published,
-          slug: currentNote.slug,
-        });
-      }
-    };
-  }, [saveNoteData]);
-
-  const handleBack = () => {
-    // Save before navigating back
-    if (saveStatus === "unsaved" && note.id) {
-      saveNoteData(note.id, { title, content, date, time, tags, published, slug });
+  // Handle back navigation
+  const handleBack = useCallback(() => {
+    if (hasLocalChanges) {
+      // Could show a confirmation dialog here
+      // For now, just warn in console
+      console.log("Warning: Unsaved changes will be lost");
     }
     onBack();
-  };
+  }, [hasLocalChanges, onBack]);
 
-  // Handle publish toggle - saves immediately
+  // Handle publish toggle
   const handlePublishToggle = async () => {
     if (!note.id) return;
 
     const newPublished = !published;
     let newSlug = slug;
 
-    // Auto-generate slug if publishing and no slug set
     if (newPublished && !slug) {
       newSlug = generateSlug(title);
       const slugChecker = isRecipeNote ? recipeSlugExists : blogSlugExists;
@@ -238,27 +266,9 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
       }
     }
 
-    // Update state
     setPublished(newPublished);
     setSlug(newSlug);
     setSlugError(null);
-
-    // Save immediately
-    setSaveStatus("saving");
-    const success = await saveNoteData(note.id, {
-      title,
-      content,
-      date,
-      time,
-      tags,
-      published: newPublished,
-      slug: newSlug,
-    });
-
-    if (success) {
-      setSaveStatus("saved");
-      onUpdate({ ...note, title, content, date, time, tags, published: newPublished, slug: newSlug });
-    }
   };
 
   // Validate slug when it changes
@@ -278,120 +288,67 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
     setTagColors(prev => ({ ...prev, [tag]: colorIndex }));
   };
 
-  // Save immediately (for Cmd+S)
-  const saveNow = useCallback(async () => {
-    if (!note.id) return;
-
-    // Clear any pending autosave
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = null;
-    }
-
-    setSaveStatus("saving");
-    const success = await saveNoteData(note.id, { title, content, date, time, tags, published, slug });
-    if (success) {
-      setSaveStatus("saved");
-      onUpdate({ ...note, title, content, date, time, tags, published, slug });
-    }
-  }, [note, title, content, date, time, tags, published, slug, saveNoteData, onUpdate]);
-
-  // Refresh: save if not stale, then reload from server
-  const [isRefreshing, setIsRefreshing] = useState(false);
-
-  const handleRefresh = useCallback(async () => {
-    if (!note.id) return;
-
-    setIsRefreshing(true);
-
-    try {
-      // Fetch the latest version from server
-      const serverNote = await getNoteById(note.id);
-      if (!serverNote) {
-        setIsRefreshing(false);
-        return;
-      }
-
-      // Compare updatedAt timestamps
-      const localUpdatedAt = note.updatedAt?.toDate?.() || note.updatedAt;
-      const serverUpdatedAt = serverNote.updatedAt?.toDate?.() || serverNote.updatedAt;
-
-      // If we have unsaved changes and server isn't newer, save first
-      if (saveStatus === "unsaved" && localUpdatedAt && serverUpdatedAt) {
-        const localTime = new Date(localUpdatedAt).getTime();
-        const serverTime = new Date(serverUpdatedAt).getTime();
-
-        if (serverTime <= localTime) {
-          // Server version is same or older - safe to save our changes
-          await saveNoteData(note.id, { title, content, date, time, tags, published, slug });
-        }
-        // If server is newer, we skip saving to avoid overwriting
-      }
-
-      // Now reload the note from server
-      const freshNote = await getNoteById(note.id);
-      if (freshNote) {
-        // Update local state with fresh data
-        setTitle(freshNote.title);
-        setContent(freshNote.content || "");
-        setDate(freshNote.date || new Date().toISOString().split("T")[0]);
-        setTime(freshNote.time || "");
-        setTags(freshNote.tags || []);
-        setPublished(freshNote.published || false);
-        setSlug(freshNote.slug || "");
-        setSaveStatus("saved");
-
-        // Update the ref
-        prevNoteRef.current = {
-          id: freshNote.id || "",
-          title: freshNote.title,
-          content: freshNote.content || "",
-          date: freshNote.date || new Date().toISOString().split("T")[0],
-          time: freshNote.time || "",
-          tags: freshNote.tags || [],
-          published: freshNote.published || false,
-          slug: freshNote.slug || "",
-        };
-
-        // Notify parent
-        onUpdate(freshNote);
-      }
-    } catch (error) {
-      console.error("Refresh failed:", error);
-    }
-
-    setIsRefreshing(false);
-  }, [note, saveStatus, title, content, date, time, tags, published, slug, saveNoteData, onUpdate]);
-
   // Keyboard shortcut: Cmd+S to save
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
-        saveNow();
+        handleSave();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [saveNow]);
+  }, [handleSave]);
 
   return (
     <div className="flex-1 h-full overflow-y-auto bg-[--background]">
       <div className={isFullWidth ? "px-4 py-6 md:px-8 md:py-12" : "max-w-3xl mx-auto px-4 py-6 md:px-8 md:py-12"}>
-        {/* Back button when in a folder */}
-        {parentFolder && (
+        {/* Header row with back button and save button */}
+        <div className="flex items-center justify-between mb-6">
+          {/* Back button */}
+          {parentFolder ? (
+            <button
+              type="button"
+              onClick={handleBack}
+              className="flex items-center gap-2 text-sm text-[--muted] hover:text-[--foreground]"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              <span className="hidden sm:inline">Back to {parentFolder.title}</span>
+              <span className="sm:hidden">Back</span>
+            </button>
+          ) : (
+            <div />
+          )}
+
+          {/* Save button - floppy disk */}
           <button
             type="button"
-            onClick={handleBack}
-            className="flex items-center gap-2 mb-6 text-sm text-[--muted] hover:text-[--foreground]"
+            onClick={handleSave}
+            disabled={!hasLocalChanges || isSaving}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors ${
+              hasLocalChanges
+                ? "bg-[--foreground] text-[--background] hover:opacity-90"
+                : "bg-[--hover] text-[--muted] cursor-default"
+            }`}
+            title={hasLocalChanges ? "Save changes (Cmd+S)" : "No unsaved changes"}
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Back to {parentFolder.title}
+            {isSaving ? (
+              <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/>
+              </svg>
+            )}
+            <span className="text-sm font-medium hidden sm:inline">
+              {isSaving ? "Saving..." : hasLocalChanges ? "Save" : "Saved"}
+            </span>
           </button>
-        )}
+        </div>
 
         {/* Title */}
         <input
@@ -402,7 +359,7 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
           className="w-full text-2xl md:text-4xl font-bold bg-transparent outline-none text-[--foreground] placeholder:text-[--muted] mb-2 font-serif"
         />
 
-        {/* Subtitle / Date & Time */}
+        {/* Date & Time row */}
         <div className="flex items-center gap-4 mb-6 text-sm text-[--muted]">
           <input
             type="date"
@@ -442,27 +399,6 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
               </button>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            {saveStatus === "saving" && (
-              <svg className="w-4 h-4 text-[--muted] animate-pulse" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/>
-              </svg>
-            )}
-            {saveStatus === "unsaved" && (
-              <span className="w-2 h-2 rounded-full bg-[--warning]" title="Unsaved changes" />
-            )}
-            <button
-              type="button"
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              className="p-1 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded disabled:opacity-50"
-              title="Save & Refresh"
-            >
-              <svg className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </button>
-          </div>
         </div>
 
         {/* Tags and Publish */}
@@ -477,7 +413,7 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
             />
           </div>
 
-          {/* Publish controls - for blog and recipe notes */}
+          {/* Publish controls */}
           {canPublish && (
             <div className="flex flex-wrap items-center gap-2 md:gap-4 shrink-0 text-sm">
               <div className="flex items-center gap-1.5 text-[--muted]">
@@ -502,26 +438,22 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
                     : "border-[--border] text-[--muted] hover:border-[--accent] hover:text-[--accent]"
                 }`}
               >
-                {published ? "Unpublish" : "Publish"}
+                {published ? "Published" : "Publish"}
               </button>
             </div>
           )}
         </div>
 
-        {/* Divider */}
-        <div className="border-t border-[--border] mb-8" />
-
-        {/* Content */}
+        {/* Editor */}
         <TiptapEditor
           content={content}
           onChange={setContent}
-          noteId={note.id || "new"}
-          placeholder="Start writing..."
           onImageClick={openLightbox}
+          noteId={note.id!}
         />
       </div>
 
-      {/* Image Lightbox */}
+      {/* Lightbox */}
       {lightboxOpen && allImages.length > 0 && (
         <ImageLightbox
           images={allImages}
@@ -531,6 +463,18 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
           onPrev={prevImage}
         />
       )}
+
+      {/* Conflict Dialog */}
+      <ConfirmDialog
+        open={showConflictDialog}
+        title="Sync Conflict"
+        message="This note was updated on another device. What would you like to do with your local changes?"
+        confirmLabel="Save Mine"
+        cancelLabel="Load Theirs"
+        variant="danger"
+        onConfirm={handleOverwriteRemote}
+        onCancel={handleDiscardLocal}
+      />
     </div>
   );
 }

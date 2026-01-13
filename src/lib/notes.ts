@@ -9,6 +9,7 @@ import {
   query,
   where,
   Timestamp,
+  onSnapshot,
 } from "firebase/firestore";
 import { db } from "./firebase";
 
@@ -94,6 +95,21 @@ export async function getNoteById(id: string): Promise<NoteItem | null> {
   const snapshot = await getDoc(docRef);
   if (!snapshot.exists()) return null;
   return { id: snapshot.id, ...snapshot.data() } as NoteItem;
+}
+
+// Subscribe to real-time updates for a single note
+export function subscribeToNote(
+  id: string,
+  callback: (note: NoteItem | null) => void
+): () => void {
+  const docRef = doc(db, NOTES_COLLECTION, id);
+  return onSnapshot(docRef, (snapshot) => {
+    if (!snapshot.exists()) {
+      callback(null);
+      return;
+    }
+    callback({ id: snapshot.id, ...snapshot.data() } as NoteItem);
+  });
 }
 
 // Create a new note or folder

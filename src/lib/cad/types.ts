@@ -3,6 +3,13 @@
 // and manipulated via the TypeScript API for AI-driven design.
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+// The origin point ID - this is a special implicit point at (0,0)
+export const ORIGIN_POINT_ID = 'origin';
+
+// ============================================================================
 // Entity Types
 // ============================================================================
 
@@ -329,7 +336,7 @@ export const LIGHT_COLORS: CADColors = {
   fullyConstrained: '#1a1a1a',  // Black
   overConstrained: '#dc2626',   // Red
   hover: '#f97316',             // Orange
-  selected: '#8b5cf6',          // Purple
+  selected: '#1a1a1a',          // Black (same as fully constrained)
   construction: '#6b7280',      // Gray
   grid: '#e5e5e5',              // Light gray
   gridMajor: '#d1d5db',         // Slightly darker
@@ -344,7 +351,7 @@ export const DARK_COLORS: CADColors = {
   fullyConstrained: '#d4d4d4',  // Light gray
   overConstrained: '#ef4444',   // Lighter red
   hover: '#fb923c',             // Lighter orange
-  selected: '#a78bfa',          // Lighter purple
+  selected: '#d4d4d4',          // Light gray (same as fully constrained)
   construction: '#9ca3af',      // Lighter gray
   grid: '#2a2a2a',              // Dark gray
   gridMajor: '#3f3f3f',         // Slightly lighter

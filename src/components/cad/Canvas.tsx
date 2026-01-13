@@ -33,6 +33,7 @@ interface CanvasProps {
   onAddCircle: (cx: number, cy: number, radius: number) => void;
   onAddRectangle: (x1: number, y1: number, x2: number, y2: number) => void;
   onMovePoint: (pointId: string, x: number, y: number) => void;
+  onDragStart?: () => void; // Called when point drag begins for undo history
   onAddDimension: (entityId: string, entityType: 'line' | 'circle', offset: number) => string | null; // Returns constraint ID
   onAddDistanceDimension: (point1Id: string, point2Id: string, offset: number) => string | null;
   onAddAngleDimension: (line1Id: string, line2Id: string, offset: number) => string | null;
@@ -40,6 +41,8 @@ interface CanvasProps {
   selectedEntityId: string | null;
   onSelectEntity: (entityId: string | null) => void;
   overConstrainedEntities: Set<string>;
+  entityConstraintStatus: Map<string, boolean>; // entityId -> isFullyConstrained
+  getConstraintsForEntity: (entityId: string) => Constraint[];
 }
 
 // Render entities to Three.js scene
@@ -53,7 +56,8 @@ function renderEntities(
   selectedEntityId: string | null,
   hoveredEntityId: string | null,
   zoom: number,
-  overConstrainedEntities: Set<string>
+  overConstrainedEntities: Set<string>,
+  entityConstraintStatus: Map<string, boolean>
 ) {
   // Remove old entity group
   if (entityGroupRef.current) {
@@ -74,15 +78,21 @@ function renderEntities(
   const resolution = new THREE.Vector2(containerWidth, containerHeight);
 
   // Materials for Line2 (thick lines)
-  const lineMaterial = new LineMaterial({
+  const underConstrainedLineMaterial = new LineMaterial({
     color: new THREE.Color(colors.underConstrained).getHex(),
-    linewidth: 3, // heavier lines (3px as requested)
+    linewidth: 3,
+    resolution: resolution,
+  });
+
+  const fullyConstrainedLineMaterial = new LineMaterial({
+    color: new THREE.Color(colors.fullyConstrained).getHex(),
+    linewidth: 3,
     resolution: resolution,
   });
 
   const constructionLineMaterial = new LineMaterial({
     color: new THREE.Color(colors.construction).getHex(),
-    linewidth: 3, // same weight as regular lines
+    linewidth: 3,
     resolution: resolution,
     dashed: true,
     dashSize: 6,
@@ -95,7 +105,8 @@ function renderEntities(
     resolution: resolution,
   });
 
-  const pointMaterial = new THREE.MeshBasicMaterial({ color: colors.underConstrained });
+  const underConstrainedPointMaterial = new THREE.MeshBasicMaterial({ color: colors.underConstrained });
+  const fullyConstrainedPointMaterial = new THREE.MeshBasicMaterial({ color: colors.fullyConstrained });
   const selectedPointMaterial = new THREE.MeshBasicMaterial({ color: colors.selected });
   const hoveredPointMaterial = new THREE.MeshBasicMaterial({ color: colors.hover });
   const overConstrainedPointMaterial = new THREE.MeshBasicMaterial({ color: colors.overConstrained });
@@ -117,8 +128,9 @@ function renderEntities(
   const selectedPointRadius = 7 / zoom; // 7 screen pixels when selected/hovered
 
   for (const point of entities.points.values()) {
-    const isSelected = selectedEntityId === point.id;
+    const isSelected = selectedEntityId === point.id || isPartOfSelectedRectangle(point.id, selectedEntityId, entities);
     const isHovered = hoveredEntityId === point.id;
+    const isFullyConstrained = entityConstraintStatus.get(point.id) === true;
     const isHighlighted = isSelected || isHovered;
     const geometry = new THREE.CircleGeometry(isHighlighted ? selectedPointRadius : pointRadius, 16);
     let material;
@@ -128,8 +140,10 @@ function renderEntities(
       material = hoveredPointMaterial;
     } else if (point.construction) {
       material = new THREE.MeshBasicMaterial({ color: colors.construction });
+    } else if (isFullyConstrained) {
+      material = fullyConstrainedPointMaterial;
     } else {
-      material = pointMaterial;
+      material = underConstrainedPointMaterial;
     }
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.set(point.x, point.y, isHighlighted ? 0.6 : 0.5);
@@ -142,9 +156,10 @@ function renderEntities(
     const endPoint = entities.points.get(line.endId);
     if (!startPoint || !endPoint) continue;
 
-    const isSelected = selectedEntityId === line.id;
+    const isSelected = selectedEntityId === line.id || isPartOfSelectedRectangle(line.id, selectedEntityId, entities);
     const isHovered = hoveredEntityId === line.id;
     const isOverConstrained = overConstrainedEntities.has(line.id);
+    const isFullyConstrained = entityConstraintStatus.get(line.id) === true;
     const isHighlighted = isSelected || isHovered;
     const geometry = new LineGeometry();
     geometry.setPositions([
@@ -161,8 +176,10 @@ function renderEntities(
       material = overConstrainedLineMaterial.clone();
     } else if (line.construction) {
       material = constructionLineMaterial.clone();
+    } else if (isFullyConstrained) {
+      material = fullyConstrainedLineMaterial.clone();
     } else {
-      material = lineMaterial.clone();
+      material = underConstrainedLineMaterial.clone();
     }
     const lineObj = new Line2(geometry, material);
     lineObj.computeLineDistances();
@@ -177,6 +194,7 @@ function renderEntities(
     const isSelected = selectedEntityId === circle.id;
     const isHovered = hoveredEntityId === circle.id;
     const isOverConstrained = overConstrainedEntities.has(circle.id);
+    const isFullyConstrained = entityConstraintStatus.get(circle.id) === true;
     const isHighlighted = isSelected || isHovered;
     const segments = 64;
     const positions: number[] = [];
@@ -201,8 +219,10 @@ function renderEntities(
       material = overConstrainedLineMaterial.clone();
     } else if (circle.construction) {
       material = constructionLineMaterial.clone();
+    } else if (isFullyConstrained) {
+      material = fullyConstrainedLineMaterial.clone();
     } else {
-      material = lineMaterial.clone();
+      material = underConstrainedLineMaterial.clone();
     }
     const circleObj = new Line2(geometry, material);
     circleObj.computeLineDistances();
@@ -220,6 +240,15 @@ interface DimensionLabel {
   y: number;
   value: string;
   type: 'length' | 'radius' | 'distance' | 'angle';
+}
+
+// Constraint icon data for HTML overlay (shown on hover)
+interface ConstraintIcon {
+  constraintId: string;
+  constraintType: string;
+  x: number;
+  y: number;
+  label: string;
 }
 
 // Render dimension annotations - returns label data for HTML overlay
@@ -684,6 +713,24 @@ function findSnapPoint(
   }
 
   return bestSnap;
+}
+
+// Find if an entity belongs to a rectangle, return rectangle ID if so
+function findRectangleForEntity(entityId: string, entities: SketchEntities): string | null {
+  for (const rect of entities.rectangles.values()) {
+    if (rect.pointIds.includes(entityId) || rect.lineIds.includes(entityId)) {
+      return rect.id;
+    }
+  }
+  return null;
+}
+
+// Check if an entity is part of a selected rectangle
+function isPartOfSelectedRectangle(entityId: string, selectedId: string | null, entities: SketchEntities): boolean {
+  if (!selectedId) return false;
+  const rect = entities.rectangles.get(selectedId);
+  if (!rect) return false;
+  return rect.pointIds.includes(entityId) || rect.lineIds.includes(entityId);
 }
 
 // Hit test to find entity at a position
@@ -1302,6 +1349,7 @@ export default function Canvas({
   onAddCircle,
   onAddRectangle,
   onMovePoint,
+  onDragStart,
   onAddDimension,
   onAddDistanceDimension,
   onAddAngleDimension,
@@ -1309,6 +1357,8 @@ export default function Canvas({
   selectedEntityId,
   onSelectEntity,
   overConstrainedEntities,
+  entityConstraintStatus,
+  getConstraintsForEntity,
 }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -1326,6 +1376,7 @@ export default function Canvas({
   const [currentMouse, setCurrentMouse] = useState<{ x: number; y: number } | null>(null);
   const [snapPoint, setSnapPoint] = useState<SnapResult | null>(null);
   const [dimensionLabels, setDimensionLabels] = useState<DimensionLabel[]>([]);
+  const [constraintIcons, setConstraintIcons] = useState<ConstraintIcon[]>([]);
 
   // Editing state for dimension values
   const [editingDimension, setEditingDimension] = useState<string | null>(null);
@@ -1479,11 +1530,82 @@ export default function Canvas({
     originRef.current = origin;
 
     // Render entities
-    renderEntities(scene, entities, colors, entityGroupRef, containerSize.width, containerSize.height, selectedEntityId, hoveredEntityId, viewState.zoom, overConstrainedEntities);
+    renderEntities(scene, entities, colors, entityGroupRef, containerSize.width, containerSize.height, selectedEntityId, hoveredEntityId, viewState.zoom, overConstrainedEntities, entityConstraintStatus);
 
     // Render dimensions and get label data for HTML overlay
     const labels = renderDimensions(scene, entities, constraints, colors, dimensionGroupRef, viewState.zoom, containerSize.width, containerSize.height);
     setDimensionLabels(labels);
+
+    // Calculate constraint icons for hovered entity
+    if (hoveredEntityId) {
+      const entityConstraints = getConstraintsForEntity(hoveredEntityId);
+      // Filter out dimension constraints (length, radius, distance, angle) - they're shown separately
+      const nonDimConstraints = entityConstraints.filter(c =>
+        !['length', 'radius', 'distance', 'angle'].includes(c.type)
+      );
+
+      // Get entity position for icon placement
+      let entityX = 0;
+      let entityY = 0;
+
+      // For points, use point position
+      const point = entities.points.get(hoveredEntityId);
+      if (point) {
+        entityX = point.x;
+        entityY = point.y;
+      }
+
+      // For lines, use midpoint
+      const line = entities.lines.get(hoveredEntityId);
+      if (line) {
+        const start = entities.points.get(line.startId);
+        const end = entities.points.get(line.endId);
+        if (start && end) {
+          entityX = (start.x + end.x) / 2;
+          entityY = (start.y + end.y) / 2;
+        }
+      }
+
+      // For circles, use center
+      const circle = entities.circles.get(hoveredEntityId);
+      if (circle) {
+        const center = entities.points.get(circle.centerId);
+        if (center) {
+          entityX = center.x;
+          entityY = center.y + circle.radius + 20 / viewState.zoom;
+        }
+      }
+
+      // Create icon data
+      const icons: ConstraintIcon[] = nonDimConstraints.map((c, i) => {
+        // Map constraint types to display labels
+        const labelMap: Record<string, string> = {
+          'coincident': '●',
+          'horizontal': '—',
+          'vertical': '|',
+          'parallel': '∥',
+          'perpendicular': '⊥',
+          'fixed': '⊕',
+          'tangent': '⟜',
+          'equal': '=',
+          'midpoint': 'M',
+          'concentric': '◎',
+        };
+
+        const offset = (i - (nonDimConstraints.length - 1) / 2) * 24;
+        return {
+          constraintId: c.id,
+          constraintType: c.type,
+          x: entityX * viewState.zoom + viewState.panX + containerSize.width / 2 + offset,
+          y: -entityY * viewState.zoom - viewState.panY + containerSize.height / 2 - 30,
+          label: labelMap[c.type] || c.type[0].toUpperCase(),
+        };
+      });
+
+      setConstraintIcons(icons);
+    } else {
+      setConstraintIcons([]);
+    }
 
     // Use snapped position for preview if available
     const previewMouse = snapPoint ? { x: snapPoint.x, y: snapPoint.y } : currentMouse;
@@ -1504,7 +1626,7 @@ export default function Canvas({
     camera.updateProjectionMatrix();
 
     renderer.render(scene, camera);
-  }, [viewState, colors, containerSize, entities, constraints, pendingPoints, currentMouse, activeTool, snapPoint, selectedEntityId, hoveredEntityId, pendingDimension, overConstrainedEntities]);
+  }, [viewState, colors, containerSize, entities, constraints, pendingPoints, currentMouse, activeTool, snapPoint, selectedEntityId, hoveredEntityId, pendingDimension, overConstrainedEntities, entityConstraintStatus, getConstraintsForEntity]);
 
   // Clear pending points and dimension when tool changes
   useEffect(() => {
@@ -1592,7 +1714,13 @@ export default function Canvas({
         const hitThreshold = 20 / viewState.zoom; // 20 screen pixels
         const hit = hitTest(world.x, world.y, entities, hitThreshold);
         if (hit) {
-          onSelectEntity(hit.entityId);
+          // Check if this entity belongs to a rectangle - if so, select the rectangle
+          const rectId = findRectangleForEntity(hit.entityId, entities);
+          if (rectId) {
+            onSelectEntity(rectId);
+          } else {
+            onSelectEntity(hit.entityId);
+          }
         } else {
           onSelectEntity(null);
         }
@@ -1748,28 +1876,63 @@ export default function Canvas({
           } else if (pendingDimension.mode === 'line') {
             // First click was a line
             if (hit && hit.entityType === 'line' && hit.entityId !== pendingDimension.entityId) {
-              // Line + Line = Angle dimension
-              const constraintId = onAddAngleDimension(pendingDimension.entityId, hit.entityId, 30 / viewState.zoom);
+              // Line + Line: Check if parallel, if so create distance dimension, else angle dimension
+              const line1 = entities.lines.get(pendingDimension.entityId);
+              const line2 = entities.lines.get(hit.entityId);
+              if (line1 && line2) {
+                const p1Start = entities.points.get(line1.startId);
+                const p1End = entities.points.get(line1.endId);
+                const p2Start = entities.points.get(line2.startId);
+                const p2End = entities.points.get(line2.endId);
+                if (p1Start && p1End && p2Start && p2End) {
+                  const dx1 = p1End.x - p1Start.x;
+                  const dy1 = p1End.y - p1Start.y;
+                  const dx2 = p2End.x - p2Start.x;
+                  const dy2 = p2End.y - p2Start.y;
+                  const angle1 = Math.atan2(dy1, dx1);
+                  const angle2 = Math.atan2(dy2, dx2);
+                  let angleDiff = Math.abs(angle2 - angle1) * 180 / Math.PI;
+                  if (angleDiff > 180) angleDiff = 360 - angleDiff;
+                  // Also check if they're opposite direction (180 - angleDiff)
+                  if (angleDiff > 90) angleDiff = 180 - angleDiff;
 
-              if (constraintId) {
-                const line1 = entities.lines.get(pendingDimension.entityId);
-                const line2 = entities.lines.get(hit.entityId);
-                if (line1 && line2) {
-                  const p1Start = entities.points.get(line1.startId);
-                  const p1End = entities.points.get(line1.endId);
-                  const p2Start = entities.points.get(line2.startId);
-                  const p2End = entities.points.get(line2.endId);
-                  if (p1Start && p1End && p2Start && p2End) {
-                    const dx1 = p1End.x - p1Start.x;
-                    const dy1 = p1End.y - p1Start.y;
-                    const dx2 = p2End.x - p2Start.x;
-                    const dy2 = p2End.y - p2Start.y;
-                    const angle1 = Math.atan2(dy1, dx1);
-                    const angle2 = Math.atan2(dy2, dx2);
-                    let angleDiff = Math.abs(angle2 - angle1) * 180 / Math.PI;
-                    if (angleDiff > 180) angleDiff = 360 - angleDiff;
-                    setEditValue((Math.round(angleDiff * 10) / 10).toString());
-                    setEditingDimension(constraintId);
+                  // If lines are parallel (within 5 degrees), create distance dimension
+                  const PARALLEL_THRESHOLD = 5; // degrees
+                  if (angleDiff < PARALLEL_THRESHOLD) {
+                    // Find the closest pair of points between the two lines for the distance
+                    const distances = [
+                      { p1: line1.startId, p2: line2.startId, dist: Math.hypot(p1Start.x - p2Start.x, p1Start.y - p2Start.y) },
+                      { p1: line1.startId, p2: line2.endId, dist: Math.hypot(p1Start.x - p2End.x, p1Start.y - p2End.y) },
+                      { p1: line1.endId, p2: line2.startId, dist: Math.hypot(p1End.x - p2Start.x, p1End.y - p2Start.y) },
+                      { p1: line1.endId, p2: line2.endId, dist: Math.hypot(p1End.x - p2End.x, p1End.y - p2End.y) },
+                    ];
+                    distances.sort((a, b) => a.dist - b.dist);
+                    const closest = distances[0];
+
+                    // Calculate perpendicular distance between the parallel lines
+                    // Use the perpendicular from a point on line1 to line2
+                    const len2 = Math.hypot(dx2, dy2);
+                    let perpDist = closest.dist;
+                    if (len2 > 0) {
+                      // Perpendicular distance from p1Start to line2
+                      const t = ((p1Start.x - p2Start.x) * dx2 + (p1Start.y - p2Start.y) * dy2) / (len2 * len2);
+                      const projX = p2Start.x + t * dx2;
+                      const projY = p2Start.y + t * dy2;
+                      perpDist = Math.hypot(p1Start.x - projX, p1Start.y - projY);
+                    }
+
+                    const constraintId = onAddDistanceDimension(closest.p1, closest.p2, 30 / viewState.zoom);
+                    if (constraintId) {
+                      setEditValue((Math.round(perpDist * 10) / 10).toString());
+                      setEditingDimension(constraintId);
+                    }
+                  } else {
+                    // Non-parallel lines: create angle dimension
+                    const constraintId = onAddAngleDimension(pendingDimension.entityId, hit.entityId, 30 / viewState.zoom);
+                    if (constraintId) {
+                      setEditValue((Math.round(angleDiff * 10) / 10).toString());
+                      setEditingDimension(constraintId);
+                    }
                   }
                 }
               }
@@ -1847,13 +2010,14 @@ export default function Canvas({
 
       // If we hit a point, start dragging it
       if (hit && hit.entityType === 'point') {
+        onDragStart?.(); // Save state for undo before drag begins
         isDraggingEntityRef.current = true;
         draggingPointIdRef.current = hit.entityId;
         onSelectEntity(hit.entityId);
         e.preventDefault();
       }
     }
-  }, [activeTool, screenToWorld, viewState.zoom, entities, onSelectEntity]);
+  }, [activeTool, screenToWorld, viewState.zoom, entities, onSelectEntity, onDragStart]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     // Update current mouse position for preview
@@ -2080,6 +2244,27 @@ export default function Canvas({
             </div>
           );
         })}
+        {/* Constraint icons on hover */}
+        {constraintIcons.map((icon) => (
+          <div
+            key={icon.constraintId}
+            className="absolute transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded flex items-center justify-center text-xs font-bold cursor-pointer pointer-events-auto transition-colors"
+            style={{
+              left: icon.x,
+              top: icon.y,
+              backgroundColor: colors.background,
+              color: selectedEntityId === icon.constraintId ? colors.selected : colors.underConstrained,
+              border: `1.5px solid ${selectedEntityId === icon.constraintId ? colors.selected : colors.underConstrained}`,
+            }}
+            title={`${icon.constraintType} (click to select, Delete to remove)`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectEntity(icon.constraintId);
+            }}
+          >
+            {icon.label}
+          </div>
+        ))}
       </div>
     </div>
   );

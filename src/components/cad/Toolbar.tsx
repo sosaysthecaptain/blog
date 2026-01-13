@@ -8,6 +8,13 @@ interface ToolbarProps {
   onToolChange: (tool: ToolType) => void;
   constructionMode: boolean;
   onConstructionModeChange: (mode: boolean) => void;
+  onAddHorizontal?: () => void;
+  onAddVertical?: () => void;
+  onAddCoincident?: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
 }
 
 interface ToolButtonProps {
@@ -217,6 +224,13 @@ export default function Toolbar({
   onToolChange,
   constructionMode,
   onConstructionModeChange,
+  onAddHorizontal,
+  onAddVertical,
+  onAddCoincident,
+  onUndo,
+  onRedo,
+  canUndo = false,
+  canRedo = false,
 }: ToolbarProps) {
   const [lastRectTool, setLastRectTool] = useState<ToolType>('rectangle-corner');
 
@@ -280,21 +294,21 @@ export default function Toolbar({
         label="Horizontal"
         shortcut="H"
         active={false}
-        onClick={() => {}}
+        onClick={() => onAddHorizontal?.()}
       />
       <ToolButton
         icon={Icons.vertical}
         label="Vertical"
         shortcut="V"
         active={false}
-        onClick={() => {}}
+        onClick={() => onAddVertical?.()}
       />
       <ToolButton
         icon={Icons.coincident}
         label="Coincident"
         shortcut="I"
         active={false}
-        onClick={() => {}}
+        onClick={() => onAddCoincident?.()}
       />
 
       <div className="w-px h-6 bg-[--border] mx-1" />
@@ -322,20 +336,38 @@ export default function Toolbar({
       <div className="flex-1" />
 
       {/* Undo/Redo */}
-      <ToolButton
-        icon={Icons.undo}
-        label="Undo"
-        shortcut="Cmd+Z"
-        active={false}
-        onClick={() => {}}
-      />
-      <ToolButton
-        icon={Icons.redo}
-        label="Redo"
-        shortcut="Cmd+Shift+Z"
-        active={false}
-        onClick={() => {}}
-      />
+      <button
+        type="button"
+        onClick={() => onUndo?.()}
+        disabled={!canUndo}
+        className={`
+          flex items-center justify-center w-8 h-8 rounded cursor-pointer
+          transition-colors
+          ${canUndo
+            ? 'hover:bg-[var(--hover)] text-[var(--foreground)]'
+            : 'text-[var(--muted)] cursor-not-allowed opacity-50'
+          }
+        `}
+        title="Undo (Cmd+Z)"
+      >
+        {Icons.undo}
+      </button>
+      <button
+        type="button"
+        onClick={() => onRedo?.()}
+        disabled={!canRedo}
+        className={`
+          flex items-center justify-center w-8 h-8 rounded cursor-pointer
+          transition-colors
+          ${canRedo
+            ? 'hover:bg-[var(--hover)] text-[var(--foreground)]'
+            : 'text-[var(--muted)] cursor-not-allowed opacity-50'
+          }
+        `}
+        title="Redo (Cmd+Shift+Z)"
+      >
+        {Icons.redo}
+      </button>
     </div>
   );
 }

@@ -16,6 +16,11 @@ import {
   RadiusConstraint,
   DistanceConstraint,
   AngleConstraint,
+  FixedConstraint,
+  HorizontalConstraint,
+  VerticalConstraint,
+  CoincidentConstraint,
+  ORIGIN_POINT_ID,
 } from '@/lib/cad/types';
 import {
   createEmptyEntities,
@@ -24,8 +29,11 @@ import {
   addCircle,
   addRectangle,
   movePoint,
+  solveConstraints,
   calculateDOF,
   getConstraintStatus,
+  calculateEntityConstraintStatus,
+  getConstraintsForEntity,
   generateCode,
   generateId,
 } from '@/lib/cad/sketch';
@@ -57,6 +65,44 @@ export default function CADPage() {
   // Sketch state
   const [entities, setEntities] = useState<SketchEntities>(createEmptyEntities);
   const [constraints, setConstraints] = useState<Map<string, Constraint>>(new Map());
+
+  // Undo/Redo history
+  type HistoryState = { entities: SketchEntities; constraints: Map<string, Constraint> };
+  const [undoStack, setUndoStack] = useState<HistoryState[]>([]);
+  const [redoStack, setRedoStack] = useState<HistoryState[]>([]);
+  const MAX_HISTORY = 50;
+
+  // Save current state to undo stack
+  const saveToHistory = useCallback(() => {
+    setUndoStack(prev => {
+      const newStack = [...prev, { entities, constraints }];
+      if (newStack.length > MAX_HISTORY) {
+        return newStack.slice(-MAX_HISTORY);
+      }
+      return newStack;
+    });
+    setRedoStack([]); // Clear redo stack when new action is taken
+  }, [entities, constraints]);
+
+  // Undo handler
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0) return;
+    const prev = undoStack[undoStack.length - 1];
+    setUndoStack(stack => stack.slice(0, -1));
+    setRedoStack(stack => [...stack, { entities, constraints }]);
+    setEntities(prev.entities);
+    setConstraints(prev.constraints);
+  }, [undoStack, entities, constraints]);
+
+  // Redo handler
+  const handleRedo = useCallback(() => {
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    setRedoStack(stack => stack.slice(0, -1));
+    setUndoStack(stack => [...stack, { entities, constraints }]);
+    setEntities(next.entities);
+    setConstraints(next.constraints);
+  }, [redoStack, entities, constraints]);
 
   // Detect over-constrained entities (duplicate constraints on same entity)
   const overConstrainedEntities = useMemo(() => {
@@ -98,6 +144,11 @@ export default function CADPage() {
   const hasConflicts = overConstrainedEntities.size > 0;
   const constraintStatus = getConstraintStatus(degreesOfFreedom, hasConflicts);
 
+  // Per-entity constraint status (for coloring)
+  const entityConstraintStatus = useMemo(() => {
+    return calculateEntityConstraintStatus(entities, constraints);
+  }, [entities, constraints]);
+
   // Cursor position
   const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
 
@@ -119,45 +170,181 @@ export default function CADPage() {
     setActiveTool(tool);
   }, []);
 
-  // Drawing handlers
+  // Helper to check if a point is at origin
+  const isAtOrigin = (x: number, y: number) => Math.abs(x) < 0.001 && Math.abs(y) < 0.001;
+
+  // Helper to check if a line is horizontal (within threshold)
+  const isHorizontal = (y1: number, y2: number) => Math.abs(y1 - y2) < 0.001;
+
+  // Helper to check if a line is vertical (within threshold)
+  const isVertical = (x1: number, x2: number) => Math.abs(x1 - x2) < 0.001;
+
+  // Drawing handlers with auto-constraint inference
   const handleAddPoint = useCallback((x: number, y: number) => {
+    saveToHistory();
+    let newPointId: string | null = null;
+
     setEntities(prev => {
-      const { entities: newEntities } = addPoint(prev, x, y, constructionMode);
+      const { entities: newEntities, point } = addPoint(prev, x, y, constructionMode);
+      newPointId = point.id;
       return newEntities;
     });
-  }, [constructionMode]);
+
+    // Auto-add Coincident constraint with origin if point is at origin
+    if (isAtOrigin(x, y) && newPointId) {
+      const constraint: CoincidentConstraint = {
+        id: generateId('c'),
+        type: 'coincident',
+        point1Id: ORIGIN_POINT_ID,
+        point2Id: newPointId,
+      };
+      setConstraints(prev => {
+        const newConstraints = new Map(prev);
+        newConstraints.set(constraint.id, constraint);
+        return newConstraints;
+      });
+    }
+  }, [constructionMode, saveToHistory]);
 
   const handleAddLine = useCallback((x1: number, y1: number, x2: number, y2: number) => {
+    saveToHistory();
+    let newLineId: string | null = null;
+    let startPointId: string | null = null;
+    let endPointId: string | null = null;
+
     setEntities(prev => {
-      const { entities: newEntities } = addLine(prev, x1, y1, x2, y2, constructionMode);
+      const { entities: newEntities, line, startPoint, endPoint } = addLine(prev, x1, y1, x2, y2, constructionMode);
+      newLineId = line.id;
+      startPointId = startPoint.id;
+      endPointId = endPoint.id;
       return newEntities;
     });
-  }, [constructionMode]);
+
+    // Auto-add constraints based on geometry
+    const newConstraints: Constraint[] = [];
+
+    // Coincident constraint for start point at origin
+    if (isAtOrigin(x1, y1) && startPointId) {
+      newConstraints.push({
+        id: generateId('c'),
+        type: 'coincident',
+        point1Id: ORIGIN_POINT_ID,
+        point2Id: startPointId,
+      } as CoincidentConstraint);
+    }
+
+    // Coincident constraint for end point at origin
+    if (isAtOrigin(x2, y2) && endPointId) {
+      newConstraints.push({
+        id: generateId('c'),
+        type: 'coincident',
+        point1Id: ORIGIN_POINT_ID,
+        point2Id: endPointId,
+      } as CoincidentConstraint);
+    }
+
+    // Horizontal constraint if line is horizontal
+    if (isHorizontal(y1, y2) && newLineId) {
+      newConstraints.push({
+        id: generateId('c'),
+        type: 'horizontal',
+        lineId: newLineId,
+      } as HorizontalConstraint);
+    }
+
+    // Vertical constraint if line is vertical
+    if (isVertical(x1, x2) && newLineId) {
+      newConstraints.push({
+        id: generateId('c'),
+        type: 'vertical',
+        lineId: newLineId,
+      } as VerticalConstraint);
+    }
+
+    if (newConstraints.length > 0) {
+      setConstraints(prev => {
+        const updated = new Map(prev);
+        newConstraints.forEach(c => updated.set(c.id, c));
+        return updated;
+      });
+    }
+  }, [constructionMode, saveToHistory]);
 
   const handleAddCircle = useCallback((cx: number, cy: number, radius: number) => {
+    saveToHistory();
+    let centerPointId: string | null = null;
+
     setEntities(prev => {
-      const { entities: newEntities } = addCircle(prev, cx, cy, radius, constructionMode);
+      const { entities: newEntities, centerPoint } = addCircle(prev, cx, cy, radius, constructionMode);
+      centerPointId = centerPoint.id;
       return newEntities;
     });
-  }, [constructionMode]);
+
+    // Coincident constraint for center at origin
+    if (isAtOrigin(cx, cy) && centerPointId) {
+      const constraint: CoincidentConstraint = {
+        id: generateId('c'),
+        type: 'coincident',
+        point1Id: ORIGIN_POINT_ID,
+        point2Id: centerPointId,
+      };
+      setConstraints(prev => {
+        const newConstraints = new Map(prev);
+        newConstraints.set(constraint.id, constraint);
+        return newConstraints;
+      });
+    }
+  }, [constructionMode, saveToHistory]);
 
   const handleAddRectangle = useCallback((x1: number, y1: number, x2: number, y2: number) => {
+    saveToHistory();
+    // Track line IDs for constraint creation
+    const lineIds = { top: '', right: '', bottom: '', left: '' };
+
     setEntities(prev => {
-      const { entities: newEntities } = addRectangle(prev, x1, y1, x2, y2, constructionMode);
-      return newEntities;
+      const result = addRectangle(prev, x1, y1, x2, y2, constructionMode);
+      lineIds.top = result.lines.top.id;
+      lineIds.right = result.lines.right.id;
+      lineIds.bottom = result.lines.bottom.id;
+      lineIds.left = result.lines.left.id;
+      return result.entities;
     });
-  }, [constructionMode]);
+
+    // Add horizontal and vertical constraints to maintain rectangular shape
+    setConstraints(prev => {
+      const updated = new Map(prev);
+      // Top and bottom are horizontal
+      const hTop: HorizontalConstraint = { id: generateId('c'), type: 'horizontal', lineId: lineIds.top };
+      const hBottom: HorizontalConstraint = { id: generateId('c'), type: 'horizontal', lineId: lineIds.bottom };
+      // Left and right are vertical
+      const vRight: VerticalConstraint = { id: generateId('c'), type: 'vertical', lineId: lineIds.right };
+      const vLeft: VerticalConstraint = { id: generateId('c'), type: 'vertical', lineId: lineIds.left };
+      updated.set(hTop.id, hTop);
+      updated.set(hBottom.id, hBottom);
+      updated.set(vRight.id, vRight);
+      updated.set(vLeft.id, vLeft);
+      return updated;
+    });
+  }, [constructionMode, saveToHistory]);
 
   // Selection state
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
 
-  // Move point handler
+  // Move point handler - applies constraint solver after moving
+  // Note: Don't save to history here - it's called many times during drag
+  // History is saved when drag starts in the Canvas component
   const handleMovePoint = useCallback((pointId: string, x: number, y: number) => {
-    setEntities(prev => movePoint(prev, pointId, x, y));
-  }, []);
+    setEntities(prev => {
+      // First move the point
+      const moved = movePoint(prev, pointId, x, y);
+      // Then solve constraints to maintain geometric relationships
+      return solveConstraints(moved, constraints, pointId);
+    });
+  }, [constraints]);
 
   // Add dimension handler - returns the constraint ID
   const handleAddDimension = useCallback((entityId: string, entityType: 'line' | 'circle', offset: number): string | null => {
+    saveToHistory();
     if (entityType === 'line') {
       const line = entities.lines.get(entityId);
       if (!line) return null;
@@ -208,10 +395,11 @@ export default function CADPage() {
       return constraint.id;
     }
     return null;
-  }, [entities]);
+  }, [entities, saveToHistory]);
 
   // Add distance dimension between two points
   const handleAddDistanceDimension = useCallback((point1Id: string, point2Id: string, offset: number): string | null => {
+    saveToHistory();
     const point1 = entities.points.get(point1Id);
     const point2 = entities.points.get(point2Id);
     if (!point1 || !point2) return null;
@@ -237,10 +425,11 @@ export default function CADPage() {
     });
 
     return constraint.id;
-  }, [entities]);
+  }, [entities, saveToHistory]);
 
   // Add angle dimension between two lines
   const handleAddAngleDimension = useCallback((line1Id: string, line2Id: string, offset: number): string | null => {
+    saveToHistory();
     const line1 = entities.lines.get(line1Id);
     const line2 = entities.lines.get(line2Id);
     if (!line1 || !line2) return null;
@@ -278,10 +467,11 @@ export default function CADPage() {
     });
 
     return constraint.id;
-  }, [entities]);
+  }, [entities, saveToHistory]);
 
   // Update constraint value handler - also updates geometry to match
   const handleUpdateConstraint = useCallback((constraintId: string, value: number) => {
+    saveToHistory();
     const constraint = constraints.get(constraintId);
     if (!constraint) return;
 
@@ -470,11 +660,12 @@ export default function CADPage() {
         return { ...prev, points: newPoints };
       });
     }
-  }, [constraints, entities]);
+  }, [constraints, entities, saveToHistory]);
 
   // Delete selected entity handler
   const handleDeleteSelected = useCallback(() => {
     if (!selectedEntityId) return;
+    saveToHistory();
 
     // Check if it's a constraint (dimension)
     if (constraints.has(selectedEntityId)) {
@@ -619,7 +810,7 @@ export default function CADPage() {
       setSelectedEntityId(null);
       return;
     }
-  }, [selectedEntityId, entities, constraints]);
+  }, [selectedEntityId, entities, constraints, saveToHistory]);
 
   // Toggle construction mode on selected entity
   const handleToggleConstruction = useCallback(() => {
@@ -628,6 +819,8 @@ export default function CADPage() {
       setConstructionMode(prev => !prev);
       return;
     }
+
+    saveToHistory();
 
     // Check if it's a line
     if (entities.lines.has(selectedEntityId)) {
@@ -667,7 +860,92 @@ export default function CADPage() {
 
     // If nothing matched, toggle global mode
     setConstructionMode(prev => !prev);
-  }, [selectedEntityId, entities]);
+  }, [selectedEntityId, entities, saveToHistory]);
+
+  // Add horizontal constraint to selected line
+  const handleAddHorizontal = useCallback(() => {
+    if (!selectedEntityId || !entities.lines.has(selectedEntityId)) return;
+    saveToHistory();
+
+    // Check if line already has horizontal constraint
+    for (const c of constraints.values()) {
+      if (c.type === 'horizontal' && (c as HorizontalConstraint).lineId === selectedEntityId) {
+        return; // Already constrained
+      }
+    }
+
+    const constraint: HorizontalConstraint = {
+      id: generateId('c'),
+      type: 'horizontal',
+      lineId: selectedEntityId,
+    };
+
+    // Also update the geometry to be horizontal
+    const line = entities.lines.get(selectedEntityId)!;
+    const startPoint = entities.points.get(line.startId);
+    const endPoint = entities.points.get(line.endId);
+    if (startPoint && endPoint) {
+      const avgY = (startPoint.y + endPoint.y) / 2;
+      setEntities(prev => {
+        const newPoints = new Map(prev.points);
+        newPoints.set(line.startId, { ...startPoint, y: avgY });
+        newPoints.set(line.endId, { ...endPoint, y: avgY });
+        return { ...prev, points: newPoints };
+      });
+    }
+
+    setConstraints(prev => {
+      const newConstraints = new Map(prev);
+      newConstraints.set(constraint.id, constraint);
+      return newConstraints;
+    });
+  }, [selectedEntityId, entities, constraints, saveToHistory]);
+
+  // Add vertical constraint to selected line
+  const handleAddVertical = useCallback(() => {
+    if (!selectedEntityId || !entities.lines.has(selectedEntityId)) return;
+    saveToHistory();
+
+    // Check if line already has vertical constraint
+    for (const c of constraints.values()) {
+      if (c.type === 'vertical' && (c as VerticalConstraint).lineId === selectedEntityId) {
+        return; // Already constrained
+      }
+    }
+
+    const constraint: VerticalConstraint = {
+      id: generateId('c'),
+      type: 'vertical',
+      lineId: selectedEntityId,
+    };
+
+    // Also update the geometry to be vertical
+    const line = entities.lines.get(selectedEntityId)!;
+    const startPoint = entities.points.get(line.startId);
+    const endPoint = entities.points.get(line.endId);
+    if (startPoint && endPoint) {
+      const avgX = (startPoint.x + endPoint.x) / 2;
+      setEntities(prev => {
+        const newPoints = new Map(prev.points);
+        newPoints.set(line.startId, { ...startPoint, x: avgX });
+        newPoints.set(line.endId, { ...endPoint, x: avgX });
+        return { ...prev, points: newPoints };
+      });
+    }
+
+    setConstraints(prev => {
+      const newConstraints = new Map(prev);
+      newConstraints.set(constraint.id, constraint);
+      return newConstraints;
+    });
+  }, [selectedEntityId, entities, constraints, saveToHistory]);
+
+  // Add coincident constraint (for future multi-selection support)
+  const handleAddCoincident = useCallback(() => {
+    // This would require selecting two points
+    // For now, just a placeholder
+    console.log('Coincident constraint requires selecting two points');
+  }, []);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -686,6 +964,17 @@ export default function CADPage() {
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         handleDeleteSelected();
+        return;
+      }
+
+      // Handle undo/redo
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
         return;
       }
 
@@ -714,12 +1003,21 @@ export default function CADPage() {
         case 'q':
           handleToggleConstruction();
           break;
+        case 'h':
+          handleAddHorizontal();
+          break;
+        case 'v':
+          handleAddVertical();
+          break;
+        case 'i':
+          handleAddCoincident();
+          break;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [mounted, handleDeleteSelected, handleToggleConstruction]);
+  }, [mounted, handleDeleteSelected, handleToggleConstruction, handleAddHorizontal, handleAddVertical, handleAddCoincident, handleUndo, handleRedo]);
 
   // Track mouse position for status bar
   useEffect(() => {
@@ -804,6 +1102,13 @@ export default function CADPage() {
         onToolChange={handleToolChange}
         constructionMode={constructionMode}
         onConstructionModeChange={setConstructionMode}
+        onAddHorizontal={handleAddHorizontal}
+        onAddVertical={handleAddVertical}
+        onAddCoincident={handleAddCoincident}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        canUndo={undoStack.length > 0}
+        canRedo={redoStack.length > 0}
       />
 
       {/* Main Area */}
@@ -823,6 +1128,7 @@ export default function CADPage() {
             onAddCircle={handleAddCircle}
             onAddRectangle={handleAddRectangle}
             onMovePoint={handleMovePoint}
+            onDragStart={saveToHistory}
             onAddDimension={handleAddDimension}
             onAddDistanceDimension={handleAddDistanceDimension}
             onAddAngleDimension={handleAddAngleDimension}
@@ -830,6 +1136,8 @@ export default function CADPage() {
             selectedEntityId={selectedEntityId}
             onSelectEntity={setSelectedEntityId}
             overConstrainedEntities={overConstrainedEntities}
+            entityConstraintStatus={entityConstraintStatus}
+            getConstraintsForEntity={(entityId: string) => getConstraintsForEntity(entityId, entities, constraints)}
           />
         </div>
 
