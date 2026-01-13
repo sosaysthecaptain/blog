@@ -292,6 +292,10 @@ export default function CADPage() {
         newConstraints.set(constraintId, { ...constraint, value } as LengthConstraint);
       } else if (constraint.type === 'radius') {
         newConstraints.set(constraintId, { ...constraint, value } as RadiusConstraint);
+      } else if (constraint.type === 'distance') {
+        newConstraints.set(constraintId, { ...constraint, value } as DistanceConstraint);
+      } else if (constraint.type === 'angle') {
+        newConstraints.set(constraintId, { ...constraint, value } as AngleConstraint);
       }
       return newConstraints;
     });
@@ -376,6 +380,94 @@ export default function CADPage() {
         const newCircles = new Map(prev.circles);
         newCircles.set(radiusConstraint.circleId, { ...circle, radius: value });
         return { ...prev, circles: newCircles };
+      });
+    } else if (constraint.type === 'distance') {
+      // Update distance between two points
+      const distanceConstraint = constraint as DistanceConstraint;
+      const point1 = entities.points.get(distanceConstraint.point1Id);
+      const point2 = entities.points.get(distanceConstraint.point2Id);
+      if (!point1 || !point2) return;
+
+      const dx = point2.x - point1.x;
+      const dy = point2.y - point1.y;
+      const currentDistance = Math.sqrt(dx * dx + dy * dy);
+      if (currentDistance < 0.001) return;
+
+      // Normalize direction
+      const dirX = dx / currentDistance;
+      const dirY = dy / currentDistance;
+
+      // Determine which point to move (similar logic to length)
+      const isP1AtOrigin = Math.abs(point1.x) < 0.001 && Math.abs(point1.y) < 0.001;
+      const isP2AtOrigin = Math.abs(point2.x) < 0.001 && Math.abs(point2.y) < 0.001;
+
+      let moveP2 = true;
+      if (isP2AtOrigin && !isP1AtOrigin) moveP2 = false;
+      else if (isP1AtOrigin && !isP2AtOrigin) moveP2 = true;
+
+      setEntities(prev => {
+        const newPoints = new Map(prev.points);
+        if (moveP2) {
+          const newX = point1.x + dirX * value;
+          const newY = point1.y + dirY * value;
+          newPoints.set(distanceConstraint.point2Id, { ...point2, x: newX, y: newY });
+        } else {
+          const newX = point2.x - dirX * value;
+          const newY = point2.y - dirY * value;
+          newPoints.set(distanceConstraint.point1Id, { ...point1, x: newX, y: newY });
+        }
+        return { ...prev, points: newPoints };
+      });
+    } else if (constraint.type === 'angle') {
+      // Update angle between two lines by rotating line2 around the intersection point
+      const angleConstraint = constraint as AngleConstraint;
+      const line1 = entities.lines.get(angleConstraint.line1Id);
+      const line2 = entities.lines.get(angleConstraint.line2Id);
+      if (!line1 || !line2) return;
+
+      const p1Start = entities.points.get(line1.startId);
+      const p1End = entities.points.get(line1.endId);
+      const p2Start = entities.points.get(line2.startId);
+      const p2End = entities.points.get(line2.endId);
+      if (!p1Start || !p1End || !p2Start || !p2End) return;
+
+      // Calculate line1's angle
+      const dx1 = p1End.x - p1Start.x;
+      const dy1 = p1End.y - p1Start.y;
+      const angle1 = Math.atan2(dy1, dx1);
+
+      // Calculate line2's current length
+      const dx2 = p2End.x - p2Start.x;
+      const dy2 = p2End.y - p2Start.y;
+      const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+
+      // New angle for line2 (line1's angle + desired angle)
+      const newAngle2 = angle1 + (value * Math.PI / 180);
+
+      // Find which end of line2 is closer to line1 (pivot point)
+      const distStartToLine1 = Math.min(
+        Math.sqrt(Math.pow(p2Start.x - p1Start.x, 2) + Math.pow(p2Start.y - p1Start.y, 2)),
+        Math.sqrt(Math.pow(p2Start.x - p1End.x, 2) + Math.pow(p2Start.y - p1End.y, 2))
+      );
+      const distEndToLine1 = Math.min(
+        Math.sqrt(Math.pow(p2End.x - p1Start.x, 2) + Math.pow(p2End.y - p1Start.y, 2)),
+        Math.sqrt(Math.pow(p2End.x - p1End.x, 2) + Math.pow(p2End.y - p1End.y, 2))
+      );
+
+      setEntities(prev => {
+        const newPoints = new Map(prev.points);
+        if (distStartToLine1 < distEndToLine1) {
+          // Keep start fixed, rotate end
+          const newEndX = p2Start.x + len2 * Math.cos(newAngle2);
+          const newEndY = p2Start.y + len2 * Math.sin(newAngle2);
+          newPoints.set(line2.endId, { ...p2End, x: newEndX, y: newEndY });
+        } else {
+          // Keep end fixed, rotate start
+          const newStartX = p2End.x - len2 * Math.cos(newAngle2);
+          const newStartY = p2End.y - len2 * Math.sin(newAngle2);
+          newPoints.set(line2.startId, { ...p2Start, x: newStartX, y: newStartY });
+        }
+        return { ...prev, points: newPoints };
       });
     }
   }, [constraints, entities]);

@@ -51,6 +51,7 @@ function renderEntities(
   containerWidth: number,
   containerHeight: number,
   selectedEntityId: string | null,
+  hoveredEntityId: string | null,
   zoom: number,
   overConstrainedEntities: Set<string>
 ) {
@@ -96,6 +97,7 @@ function renderEntities(
 
   const pointMaterial = new THREE.MeshBasicMaterial({ color: colors.underConstrained });
   const selectedPointMaterial = new THREE.MeshBasicMaterial({ color: colors.selected });
+  const hoveredPointMaterial = new THREE.MeshBasicMaterial({ color: colors.hover });
   const overConstrainedPointMaterial = new THREE.MeshBasicMaterial({ color: colors.overConstrained });
 
   const selectedLineMaterial = new LineMaterial({
@@ -104,23 +106,33 @@ function renderEntities(
     resolution: resolution,
   });
 
+  const hoveredLineMaterial = new LineMaterial({
+    color: new THREE.Color(colors.hover).getHex(),
+    linewidth: 4,
+    resolution: resolution,
+  });
+
   // Render points - use screen-relative size (pixels / zoom = world units)
   const pointRadius = 5 / zoom; // 5 screen pixels
-  const selectedPointRadius = 7 / zoom; // 7 screen pixels when selected
+  const selectedPointRadius = 7 / zoom; // 7 screen pixels when selected/hovered
 
   for (const point of entities.points.values()) {
     const isSelected = selectedEntityId === point.id;
-    const geometry = new THREE.CircleGeometry(isSelected ? selectedPointRadius : pointRadius, 16);
+    const isHovered = hoveredEntityId === point.id;
+    const isHighlighted = isSelected || isHovered;
+    const geometry = new THREE.CircleGeometry(isHighlighted ? selectedPointRadius : pointRadius, 16);
     let material;
     if (isSelected) {
       material = selectedPointMaterial;
+    } else if (isHovered) {
+      material = hoveredPointMaterial;
     } else if (point.construction) {
       material = new THREE.MeshBasicMaterial({ color: colors.construction });
     } else {
       material = pointMaterial;
     }
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(point.x, point.y, isSelected ? 0.6 : 0.5);
+    mesh.position.set(point.x, point.y, isHighlighted ? 0.6 : 0.5);
     group.add(mesh);
   }
 
@@ -131,16 +143,20 @@ function renderEntities(
     if (!startPoint || !endPoint) continue;
 
     const isSelected = selectedEntityId === line.id;
+    const isHovered = hoveredEntityId === line.id;
     const isOverConstrained = overConstrainedEntities.has(line.id);
+    const isHighlighted = isSelected || isHovered;
     const geometry = new LineGeometry();
     geometry.setPositions([
-      startPoint.x, startPoint.y, isSelected ? 0.35 : 0.3,
-      endPoint.x, endPoint.y, isSelected ? 0.35 : 0.3,
+      startPoint.x, startPoint.y, isHighlighted ? 0.35 : 0.3,
+      endPoint.x, endPoint.y, isHighlighted ? 0.35 : 0.3,
     ]);
 
     let material;
     if (isSelected) {
       material = selectedLineMaterial.clone();
+    } else if (isHovered) {
+      material = hoveredLineMaterial.clone();
     } else if (isOverConstrained) {
       material = overConstrainedLineMaterial.clone();
     } else if (line.construction) {
@@ -159,7 +175,9 @@ function renderEntities(
     if (!centerPoint) continue;
 
     const isSelected = selectedEntityId === circle.id;
+    const isHovered = hoveredEntityId === circle.id;
     const isOverConstrained = overConstrainedEntities.has(circle.id);
+    const isHighlighted = isSelected || isHovered;
     const segments = 64;
     const positions: number[] = [];
     for (let i = 0; i <= segments; i++) {
@@ -167,7 +185,7 @@ function renderEntities(
       positions.push(
         centerPoint.x + Math.cos(theta) * circle.radius,
         centerPoint.y + Math.sin(theta) * circle.radius,
-        isSelected ? 0.35 : 0.3
+        isHighlighted ? 0.35 : 0.3
       );
     }
 
@@ -177,6 +195,8 @@ function renderEntities(
     let material;
     if (isSelected) {
       material = selectedLineMaterial.clone();
+    } else if (isHovered) {
+      material = hoveredLineMaterial.clone();
     } else if (isOverConstrained) {
       material = overConstrainedLineMaterial.clone();
     } else if (circle.construction) {
@@ -875,7 +895,7 @@ function renderPreview(
   pendingPoints: Array<{ x: number; y: number }>,
   currentMouse: { x: number; y: number } | null,
   colors: CADColors,
-  pendingDimension: { mode: 'line' | 'circle' | 'point-to-point' | 'angle'; entityId: string; offset: number } | null,
+  pendingDimension: { mode: 'line' | 'circle' | 'point' | 'point-to-point' | 'angle'; entityId: string; offset: number } | null,
   entities: SketchEntities,
   zoom: number,
   containerWidth: number,
@@ -1311,6 +1331,9 @@ export default function Canvas({
   const [editingDimension, setEditingDimension] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
 
+  // Hover state for highlighting
+  const [hoveredEntityId, setHoveredEntityId] = useState<string | null>(null);
+
   const isDraggingRef = useRef(false);
   const lastMouseRef = useRef({ x: 0, y: 0 });
   const dragButtonRef = useRef<number | null>(null);
@@ -1322,8 +1345,8 @@ export default function Canvas({
 
   // Dimension creation state - supports different dimension modes
   const [pendingDimension, setPendingDimension] = useState<{
-    mode: 'line' | 'circle' | 'point-to-point' | 'angle';
-    entityId: string;  // For line/circle, the entity ID. For point-to-point, first point ID. For angle, first line ID.
+    mode: 'line' | 'circle' | 'point' | 'point-to-point' | 'angle';
+    entityId: string;  // For line/circle, the entity ID. For point, first point ID. For angle, first line ID.
     offset: number;
   } | null>(null);
 
@@ -1456,7 +1479,7 @@ export default function Canvas({
     originRef.current = origin;
 
     // Render entities
-    renderEntities(scene, entities, colors, entityGroupRef, containerSize.width, containerSize.height, selectedEntityId, viewState.zoom, overConstrainedEntities);
+    renderEntities(scene, entities, colors, entityGroupRef, containerSize.width, containerSize.height, selectedEntityId, hoveredEntityId, viewState.zoom, overConstrainedEntities);
 
     // Render dimensions and get label data for HTML overlay
     const labels = renderDimensions(scene, entities, constraints, colors, dimensionGroupRef, viewState.zoom, containerSize.width, containerSize.height);
@@ -1481,7 +1504,7 @@ export default function Canvas({
     camera.updateProjectionMatrix();
 
     renderer.render(scene, camera);
-  }, [viewState, colors, containerSize, entities, constraints, pendingPoints, currentMouse, activeTool, snapPoint, selectedEntityId, pendingDimension, overConstrainedEntities]);
+  }, [viewState, colors, containerSize, entities, constraints, pendingPoints, currentMouse, activeTool, snapPoint, selectedEntityId, hoveredEntityId, pendingDimension, overConstrainedEntities]);
 
   // Clear pending points and dimension when tool changes
   useEffect(() => {
@@ -1633,24 +1656,23 @@ export default function Canvas({
         break;
 
       case 'dimension': {
-        if (!pendingDimension) {
-          // Phase 1: Click on an entity to start dimensioning (or select existing)
-          const hitThreshold = 20 / viewState.zoom;
-          const hit = hitTest(world.x, world.y, entities, hitThreshold);
+        // Onshape-style dimension tool:
+        // - Click entity, click empty space = dimension that entity
+        // - Click point, click point = distance between points
+        // - Click line, click line = angle between lines
 
-          // Check if clicking on a point (for point-to-point dimension)
-          if (hit && hit.entityType === 'point') {
-            // Store first point for point-to-point dimension
-            setPendingDimension({
-              mode: 'point-to-point',
-              entityId: hit.entityId,
-              offset: 30 / viewState.zoom,
-            });
+        const hitThreshold = 20 / viewState.zoom;
+        const hit = hitTest(world.x, world.y, entities, hitThreshold);
+
+        if (!pendingDimension) {
+          // First click - select entity to dimension
+          if (!hit) {
+            // Clicked empty space with no pending dimension - do nothing
             break;
           }
 
-          if (hit && (hit.entityType === 'line' || hit.entityType === 'circle')) {
-            // Check if entity already has a dimension - if so, select and edit it
+          // Check if clicking on existing dimension - edit it
+          if (hit.entityType === 'line' || hit.entityType === 'circle') {
             let existingConstraintId: string | null = null;
             let existingValue: string | null = null;
 
@@ -1668,187 +1690,137 @@ export default function Canvas({
             }
 
             if (existingConstraintId && existingValue) {
-              // Select and edit existing dimension
               onSelectEntity(existingConstraintId);
               setEditingDimension(existingConstraintId);
               setEditValue(existingValue);
               break;
             }
-
-            // Check if Shift is held - if so, start angle dimension mode (line only)
-            if (e.shiftKey && hit.entityType === 'line') {
-              setPendingDimension({
-                mode: 'angle',
-                entityId: hit.entityId,
-                offset: 30 / viewState.zoom,
-              });
-              break;
-            }
-
-            // No existing dimension - create new one
-            // Calculate initial offset based on click position
-            let offset = 30 / viewState.zoom; // Default offset
-
-            if (hit.entityType === 'line') {
-              const line = entities.lines.get(hit.entityId);
-              if (line) {
-                const startPoint = entities.points.get(line.startId);
-                const endPoint = entities.points.get(line.endId);
-                if (startPoint && endPoint) {
-                  // Calculate perpendicular distance from click to line
-                  const dx = endPoint.x - startPoint.x;
-                  const dy = endPoint.y - startPoint.y;
-                  const len = Math.sqrt(dx * dx + dy * dy);
-                  if (len > 0) {
-                    const perpX = -dy / len;
-                    const perpY = dx / len;
-                    // Project click onto perpendicular
-                    const midX = (startPoint.x + endPoint.x) / 2;
-                    const midY = (startPoint.y + endPoint.y) / 2;
-                    offset = (world.x - midX) * perpX + (world.y - midY) * perpY;
-                    if (Math.abs(offset) < 20 / viewState.zoom) {
-                      offset = offset >= 0 ? 30 / viewState.zoom : -30 / viewState.zoom;
-                    }
-                  }
-                }
-              }
-            }
-
-            setPendingDimension({
-              mode: hit.entityType as 'line' | 'circle',
-              entityId: hit.entityId,
-              offset,
-            });
-          }
-        } else if (pendingDimension.mode === 'point-to-point') {
-          // Point-to-point dimension: second point clicked
-          const hitThreshold = 20 / viewState.zoom;
-          const hit = hitTest(world.x, world.y, entities, hitThreshold);
-
-          if (hit && hit.entityType === 'point' && hit.entityId !== pendingDimension.entityId) {
-            // Create distance dimension between two points
-            const point1 = entities.points.get(pendingDimension.entityId);
-            const point2 = entities.points.get(hit.entityId);
-
-            if (point1 && point2) {
-              // Calculate offset based on mouse position
-              const midX = (point1.x + point2.x) / 2;
-              const midY = (point1.y + point2.y) / 2;
-              const dx = point2.x - point1.x;
-              const dy = point2.y - point1.y;
-              const len = Math.sqrt(dx * dx + dy * dy);
-              let finalOffset = pendingDimension.offset;
-              if (len > 0) {
-                const perpX = -dy / len;
-                const perpY = dx / len;
-                finalOffset = (world.x - midX) * perpX + (world.y - midY) * perpY;
-              }
-
-              const constraintId = onAddDistanceDimension(pendingDimension.entityId, hit.entityId, finalOffset);
-
-              // Auto-start editing the new dimension
-              if (constraintId) {
-                const distance = Math.sqrt(
-                  Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2)
-                );
-                setEditValue((Math.round(distance * 10) / 10).toString());
-                setEditingDimension(constraintId);
-              }
-            }
-          } else if (hit && hit.entityType === 'line') {
-            // User clicked a line after a point - switch to angle dimension mode
-            // First we need two lines for an angle, so check if we can find the other line
-            // For now, require explicit two-line selection for angles
           }
 
-          setPendingDimension(null);
-        } else if (pendingDimension.mode === 'angle') {
-          // Angle dimension: second line clicked
-          const hitThreshold = 20 / viewState.zoom;
-          const hit = hitTest(world.x, world.y, entities, hitThreshold);
-
-          if (hit && hit.entityType === 'line' && hit.entityId !== pendingDimension.entityId) {
-            // Create angle dimension between two lines
-            const constraintId = onAddAngleDimension(pendingDimension.entityId, hit.entityId, pendingDimension.offset);
-
-            // Auto-start editing the new dimension
-            if (constraintId) {
-              // Calculate angle between lines
-              const line1 = entities.lines.get(pendingDimension.entityId);
-              const line2 = entities.lines.get(hit.entityId);
-              if (line1 && line2) {
-                const p1Start = entities.points.get(line1.startId);
-                const p1End = entities.points.get(line1.endId);
-                const p2Start = entities.points.get(line2.startId);
-                const p2End = entities.points.get(line2.endId);
-                if (p1Start && p1End && p2Start && p2End) {
-                  const dx1 = p1End.x - p1Start.x;
-                  const dy1 = p1End.y - p1Start.y;
-                  const dx2 = p2End.x - p2Start.x;
-                  const dy2 = p2End.y - p2Start.y;
-                  const angle1 = Math.atan2(dy1, dx1);
-                  const angle2 = Math.atan2(dy2, dx2);
-                  let angleDiff = Math.abs(angle2 - angle1) * 180 / Math.PI;
-                  if (angleDiff > 180) angleDiff = 360 - angleDiff;
-                  setEditValue((Math.round(angleDiff * 10) / 10).toString());
-                  setEditingDimension(constraintId);
-                }
-              }
-            }
-          }
-
-          setPendingDimension(null);
+          // Start pending dimension based on what was clicked
+          // Map 'point' entityType to 'point' mode for dimension state
+          const mode = hit.entityType === 'point' ? 'point' : hit.entityType;
+          setPendingDimension({
+            mode: mode as 'line' | 'circle' | 'point-to-point' | 'angle' | 'point',
+            entityId: hit.entityId,
+            offset: 30 / viewState.zoom,
+          });
         } else {
-          // Phase 2: Click to place the dimension (line or circle mode)
-          // Calculate final offset from mouse position
-          let finalOffset = pendingDimension.offset;
+          // Second click - determine dimension type based on what's clicked
 
-          if (pendingDimension.mode === 'line') {
-            const line = entities.lines.get(pendingDimension.entityId);
-            if (line) {
-              const startPoint = entities.points.get(line.startId);
-              const endPoint = entities.points.get(line.endId);
-              if (startPoint && endPoint) {
-                const dx = endPoint.x - startPoint.x;
-                const dy = endPoint.y - startPoint.y;
+          if (pendingDimension.mode === 'point') {
+            // First click was a point
+            if (hit && hit.entityType === 'point' && hit.entityId !== pendingDimension.entityId) {
+              // Point + Point = Distance dimension
+              const point1 = entities.points.get(pendingDimension.entityId);
+              const point2 = entities.points.get(hit.entityId);
+
+              if (point1 && point2) {
+                const midX = (point1.x + point2.x) / 2;
+                const midY = (point1.y + point2.y) / 2;
+                const dx = point2.x - point1.x;
+                const dy = point2.y - point1.y;
                 const len = Math.sqrt(dx * dx + dy * dy);
+                let finalOffset = 30 / viewState.zoom;
                 if (len > 0) {
                   const perpX = -dy / len;
                   const perpY = dx / len;
-                  const midX = (startPoint.x + endPoint.x) / 2;
-                  const midY = (startPoint.y + endPoint.y) / 2;
                   finalOffset = (world.x - midX) * perpX + (world.y - midY) * perpY;
+                  if (Math.abs(finalOffset) < 20 / viewState.zoom) {
+                    finalOffset = finalOffset >= 0 ? 30 / viewState.zoom : -30 / viewState.zoom;
+                  }
+                }
+
+                const constraintId = onAddDistanceDimension(pendingDimension.entityId, hit.entityId, finalOffset);
+                if (constraintId) {
+                  const distance = Math.sqrt(
+                    Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2)
+                  );
+                  setEditValue((Math.round(distance * 10) / 10).toString());
+                  setEditingDimension(constraintId);
                 }
               }
+              setPendingDimension(null);
+            } else {
+              // Point + empty space or other = cancel
+              setPendingDimension(null);
             }
-          }
+          } else if (pendingDimension.mode === 'line') {
+            // First click was a line
+            if (hit && hit.entityType === 'line' && hit.entityId !== pendingDimension.entityId) {
+              // Line + Line = Angle dimension
+              const constraintId = onAddAngleDimension(pendingDimension.entityId, hit.entityId, 30 / viewState.zoom);
 
-          const constraintId = onAddDimension(pendingDimension.entityId, pendingDimension.mode as 'line' | 'circle', finalOffset);
-          setPendingDimension(null);
-
-          // Auto-start editing the new dimension
-          if (constraintId) {
-            // Get the current value for the edit input
-            if (pendingDimension.mode === 'line') {
+              if (constraintId) {
+                const line1 = entities.lines.get(pendingDimension.entityId);
+                const line2 = entities.lines.get(hit.entityId);
+                if (line1 && line2) {
+                  const p1Start = entities.points.get(line1.startId);
+                  const p1End = entities.points.get(line1.endId);
+                  const p2Start = entities.points.get(line2.startId);
+                  const p2End = entities.points.get(line2.endId);
+                  if (p1Start && p1End && p2Start && p2End) {
+                    const dx1 = p1End.x - p1Start.x;
+                    const dy1 = p1End.y - p1Start.y;
+                    const dx2 = p2End.x - p2Start.x;
+                    const dy2 = p2End.y - p2Start.y;
+                    const angle1 = Math.atan2(dy1, dx1);
+                    const angle2 = Math.atan2(dy2, dx2);
+                    let angleDiff = Math.abs(angle2 - angle1) * 180 / Math.PI;
+                    if (angleDiff > 180) angleDiff = 360 - angleDiff;
+                    setEditValue((Math.round(angleDiff * 10) / 10).toString());
+                    setEditingDimension(constraintId);
+                  }
+                }
+              }
+              setPendingDimension(null);
+            } else if (!hit) {
+              // Line + empty space = Length dimension (place it here)
               const line = entities.lines.get(pendingDimension.entityId);
               if (line) {
                 const startPoint = entities.points.get(line.startId);
                 const endPoint = entities.points.get(line.endId);
                 if (startPoint && endPoint) {
-                  const len = Math.sqrt(
-                    Math.pow(endPoint.x - startPoint.x, 2) +
-                    Math.pow(endPoint.y - startPoint.y, 2)
-                  );
-                  setEditValue((Math.round(len * 10) / 10).toString());
+                  const dx = endPoint.x - startPoint.x;
+                  const dy = endPoint.y - startPoint.y;
+                  const len = Math.sqrt(dx * dx + dy * dy);
+                  let finalOffset = 30 / viewState.zoom;
+                  if (len > 0) {
+                    const perpX = -dy / len;
+                    const perpY = dx / len;
+                    const midX = (startPoint.x + endPoint.x) / 2;
+                    const midY = (startPoint.y + endPoint.y) / 2;
+                    finalOffset = (world.x - midX) * perpX + (world.y - midY) * perpY;
+                  }
+
+                  const constraintId = onAddDimension(pendingDimension.entityId, 'line', finalOffset);
+                  if (constraintId) {
+                    setEditValue((Math.round(len * 10) / 10).toString());
+                    setEditingDimension(constraintId);
+                  }
                 }
               }
-            } else if (pendingDimension.mode === 'circle') {
+              setPendingDimension(null);
+            } else {
+              // Line + something else = cancel
+              setPendingDimension(null);
+            }
+          } else if (pendingDimension.mode === 'circle') {
+            // First click was a circle - second click places the radius dimension
+            if (!hit) {
               const circle = entities.circles.get(pendingDimension.entityId);
               if (circle) {
-                setEditValue((Math.round(circle.radius * 10) / 10).toString());
+                const constraintId = onAddDimension(pendingDimension.entityId, 'circle', pendingDimension.offset);
+                if (constraintId) {
+                  setEditValue((Math.round(circle.radius * 10) / 10).toString());
+                  setEditingDimension(constraintId);
+                }
               }
             }
-            setEditingDimension(constraintId);
+            setPendingDimension(null);
+          } else {
+            // Unknown mode - reset
+            setPendingDimension(null);
           }
         }
         break;
@@ -1937,6 +1909,13 @@ export default function Canvas({
       setSnapPoint(snap);
     } else {
       setSnapPoint(null);
+    }
+
+    // Update hover state - hit test to find entity under cursor
+    if (!isDraggingRef.current && !isDraggingEntityRef.current) {
+      const hitThreshold = 15 / viewState.zoom;
+      const hit = hitTest(world.x, world.y, entities, hitThreshold);
+      setHoveredEntityId(hit ? hit.entityId : null);
     }
 
     // Handle panning
