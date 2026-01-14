@@ -18,6 +18,8 @@ import {
   RadiusConstraint,
   DistanceConstraint,
   AngleConstraint,
+  DimensionDirection,
+  ORIGIN_POINT_ID,
 } from '@/lib/cad/types';
 
 // Snap info passed to parent when creating entities
@@ -788,7 +790,7 @@ function isPartOfSelectedRectangle(entityId: string, selectedId: string | null, 
 
 // Hit test to find entity at a position
 interface HitTestResult {
-  entityType: 'point' | 'line' | 'circle';
+  entityType: 'point' | 'line' | 'circle' | 'origin' | 'axis-x' | 'axis-y';
   entityId: string;
   pointId?: string; // For lines/circles, which point was hit (for dragging)
 }
@@ -797,8 +799,17 @@ function hitTest(
   worldX: number,
   worldY: number,
   entities: SketchEntities,
-  hitThreshold: number
+  hitThreshold: number,
+  includeOriginAndAxes: boolean = false
 ): HitTestResult | null {
+  // Check origin point first (highest priority when enabled)
+  if (includeOriginAndAxes) {
+    const originDist = Math.sqrt(worldX * worldX + worldY * worldY);
+    if (originDist < hitThreshold) {
+      return { entityType: 'origin', entityId: 'origin' };
+    }
+  }
+
   // Check points first (highest priority)
   for (const point of entities.points.values()) {
     const dist = Math.sqrt(
@@ -844,6 +855,18 @@ function hitTest(
     // Hit if near the circumference
     if (Math.abs(distToCenter - circle.radius) < hitThreshold) {
       return { entityType: 'circle', entityId: circle.id };
+    }
+  }
+
+  // Check axes (lower priority - only when no other entity is hit)
+  if (includeOriginAndAxes) {
+    // X-axis: horizontal line through origin
+    if (Math.abs(worldY) < hitThreshold) {
+      return { entityType: 'axis-x', entityId: 'axis-x' };
+    }
+    // Y-axis: vertical line through origin
+    if (Math.abs(worldX) < hitThreshold) {
+      return { entityType: 'axis-y', entityId: 'axis-y' };
     }
   }
 
@@ -987,6 +1010,298 @@ function applyAngleSnap(
   return { x: endX, y: endY, snappedAngle: null };
 }
 
+// Helper to determine dimension type based on cursor position for point-to-point dimensions
+function determineDimensionType(
+  p1: { x: number; y: number },
+  p2: { x: number; y: number },
+  cursor: { x: number; y: number }
+): 'x' | 'y' | 'direct' {
+  const midX = (p1.x + p2.x) / 2;
+  const midY = (p1.y + p2.y) / 2;
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+
+  // Vector from midpoint to cursor
+  const cursorOffsetX = cursor.x - midX;
+  const cursorOffsetY = cursor.y - midY;
+
+  // Calculate the angle of the line between points
+  const lineAngle = Math.atan2(dy, dx);
+
+  // Calculate perpendicular distance from cursor to the line
+  const perpDist = Math.abs(cursorOffsetX * Math.sin(lineAngle) - cursorOffsetY * Math.cos(lineAngle));
+
+  // Calculate parallel distance from cursor to midpoint along the line
+  const parallelDist = Math.abs(cursorOffsetX * Math.cos(lineAngle) + cursorOffsetY * Math.sin(lineAngle));
+
+  // If cursor is far from the line (perpendicular distance), use H or V based on cursor position
+  // If cursor is close to the line extension, use direct dimension
+  const threshold = Math.max(20, Math.sqrt(dx * dx + dy * dy) * 0.3);
+
+  if (perpDist < threshold * 0.5 && parallelDist > threshold) {
+    // Cursor is along the line extension - direct dimension
+    return 'direct';
+  }
+
+  // Determine H or V based on which side of the diagonal the cursor is on
+  // If cursor is mostly above/below the midpoint → horizontal dimension (measures X)
+  // If cursor is mostly left/right → vertical dimension (measures Y)
+  const absOffsetX = Math.abs(cursorOffsetX);
+  const absOffsetY = Math.abs(cursorOffsetY);
+
+  if (absOffsetY > absOffsetX * 1.5) {
+    // Cursor is mostly above/below - horizontal dimension line
+    return 'x';
+  } else if (absOffsetX > absOffsetY * 1.5) {
+    // Cursor is mostly left/right - vertical dimension line
+    return 'y';
+  }
+
+  return 'direct';
+}
+
+// Helper to render a linear dimension with arrows
+function renderLinearDimension(
+  group: THREE.Group,
+  p1: { x: number; y: number },
+  p2: { x: number; y: number },
+  cursor: { x: number; y: number },
+  dimType: 'x' | 'y' | 'direct',
+  colors: CADColors,
+  zoom: number,
+  valueOverride?: string
+): { textX: number; textY: number; value: string } {
+  const dimMaterial = new THREE.LineBasicMaterial({ color: colors.fullyConstrained, linewidth: 2 });
+
+  let dim1X: number, dim1Y: number, dim2X: number, dim2Y: number;
+  let value: number;
+
+  if (dimType === 'x') {
+    // Horizontal distance - vertical dimension line at cursor X
+    const offsetY = cursor.y - (p1.y + p2.y) / 2;
+    dim1X = p1.x;
+    dim1Y = (p1.y + p2.y) / 2 + offsetY;
+    dim2X = p2.x;
+    dim2Y = dim1Y;
+    value = Math.abs(p2.x - p1.x);
+  } else if (dimType === 'y') {
+    // Vertical distance - horizontal dimension line at cursor Y
+    const offsetX = cursor.x - (p1.x + p2.x) / 2;
+    dim1X = (p1.x + p2.x) / 2 + offsetX;
+    dim1Y = p1.y;
+    dim2X = dim1X;
+    dim2Y = p2.y;
+    value = Math.abs(p2.y - p1.y);
+  } else {
+    // Direct distance - perpendicular to the line between points
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 0.001) return { textX: cursor.x, textY: cursor.y, value: '0' };
+
+    const perpX = -dy / len;
+    const perpY = dx / len;
+    const midX = (p1.x + p2.x) / 2;
+    const midY = (p1.y + p2.y) / 2;
+    const offset = (cursor.x - midX) * perpX + (cursor.y - midY) * perpY;
+
+    dim1X = p1.x + perpX * offset;
+    dim1Y = p1.y + perpY * offset;
+    dim2X = p2.x + perpX * offset;
+    dim2Y = p2.y + perpY * offset;
+    value = len;
+  }
+
+  // Draw dimension line
+  const dimLineGeom = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(dim1X, dim1Y, 0.7),
+    new THREE.Vector3(dim2X, dim2Y, 0.7),
+  ]);
+  group.add(new THREE.Line(dimLineGeom, dimMaterial));
+
+  // Draw extension lines
+  const ext1Geom = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(p1.x, p1.y, 0.7),
+    new THREE.Vector3(dim1X, dim1Y, 0.7),
+  ]);
+  group.add(new THREE.Line(ext1Geom, dimMaterial));
+
+  const ext2Geom = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(p2.x, p2.y, 0.7),
+    new THREE.Vector3(dim2X, dim2Y, 0.7),
+  ]);
+  group.add(new THREE.Line(ext2Geom, dimMaterial));
+
+  // Draw arrows
+  const arrowSize = 8 / zoom;
+  const arrowAngle = Math.PI / 6;
+  const angle = Math.atan2(dim2Y - dim1Y, dim2X - dim1X);
+
+  // Arrow at start
+  const arrow1a = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(dim1X, dim1Y, 0.7),
+    new THREE.Vector3(dim1X + arrowSize * Math.cos(angle + Math.PI - arrowAngle), dim1Y + arrowSize * Math.sin(angle + Math.PI - arrowAngle), 0.7),
+  ]);
+  group.add(new THREE.Line(arrow1a, dimMaterial));
+
+  const arrow1b = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(dim1X, dim1Y, 0.7),
+    new THREE.Vector3(dim1X + arrowSize * Math.cos(angle + Math.PI + arrowAngle), dim1Y + arrowSize * Math.sin(angle + Math.PI + arrowAngle), 0.7),
+  ]);
+  group.add(new THREE.Line(arrow1b, dimMaterial));
+
+  // Arrow at end
+  const arrow2a = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(dim2X, dim2Y, 0.7),
+    new THREE.Vector3(dim2X + arrowSize * Math.cos(angle - arrowAngle), dim2Y + arrowSize * Math.sin(angle - arrowAngle), 0.7),
+  ]);
+  group.add(new THREE.Line(arrow2a, dimMaterial));
+
+  const arrow2b = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(dim2X, dim2Y, 0.7),
+    new THREE.Vector3(dim2X + arrowSize * Math.cos(angle + arrowAngle), dim2Y + arrowSize * Math.sin(angle + arrowAngle), 0.7),
+  ]);
+  group.add(new THREE.Line(arrow2b, dimMaterial));
+
+  const textX = (dim1X + dim2X) / 2;
+  const textY = (dim1Y + dim2Y) / 2;
+  const valueText = valueOverride || value.toFixed(1);
+
+  // Text background
+  const textBgSize = (valueText.length * 6 + 8) / zoom;
+  const textBgHeight = 14 / zoom;
+  const bgGeom = new THREE.PlaneGeometry(textBgSize, textBgHeight);
+  const bgMat = new THREE.MeshBasicMaterial({ color: colors.background });
+  const bgMesh = new THREE.Mesh(bgGeom, bgMat);
+  bgMesh.position.set(textX, textY, 0.75);
+  group.add(bgMesh);
+
+  return { textX, textY, value: valueText };
+}
+
+// Helper to render radius/diameter dimension for circles
+function renderCircleDimension(
+  group: THREE.Group,
+  center: { x: number; y: number },
+  radius: number,
+  cursor: { x: number; y: number },
+  isDiameter: boolean,
+  colors: CADColors,
+  zoom: number
+): { textX: number; textY: number; value: string } {
+  const dimMaterial = new THREE.LineBasicMaterial({ color: colors.fullyConstrained, linewidth: 2 });
+
+  // Direction from center to cursor
+  const dx = cursor.x - center.x;
+  const dy = cursor.y - center.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const dirX = dist > 0 ? dx / dist : 1;
+  const dirY = dist > 0 ? dy / dist : 0;
+
+  if (isDiameter) {
+    // Diameter line goes through center
+    const p1X = center.x - dirX * radius;
+    const p1Y = center.y - dirY * radius;
+    const p2X = center.x + dirX * radius;
+    const p2Y = center.y + dirY * radius;
+
+    const dimLineGeom = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(p1X, p1Y, 0.7),
+      new THREE.Vector3(p2X, p2Y, 0.7),
+    ]);
+    group.add(new THREE.Line(dimLineGeom, dimMaterial));
+
+    // Arrows at both ends
+    const arrowSize = 8 / zoom;
+    const arrowAngle = Math.PI / 6;
+    const angle = Math.atan2(dirY, dirX);
+
+    const arrow1a = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(p1X, p1Y, 0.7),
+      new THREE.Vector3(p1X + arrowSize * Math.cos(angle - arrowAngle), p1Y + arrowSize * Math.sin(angle - arrowAngle), 0.7),
+    ]);
+    group.add(new THREE.Line(arrow1a, dimMaterial));
+
+    const arrow1b = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(p1X, p1Y, 0.7),
+      new THREE.Vector3(p1X + arrowSize * Math.cos(angle + arrowAngle), p1Y + arrowSize * Math.sin(angle + arrowAngle), 0.7),
+    ]);
+    group.add(new THREE.Line(arrow1b, dimMaterial));
+
+    const arrow2a = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(p2X, p2Y, 0.7),
+      new THREE.Vector3(p2X + arrowSize * Math.cos(angle + Math.PI - arrowAngle), p2Y + arrowSize * Math.sin(angle + Math.PI - arrowAngle), 0.7),
+    ]);
+    group.add(new THREE.Line(arrow2a, dimMaterial));
+
+    const arrow2b = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(p2X, p2Y, 0.7),
+      new THREE.Vector3(p2X + arrowSize * Math.cos(angle + Math.PI + arrowAngle), p2Y + arrowSize * Math.sin(angle + Math.PI + arrowAngle), 0.7),
+    ]);
+    group.add(new THREE.Line(arrow2b, dimMaterial));
+
+    const value = `⌀${(radius * 2).toFixed(1)}`;
+    const textBgSize = (value.length * 6 + 8) / zoom;
+    const textBgHeight = 14 / zoom;
+    const bgGeom = new THREE.PlaneGeometry(textBgSize, textBgHeight);
+    const bgMat = new THREE.MeshBasicMaterial({ color: colors.background });
+    const bgMesh = new THREE.Mesh(bgGeom, bgMat);
+    bgMesh.position.set(center.x, center.y, 0.75);
+    group.add(bgMesh);
+
+    return { textX: center.x, textY: center.y, value };
+  } else {
+    // Radius line from center to edge
+    const pX = center.x + dirX * radius;
+    const pY = center.y + dirY * radius;
+
+    const dimLineGeom = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(center.x, center.y, 0.7),
+      new THREE.Vector3(pX, pY, 0.7),
+    ]);
+    group.add(new THREE.Line(dimLineGeom, dimMaterial));
+
+    // Arrow at edge
+    const arrowSize = 8 / zoom;
+    const arrowAngle = Math.PI / 6;
+    const angle = Math.atan2(dirY, dirX);
+
+    const arrow1a = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(pX, pY, 0.7),
+      new THREE.Vector3(pX + arrowSize * Math.cos(angle + Math.PI - arrowAngle), pY + arrowSize * Math.sin(angle + Math.PI - arrowAngle), 0.7),
+    ]);
+    group.add(new THREE.Line(arrow1a, dimMaterial));
+
+    const arrow1b = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(pX, pY, 0.7),
+      new THREE.Vector3(pX + arrowSize * Math.cos(angle + Math.PI + arrowAngle), pY + arrowSize * Math.sin(angle + Math.PI + arrowAngle), 0.7),
+    ]);
+    group.add(new THREE.Line(arrow1b, dimMaterial));
+
+    const textX = (center.x + pX) / 2;
+    const textY = (center.y + pY) / 2;
+    const value = `R${radius.toFixed(1)}`;
+    const textBgSize = (value.length * 6 + 8) / zoom;
+    const textBgHeight = 14 / zoom;
+    const bgGeom = new THREE.PlaneGeometry(textBgSize, textBgHeight);
+    const bgMat = new THREE.MeshBasicMaterial({ color: colors.background });
+    const bgMesh = new THREE.Mesh(bgGeom, bgMat);
+    bgMesh.position.set(textX, textY, 0.75);
+    group.add(bgMesh);
+
+    return { textX, textY, value };
+  }
+}
+
+// Type for pending dimension state
+type DimensionEntityType = 'point' | 'line' | 'circle' | 'origin' | 'axis-x' | 'axis-y';
+type PendingDimensionState = {
+  phase: 'selecting' | 'placing';
+  entity1: { type: DimensionEntityType; id: string };
+  entity2?: { type: DimensionEntityType; id: string };
+  dimensionType?: 'x' | 'y' | 'direct' | 'radius' | 'diameter' | 'length' | 'angle';
+} | null;
+
 // Render preview geometry (while drawing)
 function renderPreview(
   scene: THREE.Scene,
@@ -995,7 +1310,7 @@ function renderPreview(
   pendingPoints: Array<{ x: number; y: number }>,
   currentMouse: { x: number; y: number } | null,
   colors: CADColors,
-  pendingDimension: { mode: 'line' | 'circle' | 'point' | 'point-to-point' | 'angle'; entityId: string; offset: number } | null,
+  pendingDimension: PendingDimensionState,
   entities: SketchEntities,
   zoom: number,
   containerWidth: number,
@@ -1016,114 +1331,105 @@ function renderPreview(
     });
   }
 
-  // Handle dimension preview
-  if (pendingDimension && currentMouse) {
+  // Handle dimension preview during placing phase
+  if (pendingDimension?.phase === 'placing' && currentMouse) {
     const group = new THREE.Group();
-    const dimMaterial = new THREE.LineBasicMaterial({ color: colors.fullyConstrained, linewidth: 2 });
 
-    if (pendingDimension.mode === 'line') {
-      const line = entities.lines.get(pendingDimension.entityId);
-      if (line) {
-        const startPoint = entities.points.get(line.startId);
-        const endPoint = entities.points.get(line.endId);
-        if (startPoint && endPoint) {
-          // Calculate perpendicular offset from mouse position
-          const dx = endPoint.x - startPoint.x;
-          const dy = endPoint.y - startPoint.y;
-          const len = Math.sqrt(dx * dx + dy * dy);
-          const perpX = -dy / len;
-          const perpY = dx / len;
-          const midX = (startPoint.x + endPoint.x) / 2;
-          const midY = (startPoint.y + endPoint.y) / 2;
+    // Get the point coordinates based on entity types
+    const getPointCoords = (entity: { type: DimensionEntityType; id: string }): { x: number; y: number } | null => {
+      if (entity.type === 'origin') return { x: 0, y: 0 };
+      if (entity.type === 'point') {
+        const p = entities.points.get(entity.id);
+        return p ? { x: p.x, y: p.y } : null;
+      }
+      if (entity.type === 'line') {
+        const line = entities.lines.get(entity.id);
+        if (!line) return null;
+        const start = entities.points.get(line.startId);
+        const end = entities.points.get(line.endId);
+        if (!start || !end) return null;
+        return { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+      }
+      if (entity.type === 'circle') {
+        const circle = entities.circles.get(entity.id);
+        if (!circle) return null;
+        const center = entities.points.get(circle.centerId);
+        return center ? { x: center.x, y: center.y } : null;
+      }
+      return null;
+    };
 
-          // Calculate offset from current mouse
-          const offset = (currentMouse.x - midX) * perpX + (currentMouse.y - midY) * perpY;
+    const e1 = pendingDimension.entity1;
+    const e2 = pendingDimension.entity2;
 
-          // Dimension line endpoints
-          const dim1X = startPoint.x + perpX * offset;
-          const dim1Y = startPoint.y + perpY * offset;
-          const dim2X = endPoint.x + perpX * offset;
-          const dim2Y = endPoint.y + perpY * offset;
-
-          // Draw dimension line
-          const dimLineGeom = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(dim1X, dim1Y, 0.7),
-            new THREE.Vector3(dim2X, dim2Y, 0.7),
-          ]);
-          group.add(new THREE.Line(dimLineGeom, dimMaterial));
-
-          // Draw extension lines
-          const ext1Geom = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(startPoint.x, startPoint.y, 0.7),
-            new THREE.Vector3(dim1X, dim1Y, 0.7),
-          ]);
-          group.add(new THREE.Line(ext1Geom, dimMaterial));
-
-          const ext2Geom = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(endPoint.x, endPoint.y, 0.7),
-            new THREE.Vector3(dim2X, dim2Y, 0.7),
-          ]);
-          group.add(new THREE.Line(ext2Geom, dimMaterial));
-
-          // Draw arrows
-          const arrowSize = 8 / zoom;
-          const arrowAngle = Math.PI / 6;
-          const angle1 = Math.atan2(dim2Y - dim1Y, dim2X - dim1X);
-
-          // Arrow at start
-          const arrow1a = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(dim1X, dim1Y, 0.7),
-            new THREE.Vector3(
-              dim1X + arrowSize * Math.cos(angle1 + Math.PI - arrowAngle),
-              dim1Y + arrowSize * Math.sin(angle1 + Math.PI - arrowAngle),
-              0.7
-            ),
-          ]);
-          group.add(new THREE.Line(arrow1a, dimMaterial));
-
-          const arrow1b = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(dim1X, dim1Y, 0.7),
-            new THREE.Vector3(
-              dim1X + arrowSize * Math.cos(angle1 + Math.PI + arrowAngle),
-              dim1Y + arrowSize * Math.sin(angle1 + Math.PI + arrowAngle),
-              0.7
-            ),
-          ]);
-          group.add(new THREE.Line(arrow1b, dimMaterial));
-
-          // Arrow at end
-          const arrow2a = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(dim2X, dim2Y, 0.7),
-            new THREE.Vector3(
-              dim2X + arrowSize * Math.cos(angle1 - arrowAngle),
-              dim2Y + arrowSize * Math.sin(angle1 - arrowAngle),
-              0.7
-            ),
-          ]);
-          group.add(new THREE.Line(arrow2a, dimMaterial));
-
-          const arrow2b = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(dim2X, dim2Y, 0.7),
-            new THREE.Vector3(
-              dim2X + arrowSize * Math.cos(angle1 + arrowAngle),
-              dim2Y + arrowSize * Math.sin(angle1 + arrowAngle),
-              0.7
-            ),
-          ]);
-          group.add(new THREE.Line(arrow2b, dimMaterial));
-
-          // Text background at center
-          const textX = midX + perpX * offset;
-          const textY = midY + perpY * offset;
-          const valueText = len.toFixed(1);
-          const textBgSize = (valueText.length * 6 + 8) / zoom;
-          const textBgHeight = 14 / zoom;
-          const bgGeom = new THREE.PlaneGeometry(textBgSize, textBgHeight);
-          const bgMat = new THREE.MeshBasicMaterial({ color: colors.background });
-          const bgMesh = new THREE.Mesh(bgGeom, bgMat);
-          bgMesh.position.set(textX, textY, 0.75);
-          group.add(bgMesh);
+    // Single entity dimensioning (line length, circle radius/diameter)
+    if (!e2) {
+      if (e1.type === 'line') {
+        // Line length dimension
+        const line = entities.lines.get(e1.id);
+        if (line) {
+          const start = entities.points.get(line.startId);
+          const end = entities.points.get(line.endId);
+          if (start && end) {
+            renderLinearDimension(group, start, end, currentMouse, 'direct', colors, zoom);
+          }
         }
+      } else if (e1.type === 'circle') {
+        // Circle radius or diameter based on cursor position
+        const circle = entities.circles.get(e1.id);
+        if (circle) {
+          const center = entities.points.get(circle.centerId);
+          if (center) {
+            const distToCenter = Math.sqrt(
+              Math.pow(currentMouse.x - center.x, 2) + Math.pow(currentMouse.y - center.y, 2)
+            );
+            const isDiameter = distToCenter > circle.radius;
+            renderCircleDimension(group, center, circle.radius, currentMouse, isDiameter, colors, zoom);
+          }
+        }
+      }
+    } else {
+      // Two entity dimensioning
+      const isPointLike = (type: DimensionEntityType) =>
+        type === 'point' || type === 'origin';
+
+      if (isPointLike(e1.type) && isPointLike(e2.type)) {
+        // Point to point dimension
+        const p1 = getPointCoords(e1);
+        const p2 = getPointCoords(e2);
+        if (p1 && p2) {
+          const dimType = determineDimensionType(p1, p2, currentMouse);
+          renderLinearDimension(group, p1, p2, currentMouse, dimType, colors, zoom);
+        }
+      } else if (isPointLike(e1.type) && (e2.type === 'axis-x' || e2.type === 'axis-y')) {
+        // Point to axis dimension
+        const p1 = getPointCoords(e1);
+        if (p1) {
+          if (e2.type === 'axis-x') {
+            // Distance from point to X-axis (Y coordinate)
+            const p2 = { x: p1.x, y: 0 };
+            renderLinearDimension(group, p1, p2, currentMouse, 'y', colors, zoom);
+          } else {
+            // Distance from point to Y-axis (X coordinate)
+            const p2 = { x: 0, y: p1.y };
+            renderLinearDimension(group, p1, p2, currentMouse, 'x', colors, zoom);
+          }
+        }
+      } else if ((e1.type === 'axis-x' || e1.type === 'axis-y') && isPointLike(e2.type)) {
+        // Axis to point dimension (swap order)
+        const p2 = getPointCoords(e2);
+        if (p2) {
+          if (e1.type === 'axis-x') {
+            const p1 = { x: p2.x, y: 0 };
+            renderLinearDimension(group, p1, p2, currentMouse, 'y', colors, zoom);
+          } else {
+            const p1 = { x: 0, y: p2.y };
+            renderLinearDimension(group, p1, p2, currentMouse, 'x', colors, zoom);
+          }
+        }
+      } else if (e1.type === 'line' && e2.type === 'line') {
+        // Line to line - angle dimension (TODO: implement angle preview)
+        // For now, just show nothing
       }
     }
 
@@ -1447,11 +1753,16 @@ export default function Canvas({
   const draggingPointIdRef = useRef<string | null>(null);
   const didDragRef = useRef(false); // Track if a drag occurred to skip click
 
-  // Dimension creation state - supports different dimension modes
+  // Dimension creation state - supports drag-to-place workflow
+  // Phase 1: 'selecting' - user has clicked first entity, waiting for second click
+  // Phase 2: 'placing' - user is dragging to position the dimension, type updates based on cursor
+  type DimensionEntityType = 'point' | 'line' | 'circle' | 'origin' | 'axis-x' | 'axis-y';
   const [pendingDimension, setPendingDimension] = useState<{
-    mode: 'line' | 'circle' | 'point' | 'point-to-point' | 'angle';
-    entityId: string;  // For line/circle, the entity ID. For point, first point ID. For angle, first line ID.
-    offset: number;
+    phase: 'selecting' | 'placing';
+    entity1: { type: DimensionEntityType; id: string };
+    entity2?: { type: DimensionEntityType; id: string };
+    // For placing phase - determined by cursor position
+    dimensionType?: 'x' | 'y' | 'direct' | 'radius' | 'diameter' | 'length' | 'angle';
   } | null>(null);
 
   const colors = isDarkMode ? DARK_COLORS : LIGHT_COLORS;
@@ -1860,13 +2171,15 @@ export default function Canvas({
         break;
 
       case 'dimension': {
-        // Onshape-style dimension tool:
-        // - Click entity, click empty space = dimension that entity
-        // - Click point, click point = distance between points
-        // - Click line, click line = angle between lines
+        // Onshape-style dimension tool with drag-to-place:
+        // 1. Click entity → start selecting/placing
+        // 2. For lines/circles: immediately enter placing mode, drag to position
+        // 3. For points: click second point, then drag to position
+        // 4. Click to finalize
 
         const hitThreshold = 20 / viewState.zoom;
-        const hit = hitTest(world.x, world.y, entities, hitThreshold);
+        // Use includeOriginAndAxes=true for dimension tool to allow origin and axis selection
+        const hit = hitTest(world.x, world.y, entities, hitThreshold, true);
 
         if (!pendingDimension) {
           // First click - select entity to dimension
@@ -1901,166 +2214,73 @@ export default function Canvas({
             }
           }
 
-          // Start pending dimension based on what was clicked
-          // Map 'point' entityType to 'point' mode for dimension state
-          const mode = hit.entityType === 'point' ? 'point' : hit.entityType;
-          setPendingDimension({
-            mode: mode as 'line' | 'circle' | 'point-to-point' | 'angle' | 'point',
-            entityId: hit.entityId,
-            offset: 30 / viewState.zoom,
-          });
-        } else {
-          // Second click - determine dimension type based on what's clicked
+          // Start dimension based on what was clicked
+          const entityType = hit.entityType as DimensionEntityType;
 
-          if (pendingDimension.mode === 'point') {
-            // First click was a point
-            if (hit && hit.entityType === 'point' && hit.entityId !== pendingDimension.entityId) {
-              // Point + Point = Distance dimension
-              // Direction determined by where user clicks relative to the two points
-              const point1 = entities.points.get(pendingDimension.entityId);
-              const point2 = entities.points.get(hit.entityId);
+          if (entityType === 'line' || entityType === 'circle') {
+            // Single-entity dimensions go directly to placing mode
+            setPendingDimension({
+              phase: 'placing',
+              entity1: { type: entityType, id: hit.entityId },
+            });
+          } else {
+            // Points, origin, axes need a second entity
+            setPendingDimension({
+              phase: 'selecting',
+              entity1: { type: entityType, id: hit.entityId },
+            });
+          }
+        } else if (pendingDimension.phase === 'selecting') {
+          // Second click - select second entity or cancel
+          if (!hit) {
+            // Clicked empty space - cancel
+            setPendingDimension(null);
+            break;
+          }
 
-              if (point1 && point2) {
-                const midX = (point1.x + point2.x) / 2;
-                const midY = (point1.y + point2.y) / 2;
-                const dx = point2.x - point1.x;
-                const dy = point2.y - point1.y;
+          const e1Type = pendingDimension.entity1.type;
+          const e2Type = hit.entityType as DimensionEntityType;
 
-                // Calculate offset from midpoint to mouse position
-                const mouseOffsetX = world.x - midX;
-                const mouseOffsetY = world.y - midY;
+          // Valid combinations for two-entity dimensions:
+          // - point/origin + point/origin → distance
+          // - point/origin + axis → distance to axis
+          // - axis + point/origin → distance to axis
+          const isPointLike = (t: DimensionEntityType) => t === 'point' || t === 'origin';
+          const isAxis = (t: DimensionEntityType) => t === 'axis-x' || t === 'axis-y';
 
-                // Determine dimension direction based on mouse position
-                // If mouse is mostly above/below the midpoint → horizontal dimension line → measures Y distance
-                // If mouse is mostly left/right of midpoint → vertical dimension line → measures X distance
-                // Otherwise → diagonal dimension
-                let direction: 'x' | 'y' | 'direct' = 'direct';
-                const absMouseX = Math.abs(mouseOffsetX);
-                const absMouseY = Math.abs(mouseOffsetY);
-                const threshold = 20 / viewState.zoom;
+          if ((isPointLike(e1Type) && isPointLike(e2Type)) ||
+              (isPointLike(e1Type) && isAxis(e2Type)) ||
+              (isAxis(e1Type) && isPointLike(e2Type))) {
+            // Valid combination - enter placing mode
+            setPendingDimension({
+              phase: 'placing',
+              entity1: pendingDimension.entity1,
+              entity2: { type: e2Type, id: hit.entityId },
+            });
+          } else {
+            // Invalid combination - cancel
+            setPendingDimension(null);
+          }
+        } else if (pendingDimension.phase === 'placing') {
+          // Third click - finalize the dimension at current position
+          const e1 = pendingDimension.entity1;
+          const e2 = pendingDimension.entity2;
 
-                if (absMouseY > absMouseX && absMouseY > threshold) {
-                  // Mouse is mostly above/below - horizontal dimension line - Y distance
-                  direction = 'y';
-                } else if (absMouseX > absMouseY && absMouseX > threshold) {
-                  // Mouse is mostly left/right - vertical dimension line - X distance
-                  direction = 'x';
-                }
-
-                // Calculate offset for display
-                let finalOffset = 30 / viewState.zoom;
-                if (direction === 'y') {
-                  // Horizontal dimension line at mouse Y position
-                  finalOffset = mouseOffsetY;
-                  if (Math.abs(finalOffset) < threshold) {
-                    finalOffset = finalOffset >= 0 ? 30 / viewState.zoom : -30 / viewState.zoom;
-                  }
-                } else if (direction === 'x') {
-                  // Vertical dimension line at mouse X position
-                  finalOffset = mouseOffsetX;
-                  if (Math.abs(finalOffset) < threshold) {
-                    finalOffset = finalOffset >= 0 ? 30 / viewState.zoom : -30 / viewState.zoom;
-                  }
-                } else {
-                  // Direct dimension - perpendicular to line between points
-                  const len = Math.sqrt(dx * dx + dy * dy);
-                  if (len > 0) {
-                    const perpX = -dy / len;
-                    const perpY = dx / len;
-                    finalOffset = mouseOffsetX * perpX + mouseOffsetY * perpY;
-                    if (Math.abs(finalOffset) < threshold) {
-                      finalOffset = finalOffset >= 0 ? 30 / viewState.zoom : -30 / viewState.zoom;
-                    }
-                  }
-                }
-
-                const constraintId = onAddDistanceDimension(pendingDimension.entityId, hit.entityId, finalOffset, direction);
-                if (constraintId) {
-                  let distance: number;
-                  if (direction === 'x') {
-                    distance = Math.abs(point2.x - point1.x);
-                  } else if (direction === 'y') {
-                    distance = Math.abs(point2.y - point1.y);
-                  } else {
-                    distance = Math.sqrt(dx * dx + dy * dy);
-                  }
-                  setEditValue((Math.round(distance * 10) / 10).toString());
-                  setEditingDimension(constraintId);
-                }
-              }
-              setPendingDimension(null);
-            } else {
-              // Point + empty space or other = cancel
-              setPendingDimension(null);
+          // Helper to get point coordinates
+          const getPointCoords = (entity: { type: DimensionEntityType; id: string }): { x: number; y: number } | null => {
+            if (entity.type === 'origin') return { x: 0, y: 0 };
+            if (entity.type === 'point') {
+              const p = entities.points.get(entity.id);
+              return p ? { x: p.x, y: p.y } : null;
             }
-          } else if (pendingDimension.mode === 'line') {
-            // First click was a line
-            if (hit && hit.entityType === 'line' && hit.entityId !== pendingDimension.entityId) {
-              // Line + Line: Check if parallel, if so create distance dimension, else angle dimension
-              const line1 = entities.lines.get(pendingDimension.entityId);
-              const line2 = entities.lines.get(hit.entityId);
-              if (line1 && line2) {
-                const p1Start = entities.points.get(line1.startId);
-                const p1End = entities.points.get(line1.endId);
-                const p2Start = entities.points.get(line2.startId);
-                const p2End = entities.points.get(line2.endId);
-                if (p1Start && p1End && p2Start && p2End) {
-                  const dx1 = p1End.x - p1Start.x;
-                  const dy1 = p1End.y - p1Start.y;
-                  const dx2 = p2End.x - p2Start.x;
-                  const dy2 = p2End.y - p2Start.y;
-                  const angle1 = Math.atan2(dy1, dx1);
-                  const angle2 = Math.atan2(dy2, dx2);
-                  let angleDiff = Math.abs(angle2 - angle1) * 180 / Math.PI;
-                  if (angleDiff > 180) angleDiff = 360 - angleDiff;
-                  // Also check if they're opposite direction (180 - angleDiff)
-                  if (angleDiff > 90) angleDiff = 180 - angleDiff;
+            return null;
+          };
 
-                  // If lines are parallel (within 5 degrees), create distance dimension
-                  const PARALLEL_THRESHOLD = 5; // degrees
-                  if (angleDiff < PARALLEL_THRESHOLD) {
-                    // Find the closest pair of points between the two lines for the distance
-                    const distances = [
-                      { p1: line1.startId, p2: line2.startId, dist: Math.hypot(p1Start.x - p2Start.x, p1Start.y - p2Start.y) },
-                      { p1: line1.startId, p2: line2.endId, dist: Math.hypot(p1Start.x - p2End.x, p1Start.y - p2End.y) },
-                      { p1: line1.endId, p2: line2.startId, dist: Math.hypot(p1End.x - p2Start.x, p1End.y - p2Start.y) },
-                      { p1: line1.endId, p2: line2.endId, dist: Math.hypot(p1End.x - p2End.x, p1End.y - p2End.y) },
-                    ];
-                    distances.sort((a, b) => a.dist - b.dist);
-                    const closest = distances[0];
-
-                    // Calculate perpendicular distance between the parallel lines
-                    // Use the perpendicular from a point on line1 to line2
-                    const len2 = Math.hypot(dx2, dy2);
-                    let perpDist = closest.dist;
-                    if (len2 > 0) {
-                      // Perpendicular distance from p1Start to line2
-                      const t = ((p1Start.x - p2Start.x) * dx2 + (p1Start.y - p2Start.y) * dy2) / (len2 * len2);
-                      const projX = p2Start.x + t * dx2;
-                      const projY = p2Start.y + t * dy2;
-                      perpDist = Math.hypot(p1Start.x - projX, p1Start.y - projY);
-                    }
-
-                    // For parallel lines, use direct distance (perpendicular)
-                    const constraintId = onAddDistanceDimension(closest.p1, closest.p2, 30 / viewState.zoom, 'direct');
-                    if (constraintId) {
-                      setEditValue((Math.round(perpDist * 10) / 10).toString());
-                      setEditingDimension(constraintId);
-                    }
-                  } else {
-                    // Non-parallel lines: create angle dimension
-                    const constraintId = onAddAngleDimension(pendingDimension.entityId, hit.entityId, 30 / viewState.zoom);
-                    if (constraintId) {
-                      setEditValue((Math.round(angleDiff * 10) / 10).toString());
-                      setEditingDimension(constraintId);
-                    }
-                  }
-                }
-              }
-              setPendingDimension(null);
-            } else if (!hit) {
-              // Line + empty space = Length dimension (place it here)
-              const line = entities.lines.get(pendingDimension.entityId);
+          if (!e2) {
+            // Single entity dimension
+            if (e1.type === 'line') {
+              // Line length
+              const line = entities.lines.get(e1.id);
               if (line) {
                 const startPoint = entities.points.get(line.startId);
                 const endPoint = entities.points.get(line.endId);
@@ -2068,44 +2288,115 @@ export default function Canvas({
                   const dx = endPoint.x - startPoint.x;
                   const dy = endPoint.y - startPoint.y;
                   const len = Math.sqrt(dx * dx + dy * dy);
-                  let finalOffset = 30 / viewState.zoom;
-                  if (len > 0) {
-                    const perpX = -dy / len;
-                    const perpY = dx / len;
-                    const midX = (startPoint.x + endPoint.x) / 2;
-                    const midY = (startPoint.y + endPoint.y) / 2;
-                    finalOffset = (world.x - midX) * perpX + (world.y - midY) * perpY;
-                  }
+                  const perpX = len > 0 ? -dy / len : 0;
+                  const perpY = len > 0 ? dx / len : 1;
+                  const midX = (startPoint.x + endPoint.x) / 2;
+                  const midY = (startPoint.y + endPoint.y) / 2;
+                  const offset = (world.x - midX) * perpX + (world.y - midY) * perpY;
 
-                  const constraintId = onAddDimension(pendingDimension.entityId, 'line', finalOffset);
+                  const constraintId = onAddDimension(e1.id, 'line', offset);
                   if (constraintId) {
                     setEditValue((Math.round(len * 10) / 10).toString());
                     setEditingDimension(constraintId);
                   }
                 }
               }
-              setPendingDimension(null);
-            } else {
-              // Line + something else = cancel
-              setPendingDimension(null);
-            }
-          } else if (pendingDimension.mode === 'circle') {
-            // First click was a circle - second click places the radius dimension
-            if (!hit) {
-              const circle = entities.circles.get(pendingDimension.entityId);
+            } else if (e1.type === 'circle') {
+              // Circle radius or diameter
+              const circle = entities.circles.get(e1.id);
               if (circle) {
-                const constraintId = onAddDimension(pendingDimension.entityId, 'circle', pendingDimension.offset);
+                const center = entities.points.get(circle.centerId);
+                if (center) {
+                  const distToCenter = Math.sqrt(
+                    Math.pow(world.x - center.x, 2) + Math.pow(world.y - center.y, 2)
+                  );
+                  const isDiameter = distToCenter > circle.radius;
+
+                  // For now, always create radius constraint (diameter support TODO)
+                  const constraintId = onAddDimension(e1.id, 'circle', 30 / viewState.zoom);
+                  if (constraintId) {
+                    const value = isDiameter ? circle.radius * 2 : circle.radius;
+                    setEditValue((Math.round(value * 10) / 10).toString());
+                    setEditingDimension(constraintId);
+                  }
+                }
+              }
+            }
+          } else {
+            // Two entity dimension
+            const isPointLike = (t: DimensionEntityType) => t === 'point' || t === 'origin';
+
+            if (isPointLike(e1.type) && isPointLike(e2.type)) {
+              // Point to point
+              const p1 = getPointCoords(e1);
+              const p2 = getPointCoords(e2);
+              if (p1 && p2) {
+                const dimType = determineDimensionType(p1, p2, world);
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const midX = (p1.x + p2.x) / 2;
+                const midY = (p1.y + p2.y) / 2;
+
+                let offset = 30 / viewState.zoom;
+                if (dimType === 'x') {
+                  offset = world.y - midY;
+                } else if (dimType === 'y') {
+                  offset = world.x - midX;
+                } else {
+                  const len = Math.sqrt(dx * dx + dy * dy);
+                  if (len > 0) {
+                    const perpX = -dy / len;
+                    const perpY = dx / len;
+                    offset = (world.x - midX) * perpX + (world.y - midY) * perpY;
+                  }
+                }
+
+                // Get point IDs for the constraint
+                const point1Id = e1.type === 'origin' ? ORIGIN_POINT_ID : e1.id;
+                const point2Id = e2.type === 'origin' ? ORIGIN_POINT_ID : e2.id;
+
+                const constraintId = onAddDistanceDimension(point1Id, point2Id, offset, dimType);
                 if (constraintId) {
-                  setEditValue((Math.round(circle.radius * 10) / 10).toString());
+                  let distance: number;
+                  if (dimType === 'x') {
+                    distance = Math.abs(p2.x - p1.x);
+                  } else if (dimType === 'y') {
+                    distance = Math.abs(p2.y - p1.y);
+                  } else {
+                    distance = Math.sqrt(dx * dx + dy * dy);
+                  }
+                  setEditValue((Math.round(distance * 10) / 10).toString());
+                  setEditingDimension(constraintId);
+                }
+              }
+            } else if ((isPointLike(e1.type) && (e2.type === 'axis-x' || e2.type === 'axis-y')) ||
+                       ((e1.type === 'axis-x' || e1.type === 'axis-y') && isPointLike(e2.type))) {
+              // Point to axis
+              const pointEntity = isPointLike(e1.type) ? e1 : e2;
+              const axisEntity = isPointLike(e1.type) ? e2 : e1;
+              const p = getPointCoords(pointEntity);
+
+              if (p) {
+                const pointId = pointEntity.type === 'origin' ? ORIGIN_POINT_ID : pointEntity.id;
+                const isXAxis = axisEntity.type === 'axis-x';
+
+                // Distance to X-axis is |y|, distance to Y-axis is |x|
+                const distance = isXAxis ? Math.abs(p.y) : Math.abs(p.x);
+                const direction: 'x' | 'y' = isXAxis ? 'y' : 'x';
+
+                // Create the dimension - we need a virtual point on the axis
+                // For now, use origin point and set direction
+                const offset = isXAxis ? (world.x - p.x) : (world.y - p.y);
+                const constraintId = onAddDistanceDimension(pointId, ORIGIN_POINT_ID, offset, direction);
+                if (constraintId) {
+                  setEditValue((Math.round(distance * 10) / 10).toString());
                   setEditingDimension(constraintId);
                 }
               }
             }
-            setPendingDimension(null);
-          } else {
-            // Unknown mode - reset
-            setPendingDimension(null);
           }
+
+          setPendingDimension(null);
         }
         break;
       }
