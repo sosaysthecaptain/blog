@@ -455,8 +455,16 @@ function renderDimensions(
     // Render distance constraint (point-to-point)
     if (constraint.type === 'distance') {
       const distanceConstraint = constraint as DistanceConstraint;
-      const point1 = entities.points.get(distanceConstraint.point1Id);
-      const point2 = entities.points.get(distanceConstraint.point2Id);
+      // Handle origin point specially - it's not in the entities map
+      const getPointCoords = (id: string): { x: number; y: number } | null => {
+        if (id === ORIGIN_POINT_ID) {
+          return { x: 0, y: 0 };
+        }
+        const point = entities.points.get(id);
+        return point ? { x: point.x, y: point.y } : null;
+      };
+      const point1 = getPointCoords(distanceConstraint.point1Id);
+      const point2 = getPointCoords(distanceConstraint.point2Id);
       if (!point1 || !point2) continue;
 
       const offset = distanceConstraint.offset ?? (30 / zoom);

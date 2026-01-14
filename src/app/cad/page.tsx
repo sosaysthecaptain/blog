@@ -486,22 +486,32 @@ export default function CADPage() {
   // Add distance dimension between two points
   const handleAddDistanceDimension = useCallback((point1Id: string, point2Id: string, offset: number, direction: DimensionDirection): string | null => {
     saveToHistory();
-    const point1 = entities.points.get(point1Id);
-    const point2 = entities.points.get(point2Id);
-    if (!point1 || !point2) return null;
+
+    // Get point coordinates, handling origin specially
+    const getPointCoords = (id: string): { x: number; y: number } | null => {
+      if (id === ORIGIN_POINT_ID) {
+        return { x: 0, y: 0 };
+      }
+      const point = entities.points.get(id);
+      return point ? { x: point.x, y: point.y } : null;
+    };
+
+    const p1 = getPointCoords(point1Id);
+    const p2 = getPointCoords(point2Id);
+    if (!p1 || !p2) return null;
 
     // Calculate distance based on direction
     let distance: number;
     if (direction === 'x') {
       // Horizontal distance (delta X)
-      distance = Math.abs(point2.x - point1.x);
+      distance = Math.abs(p2.x - p1.x);
     } else if (direction === 'y') {
       // Vertical distance (delta Y)
-      distance = Math.abs(point2.y - point1.y);
+      distance = Math.abs(p2.y - p1.y);
     } else {
       // Direct (Euclidean) distance
       distance = Math.sqrt(
-        Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2)
+        Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2)
       );
     }
 
