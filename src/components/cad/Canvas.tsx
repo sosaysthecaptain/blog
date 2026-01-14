@@ -1085,20 +1085,22 @@ function renderLinearDimension(
   let value: number;
 
   if (dimType === 'x') {
-    // Horizontal distance - vertical dimension line at cursor X
-    const offsetY = cursor.y - (p1.y + p2.y) / 2;
-    dim1X = p1.x;
-    dim1Y = (p1.y + p2.y) / 2 + offsetY;
-    dim2X = p2.x;
-    dim2Y = dim1Y;
-    value = Math.abs(p2.x - p1.x);
-  } else if (dimType === 'y') {
-    // Vertical distance - horizontal dimension line at cursor Y
+    // Horizontal distance (X) - displayed with vertical dimension line
+    // Line is positioned at X offset from midpoint
     const offsetX = cursor.x - (p1.x + p2.x) / 2;
     dim1X = (p1.x + p2.x) / 2 + offsetX;
     dim1Y = p1.y;
     dim2X = dim1X;
     dim2Y = p2.y;
+    value = Math.abs(p2.x - p1.x);
+  } else if (dimType === 'y') {
+    // Vertical distance (Y) - displayed with horizontal dimension line
+    // Line is positioned at Y offset from midpoint
+    const offsetY = cursor.y - (p1.y + p2.y) / 2;
+    dim1X = p1.x;
+    dim1Y = (p1.y + p2.y) / 2 + offsetY;
+    dim2X = p2.x;
+    dim2Y = dim1Y;
     value = Math.abs(p2.y - p1.y);
   } else {
     // Direct distance - perpendicular to the line between points
@@ -2347,9 +2349,11 @@ export default function Canvas({
 
                 let offset = 30 / viewState.zoom;
                 if (dimType === 'x') {
-                  offset = world.y - midY;
-                } else if (dimType === 'y') {
+                  // Horizontal distance - vertical line - X offset
                   offset = world.x - midX;
+                } else if (dimType === 'y') {
+                  // Vertical distance - horizontal line - Y offset
+                  offset = world.y - midY;
                 } else {
                   const len = Math.sqrt(dx * dx + dy * dy);
                   if (len > 0) {
@@ -2392,9 +2396,10 @@ export default function Canvas({
                 const distance = isXAxis ? Math.abs(p.y) : Math.abs(p.x);
                 const direction: 'x' | 'y' = isXAxis ? 'y' : 'x';
 
-                // Create the dimension - we need a virtual point on the axis
-                // For now, use origin point and set direction
-                const offset = isXAxis ? (world.x - p.x) : (world.y - p.y);
+                // Create the dimension - use origin point and set direction
+                // For direction='y' (horizontal line), offset is Y-based
+                // For direction='x' (vertical line), offset is X-based
+                const offset = isXAxis ? (world.y - p.y / 2) : (world.x - p.x / 2);
                 const constraintId = onAddDistanceDimension(pointId, ORIGIN_POINT_ID, offset, direction);
                 if (constraintId) {
                   setEditValue((Math.round(distance * 10) / 10).toString());
