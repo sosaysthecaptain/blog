@@ -20,6 +20,12 @@ import {
   AngleConstraint,
 } from '@/lib/cad/types';
 
+// Snap info passed to parent when creating entities
+export interface SnapInfo {
+  type: 'origin' | 'point' | 'midpoint' | 'nearest-on-line' | 'center';
+  entityId?: string; // The entity that was snapped to (for point-on-line constraints)
+}
+
 interface CanvasProps {
   isDarkMode: boolean;
   viewState: ViewState;
@@ -28,14 +34,14 @@ interface CanvasProps {
   constraints: Map<string, Constraint>;
   activeTool: ToolType;
   constructionMode: boolean;
-  onAddPoint: (x: number, y: number) => void;
-  onAddLine: (x1: number, y1: number, x2: number, y2: number) => void;
+  onAddPoint: (x: number, y: number, snapInfo?: SnapInfo) => void;
+  onAddLine: (x1: number, y1: number, x2: number, y2: number, startSnapInfo?: SnapInfo, endSnapInfo?: SnapInfo) => void;
   onAddCircle: (cx: number, cy: number, radius: number) => void;
   onAddRectangle: (x1: number, y1: number, x2: number, y2: number) => void;
   onMovePoint: (pointId: string, x: number, y: number) => void;
   onDragStart?: () => void; // Called when point drag begins for undo history
   onAddDimension: (entityId: string, entityType: 'line' | 'circle', offset: number) => string | null; // Returns constraint ID
-  onAddDistanceDimension: (point1Id: string, point2Id: string, offset: number) => string | null;
+  onAddDistanceDimension: (point1Id: string, point2Id: string, offset: number, direction: 'x' | 'y' | 'direct') => string | null;
   onAddAngleDimension: (line1Id: string, line2Id: string, offset: number) => string | null;
   onUpdateConstraint: (constraintId: string, value: number) => void;
   selectedEntityId: string | null;
@@ -451,24 +457,52 @@ function renderDimensions(
       const point2 = entities.points.get(distanceConstraint.point2Id);
       if (!point1 || !point2) continue;
 
-      // Calculate perpendicular offset
-      const midX = (point1.x + point2.x) / 2;
-      const midY = (point1.y + point2.y) / 2;
-      const dx = point2.x - point1.x;
-      const dy = point2.y - point1.y;
-      const len = Math.sqrt(dx * dx + dy * dy);
-
-      // Perpendicular direction
-      const perpX = -dy / len;
-      const perpY = dx / len;
-
       const offset = distanceConstraint.offset ?? (30 / zoom);
+      const direction = distanceConstraint.direction ?? 'direct';
 
-      // Dimension line endpoints
-      const dim1X = point1.x + perpX * offset;
-      const dim1Y = point1.y + perpY * offset;
-      const dim2X = point2.x + perpX * offset;
-      const dim2Y = point2.y + perpY * offset;
+      let dim1X: number, dim1Y: number, dim2X: number, dim2Y: number;
+
+      if (direction === 'y') {
+        // Horizontal dimension line measuring vertical (Y) distance
+        // Dimension line is at Y offset from midpoint
+        const dimY = (point1.y + point2.y) / 2 + offset;
+        dim1X = point1.x;
+        dim1Y = dimY;
+        dim2X = point2.x;
+        dim2Y = dimY;
+      } else if (direction === 'x') {
+        // Vertical dimension line measuring horizontal (X) distance
+        // Dimension line is at X offset from midpoint
+        const dimX = (point1.x + point2.x) / 2 + offset;
+        dim1X = dimX;
+        dim1Y = point1.y;
+        dim2X = dimX;
+        dim2Y = point2.y;
+      } else {
+        // Direct dimension - perpendicular to line between points
+        const midX = (point1.x + point2.x) / 2;
+        const midY = (point1.y + point2.y) / 2;
+        const dx = point2.x - point1.x;
+        const dy = point2.y - point1.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+
+        if (len > 0) {
+          // Perpendicular direction
+          const perpX = -dy / len;
+          const perpY = dx / len;
+
+          dim1X = point1.x + perpX * offset;
+          dim1Y = point1.y + perpY * offset;
+          dim2X = point2.x + perpX * offset;
+          dim2Y = point2.y + perpY * offset;
+        } else {
+          // Degenerate case - points are the same
+          dim1X = point1.x + offset;
+          dim1Y = point1.y;
+          dim2X = point2.x + offset;
+          dim2Y = point2.y;
+        }
+      }
 
       // Draw dimension line
       const dimLineGeom = new LineGeometry();
@@ -531,9 +565,9 @@ function renderDimensions(
       arrow2Mesh.position.z = 0.71;
       group.add(arrow2Mesh);
 
-      // Add label
-      const textX = midX + perpX * offset;
-      const textY = midY + perpY * offset;
+      // Add label at midpoint of dimension line
+      const textX = (dim1X + dim2X) / 2;
+      const textY = (dim1Y + dim2Y) / 2;
       labels.push({
         id: constraint.id,
         x: textX,
@@ -638,10 +672,21 @@ function findSnapPoint(
   worldX: number,
   worldY: number,
   entities: SketchEntities,
-  snapThreshold: number // in world units
+  snapThreshold: number, // in world units
+  excludePointId?: string // point to exclude from snapping (when dragging)
 ): SnapResult | null {
   let bestSnap: SnapResult | null = null;
   let bestDistance = snapThreshold;
+
+  // Find lines connected to the excluded point (to exclude them from line snapping)
+  const excludeLineIds = new Set<string>();
+  if (excludePointId) {
+    for (const line of entities.lines.values()) {
+      if (line.startId === excludePointId || line.endId === excludePointId) {
+        excludeLineIds.add(line.id);
+      }
+    }
+  }
 
   // Check origin
   const originDist = Math.sqrt(worldX * worldX + worldY * worldY);
@@ -652,6 +697,9 @@ function findSnapPoint(
 
   // Check points (including line endpoints and circle centers)
   for (const point of entities.points.values()) {
+    // Skip the excluded point
+    if (point.id === excludePointId) continue;
+
     const dist = Math.sqrt(
       Math.pow(worldX - point.x, 2) + Math.pow(worldY - point.y, 2)
     );
@@ -663,6 +711,9 @@ function findSnapPoint(
 
   // Check line midpoints and nearest points on lines
   for (const line of entities.lines.values()) {
+    // Skip lines connected to excluded point
+    if (excludeLineIds.has(line.id)) continue;
+
     const startPoint = entities.points.get(line.startId);
     const endPoint = entities.points.get(line.endId);
     if (!startPoint || !endPoint) continue;
@@ -690,8 +741,8 @@ function findSnapPoint(
       const nearestDist = Math.sqrt(
         Math.pow(worldX - nearestX, 2) + Math.pow(worldY - nearestY, 2)
       );
-      // Only snap to line if not already snapping to a point
-      if (nearestDist < bestDistance && nearestDist < snapThreshold * 0.7) {
+      // Snap to line - use same threshold as points for consistent snapping
+      if (nearestDist < bestDistance) {
         bestDistance = nearestDist;
         bestSnap = { x: nearestX, y: nearestY, type: 'nearest-on-line', entityId: line.id };
       }
@@ -702,6 +753,8 @@ function findSnapPoint(
   for (const circle of entities.circles.values()) {
     const centerPoint = entities.points.get(circle.centerId);
     if (!centerPoint) continue;
+    // Skip if center is the excluded point
+    if (centerPoint.id === excludePointId) continue;
 
     const dist = Math.sqrt(
       Math.pow(worldX - centerPoint.x, 2) + Math.pow(worldY - centerPoint.y, 2)
@@ -1372,7 +1425,7 @@ export default function Canvas({
   const dimensionGroupRef = useRef<THREE.Group | null>(null);
 
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-  const [pendingPoints, setPendingPoints] = useState<Array<{ x: number; y: number }>>([]);
+  const [pendingPoints, setPendingPoints] = useState<Array<{ x: number; y: number; snapInfo?: SnapInfo }>>([]);
   const [currentMouse, setCurrentMouse] = useState<{ x: number; y: number } | null>(null);
   const [snapPoint, setSnapPoint] = useState<SnapResult | null>(null);
   const [dimensionLabels, setDimensionLabels] = useState<DimensionLabel[]>([]);
@@ -1704,9 +1757,16 @@ export default function Canvas({
 
     const world = screenToWorld(e.clientX, e.clientY);
 
+    // Calculate snap point FRESH at click time to avoid stale closure issues
+    // The snapPoint state may be stale if React hasn't committed the update from the last mouseMove
+    const snapThreshold = 15 / viewState.zoom;
+    const freshSnapPoint = (activeTool !== 'select')
+      ? findSnapPoint(world.x, world.y, entities, snapThreshold)
+      : null;
+
     // Use snapped coordinates if available
-    const clickX = snapPoint ? snapPoint.x : world.x;
-    const clickY = snapPoint ? snapPoint.y : world.y;
+    const clickX = freshSnapPoint ? freshSnapPoint.x : world.x;
+    const clickY = freshSnapPoint ? freshSnapPoint.y : world.y;
 
     switch (activeTool) {
       case 'select': {
@@ -1727,20 +1787,36 @@ export default function Canvas({
         break;
       }
 
-      case 'point':
-        onAddPoint(clickX, clickY);
+      case 'point': {
+        // Convert snap result to SnapInfo
+        const pointSnapInfo: SnapInfo | undefined = freshSnapPoint ? {
+          type: freshSnapPoint.type === 'endpoint' ? 'point' : freshSnapPoint.type as SnapInfo['type'],
+          entityId: freshSnapPoint.entityId,
+        } : undefined;
+        onAddPoint(clickX, clickY, pointSnapInfo);
         break;
+      }
 
       case 'line':
         if (pendingPoints.length === 0) {
-          setPendingPoints([{ x: clickX, y: clickY }]);
+          // Store first point with its snap info
+          const startSnapInfo: SnapInfo | undefined = freshSnapPoint ? {
+            type: freshSnapPoint.type === 'endpoint' ? 'point' : freshSnapPoint.type as SnapInfo['type'],
+            entityId: freshSnapPoint.entityId,
+          } : undefined;
+          setPendingPoints([{ x: clickX, y: clickY, snapInfo: startSnapInfo }]);
         } else {
           // Apply angle snapping
           const angleSnap = applyAngleSnap(
             pendingPoints[0].x, pendingPoints[0].y,
             clickX, clickY
           );
-          onAddLine(pendingPoints[0].x, pendingPoints[0].y, angleSnap.x, angleSnap.y);
+          // Get snap info for end point
+          const endSnapInfo: SnapInfo | undefined = freshSnapPoint ? {
+            type: freshSnapPoint.type === 'endpoint' ? 'point' : freshSnapPoint.type as SnapInfo['type'],
+            entityId: freshSnapPoint.entityId,
+          } : undefined;
+          onAddLine(pendingPoints[0].x, pendingPoints[0].y, angleSnap.x, angleSnap.y, pendingPoints[0].snapInfo, endSnapInfo);
           setPendingPoints([]);
         }
         break;
@@ -1840,6 +1916,7 @@ export default function Canvas({
             // First click was a point
             if (hit && hit.entityType === 'point' && hit.entityId !== pendingDimension.entityId) {
               // Point + Point = Distance dimension
+              // Direction determined by where user clicks relative to the two points
               const point1 = entities.points.get(pendingDimension.entityId);
               const point2 = entities.points.get(hit.entityId);
 
@@ -1848,22 +1925,65 @@ export default function Canvas({
                 const midY = (point1.y + point2.y) / 2;
                 const dx = point2.x - point1.x;
                 const dy = point2.y - point1.y;
-                const len = Math.sqrt(dx * dx + dy * dy);
+
+                // Calculate offset from midpoint to mouse position
+                const mouseOffsetX = world.x - midX;
+                const mouseOffsetY = world.y - midY;
+
+                // Determine dimension direction based on mouse position
+                // If mouse is mostly above/below the midpoint → horizontal dimension line → measures Y distance
+                // If mouse is mostly left/right of midpoint → vertical dimension line → measures X distance
+                // Otherwise → diagonal dimension
+                let direction: 'x' | 'y' | 'direct' = 'direct';
+                const absMouseX = Math.abs(mouseOffsetX);
+                const absMouseY = Math.abs(mouseOffsetY);
+                const threshold = 20 / viewState.zoom;
+
+                if (absMouseY > absMouseX && absMouseY > threshold) {
+                  // Mouse is mostly above/below - horizontal dimension line - Y distance
+                  direction = 'y';
+                } else if (absMouseX > absMouseY && absMouseX > threshold) {
+                  // Mouse is mostly left/right - vertical dimension line - X distance
+                  direction = 'x';
+                }
+
+                // Calculate offset for display
                 let finalOffset = 30 / viewState.zoom;
-                if (len > 0) {
-                  const perpX = -dy / len;
-                  const perpY = dx / len;
-                  finalOffset = (world.x - midX) * perpX + (world.y - midY) * perpY;
-                  if (Math.abs(finalOffset) < 20 / viewState.zoom) {
+                if (direction === 'y') {
+                  // Horizontal dimension line at mouse Y position
+                  finalOffset = mouseOffsetY;
+                  if (Math.abs(finalOffset) < threshold) {
                     finalOffset = finalOffset >= 0 ? 30 / viewState.zoom : -30 / viewState.zoom;
+                  }
+                } else if (direction === 'x') {
+                  // Vertical dimension line at mouse X position
+                  finalOffset = mouseOffsetX;
+                  if (Math.abs(finalOffset) < threshold) {
+                    finalOffset = finalOffset >= 0 ? 30 / viewState.zoom : -30 / viewState.zoom;
+                  }
+                } else {
+                  // Direct dimension - perpendicular to line between points
+                  const len = Math.sqrt(dx * dx + dy * dy);
+                  if (len > 0) {
+                    const perpX = -dy / len;
+                    const perpY = dx / len;
+                    finalOffset = mouseOffsetX * perpX + mouseOffsetY * perpY;
+                    if (Math.abs(finalOffset) < threshold) {
+                      finalOffset = finalOffset >= 0 ? 30 / viewState.zoom : -30 / viewState.zoom;
+                    }
                   }
                 }
 
-                const constraintId = onAddDistanceDimension(pendingDimension.entityId, hit.entityId, finalOffset);
+                const constraintId = onAddDistanceDimension(pendingDimension.entityId, hit.entityId, finalOffset, direction);
                 if (constraintId) {
-                  const distance = Math.sqrt(
-                    Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2)
-                  );
+                  let distance: number;
+                  if (direction === 'x') {
+                    distance = Math.abs(point2.x - point1.x);
+                  } else if (direction === 'y') {
+                    distance = Math.abs(point2.y - point1.y);
+                  } else {
+                    distance = Math.sqrt(dx * dx + dy * dy);
+                  }
                   setEditValue((Math.round(distance * 10) / 10).toString());
                   setEditingDimension(constraintId);
                 }
@@ -1921,7 +2041,8 @@ export default function Canvas({
                       perpDist = Math.hypot(p1Start.x - projX, p1Start.y - projY);
                     }
 
-                    const constraintId = onAddDistanceDimension(closest.p1, closest.p2, 30 / viewState.zoom);
+                    // For parallel lines, use direct distance (perpendicular)
+                    const constraintId = onAddDistanceDimension(closest.p1, closest.p2, 30 / viewState.zoom, 'direct');
                     if (constraintId) {
                       setEditValue((Math.round(perpDist * 10) / 10).toString());
                       setEditingDimension(constraintId);
@@ -1989,7 +2110,7 @@ export default function Canvas({
         break;
       }
     }
-  }, [activeTool, pendingPoints, pendingDimension, screenToWorld, snapPoint, viewState.zoom, entities, constraints, onAddPoint, onAddLine, onAddCircle, onAddRectangle, onAddDimension, onAddDistanceDimension, onAddAngleDimension, onSelectEntity]);
+  }, [activeTool, pendingPoints, pendingDimension, screenToWorld, viewState.zoom, entities, constraints, onAddPoint, onAddLine, onAddCircle, onAddRectangle, onAddDimension, onAddDistanceDimension, onAddAngleDimension, onSelectEntity]);
 
   // Pan and drag handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -2028,9 +2149,9 @@ export default function Canvas({
     if (isDraggingEntityRef.current && draggingPointIdRef.current) {
       didDragRef.current = true; // Mark that we dragged
 
-      // Use snap while dragging
+      // Use snap while dragging - exclude the point being dragged and its connected lines
       const snapThreshold = 15 / viewState.zoom;
-      const snap = findSnapPoint(world.x, world.y, entities, snapThreshold);
+      const snap = findSnapPoint(world.x, world.y, entities, snapThreshold, draggingPointIdRef.current);
       setSnapPoint(snap);
 
       let moveX = snap ? snap.x : world.x;

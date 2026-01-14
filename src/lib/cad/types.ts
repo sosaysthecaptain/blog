@@ -147,11 +147,14 @@ export interface AngleConstraint extends ConstraintBase {
   driven?: boolean;
 }
 
+export type DimensionDirection = 'x' | 'y' | 'direct';
+
 export interface DistanceConstraint extends ConstraintBase {
   type: 'distance';
   point1Id: string;
   point2Id: string;
   value: number;
+  direction?: DimensionDirection;  // 'x' for horizontal, 'y' for vertical, 'direct' for diagonal
   offset?: number;  // Perpendicular offset for dimension display
   driven?: boolean;
 }
@@ -336,7 +339,7 @@ export const LIGHT_COLORS: CADColors = {
   fullyConstrained: '#1a1a1a',  // Black
   overConstrained: '#dc2626',   // Red
   hover: '#f97316',             // Orange
-  selected: '#1a1a1a',          // Black (same as fully constrained)
+  selected: '#2563eb',          // Bright blue (distinct from fully constrained)
   construction: '#6b7280',      // Gray
   grid: '#e5e5e5',              // Light gray
   gridMajor: '#d1d5db',         // Slightly darker
@@ -351,7 +354,7 @@ export const DARK_COLORS: CADColors = {
   fullyConstrained: '#d4d4d4',  // Light gray
   overConstrained: '#ef4444',   // Lighter red
   hover: '#fb923c',             // Lighter orange
-  selected: '#d4d4d4',          // Light gray (same as fully constrained)
+  selected: '#3b82f6',          // Bright blue (distinct from fully constrained)
   construction: '#9ca3af',      // Lighter gray
   grid: '#2a2a2a',              // Dark gray
   gridMajor: '#3f3f3f',         // Slightly lighter

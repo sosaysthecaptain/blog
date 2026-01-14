@@ -3,6 +3,7 @@ import {
   Point,
   Line,
   Circle,
+  Rectangle,
   SketchEntities,
   Constraint,
   ConstraintStatus,
@@ -13,6 +14,7 @@ import {
   RadiusConstraint,
   DistanceConstraint,
   CoincidentConstraint,
+  PointOnLineConstraint,
   ORIGIN_POINT_ID,
 } from './types';
 
@@ -123,6 +125,7 @@ export function addRectangle(
   construction: boolean = false
 ): {
   entities: SketchEntities;
+  rectangle: Rectangle;
   points: { tl: Point; tr: Point; br: Point; bl: Point };
   lines: { top: Line; right: Line; bottom: Line; left: Line };
 } {
@@ -154,8 +157,20 @@ export function addRectangle(
   newLines.set(bottomLine.id, bottomLine);
   newLines.set(leftLine.id, leftLine);
 
+  // Create the rectangle entity that groups the points and lines
+  const rectangle: Rectangle = {
+    id: generateId('r'),
+    pointIds: [tl.id, tr.id, br.id, bl.id],
+    lineIds: [topLine.id, rightLine.id, bottomLine.id, leftLine.id],
+    construction,
+  };
+
+  const newRectangles = new Map(currentEntities.rectangles);
+  newRectangles.set(rectangle.id, rectangle);
+
   return {
-    entities: { ...currentEntities, lines: newLines },
+    entities: { ...currentEntities, lines: newLines, rectangles: newRectangles },
+    rectangle,
     points: { tl, tr, br, bl },
     lines: { top: topLine, right: rightLine, bottom: bottomLine, left: leftLine },
   };
@@ -231,144 +246,149 @@ export function solveConstraints(
     return { ...entities, points: newPoints };
   }
 
-  // Apply directional constraints (horizontal/vertical)
-  // Key: if the OTHER point is fixed, adjust the moved point, not the fixed one
-  for (const constraint of constraints.values()) {
-    switch (constraint.type) {
-      case 'horizontal': {
-        const hc = constraint as HorizontalConstraint;
-        const line = entities.lines.get(hc.lineId);
-        if (!line) break;
+  // Track which points have been modified (to propagate constraints)
+  // Use the user-moved point as the source of truth
+  const userMovedPoint = movedPointId;
+  const modifiedPoints = new Set<string>([movedPointId]);
 
-        const isStartMoved = line.startId === movedPointId;
-        const isEndMoved = line.endId === movedPointId;
-        if (!isStartMoved && !isEndMoved) break;
+  // Iterate to propagate constraints through connected geometry
+  const MAX_ITERATIONS = 10;
+  for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+    let anyChange = false;
 
-        const startPoint = newPoints.get(line.startId);
-        const endPoint = newPoints.get(line.endId);
-        if (!startPoint || !endPoint) break;
+    for (const constraint of constraints.values()) {
+      switch (constraint.type) {
+        case 'horizontal': {
+          const hc = constraint as HorizontalConstraint;
+          const line = entities.lines.get(hc.lineId);
+          if (!line) break;
 
-        const startIsFixed = fixedPoints.has(line.startId);
-        const endIsFixed = fixedPoints.has(line.endId);
+          const startPoint = newPoints.get(line.startId);
+          const endPoint = newPoints.get(line.endId);
+          if (!startPoint || !endPoint) break;
 
-        if (isStartMoved && endIsFixed) {
-          // Start was moved but end is fixed - adjust start's Y to match end
-          newPoints.set(line.startId, { ...startPoint, y: endPoint.y });
-        } else if (isEndMoved && startIsFixed) {
-          // End was moved but start is fixed - adjust end's Y to match start
-          newPoints.set(line.endId, { ...endPoint, y: startPoint.y });
-        } else if (isStartMoved) {
-          // Start was moved, adjust end to match
-          newPoints.set(line.endId, { ...endPoint, y: startPoint.y });
-        } else if (isEndMoved) {
-          // End was moved, adjust start to match
-          newPoints.set(line.startId, { ...startPoint, y: endPoint.y });
-        }
-        break;
-      }
+          // Check if Y values differ (constraint violated)
+          if (Math.abs(startPoint.y - endPoint.y) < 0.0001) break;
 
-      case 'vertical': {
-        const vc = constraint as VerticalConstraint;
-        const line = entities.lines.get(vc.lineId);
-        if (!line) break;
+          const startIsFixed = fixedPoints.has(line.startId);
+          const endIsFixed = fixedPoints.has(line.endId);
+          const startIsUser = line.startId === userMovedPoint;
+          const endIsUser = line.endId === userMovedPoint;
 
-        const isStartMoved = line.startId === movedPointId;
-        const isEndMoved = line.endId === movedPointId;
-        if (!isStartMoved && !isEndMoved) break;
-
-        const startPoint = newPoints.get(line.startId);
-        const endPoint = newPoints.get(line.endId);
-        if (!startPoint || !endPoint) break;
-
-        const startIsFixed = fixedPoints.has(line.startId);
-        const endIsFixed = fixedPoints.has(line.endId);
-
-        if (isStartMoved && endIsFixed) {
-          // Start was moved but end is fixed - adjust start's X to match end
-          newPoints.set(line.startId, { ...startPoint, x: endPoint.x });
-        } else if (isEndMoved && startIsFixed) {
-          // End was moved but start is fixed - adjust end's X to match start
-          newPoints.set(line.endId, { ...endPoint, x: startPoint.x });
-        } else if (isStartMoved) {
-          // Start was moved, adjust end to match
-          newPoints.set(line.endId, { ...endPoint, x: startPoint.x });
-        } else if (isEndMoved) {
-          // End was moved, adjust start to match
-          newPoints.set(line.startId, { ...startPoint, x: endPoint.x });
-        }
-        break;
-      }
-
-      case 'length': {
-        const lc = constraint as LengthConstraint;
-        const line = entities.lines.get(lc.lineId);
-        if (!line) break;
-
-        if (line.startId !== movedPointId && line.endId !== movedPointId) break;
-
-        const startPoint = newPoints.get(line.startId);
-        const endPoint = newPoints.get(line.endId);
-        if (!startPoint || !endPoint) break;
-
-        const dx = endPoint.x - startPoint.x;
-        const dy = endPoint.y - startPoint.y;
-        const currentLength = Math.sqrt(dx * dx + dy * dy);
-        if (currentLength < 0.001) break;
-
-        const dirX = dx / currentLength;
-        const dirY = dy / currentLength;
-
-        const startIsFixed = fixedPoints.has(line.startId);
-        const endIsFixed = fixedPoints.has(line.endId);
-
-        if (startIsFixed || line.endId === movedPointId) {
-          // Keep start fixed, adjust end
-          const newEndX = startPoint.x + dirX * lc.value;
-          const newEndY = startPoint.y + dirY * lc.value;
-          newPoints.set(line.endId, { ...endPoint, x: newEndX, y: newEndY });
-        } else {
-          // Keep end fixed, adjust start
-          const newStartX = endPoint.x - dirX * lc.value;
-          const newStartY = endPoint.y - dirY * lc.value;
-          newPoints.set(line.startId, { ...startPoint, x: newStartX, y: newStartY });
-        }
-        break;
-      }
-
-      case 'coincident': {
-        const cc = constraint as CoincidentConstraint;
-        // Skip origin coincident - already handled above
-        if (cc.point1Id === ORIGIN_POINT_ID || cc.point2Id === ORIGIN_POINT_ID) break;
-
-        // Regular coincident between two user points
-        if (cc.point1Id === movedPointId) {
-          const p1 = newPoints.get(cc.point1Id);
-          const p2 = newPoints.get(cc.point2Id);
-          if (p1 && p2) {
-            if (fixedPoints.has(cc.point2Id)) {
-              // p2 is fixed, move p1 to p2
-              newPoints.set(cc.point1Id, { ...p1, x: p2.x, y: p2.y });
-            } else {
-              // Move p2 to p1
-              newPoints.set(cc.point2Id, { ...p2, x: p1.x, y: p1.y });
-            }
+          if (startIsFixed && !endIsFixed) {
+            newPoints.set(line.endId, { ...endPoint, y: startPoint.y });
+            modifiedPoints.add(line.endId);
+            anyChange = true;
+          } else if (endIsFixed && !startIsFixed) {
+            newPoints.set(line.startId, { ...startPoint, y: endPoint.y });
+            modifiedPoints.add(line.startId);
+            anyChange = true;
+          } else if (startIsUser) {
+            // User moved start - propagate to end
+            newPoints.set(line.endId, { ...endPoint, y: startPoint.y });
+            modifiedPoints.add(line.endId);
+            anyChange = true;
+          } else if (endIsUser) {
+            // User moved end - propagate to start
+            newPoints.set(line.startId, { ...startPoint, y: endPoint.y });
+            modifiedPoints.add(line.startId);
+            anyChange = true;
+          } else if (modifiedPoints.has(line.startId) && !modifiedPoints.has(line.endId)) {
+            newPoints.set(line.endId, { ...endPoint, y: startPoint.y });
+            modifiedPoints.add(line.endId);
+            anyChange = true;
+          } else if (modifiedPoints.has(line.endId) && !modifiedPoints.has(line.startId)) {
+            newPoints.set(line.startId, { ...startPoint, y: endPoint.y });
+            modifiedPoints.add(line.startId);
+            anyChange = true;
           }
-        } else if (cc.point2Id === movedPointId) {
-          const p1 = newPoints.get(cc.point1Id);
-          const p2 = newPoints.get(cc.point2Id);
-          if (p1 && p2) {
-            if (fixedPoints.has(cc.point1Id)) {
-              // p1 is fixed, move p2 to p1
-              newPoints.set(cc.point2Id, { ...p2, x: p1.x, y: p1.y });
-            } else {
-              // Move p1 to p2
-              newPoints.set(cc.point1Id, { ...p1, x: p2.x, y: p2.y });
-            }
-          }
+          break;
         }
-        break;
+
+        case 'vertical': {
+          const vc = constraint as VerticalConstraint;
+          const line = entities.lines.get(vc.lineId);
+          if (!line) break;
+
+          const startPoint = newPoints.get(line.startId);
+          const endPoint = newPoints.get(line.endId);
+          if (!startPoint || !endPoint) break;
+
+          // Check if X values differ (constraint violated)
+          if (Math.abs(startPoint.x - endPoint.x) < 0.0001) break;
+
+          const startIsFixed = fixedPoints.has(line.startId);
+          const endIsFixed = fixedPoints.has(line.endId);
+          const startIsUser = line.startId === userMovedPoint;
+          const endIsUser = line.endId === userMovedPoint;
+
+          if (startIsFixed && !endIsFixed) {
+            newPoints.set(line.endId, { ...endPoint, x: startPoint.x });
+            modifiedPoints.add(line.endId);
+            anyChange = true;
+          } else if (endIsFixed && !startIsFixed) {
+            newPoints.set(line.startId, { ...startPoint, x: endPoint.x });
+            modifiedPoints.add(line.startId);
+            anyChange = true;
+          } else if (startIsUser) {
+            newPoints.set(line.endId, { ...endPoint, x: startPoint.x });
+            modifiedPoints.add(line.endId);
+            anyChange = true;
+          } else if (endIsUser) {
+            newPoints.set(line.startId, { ...startPoint, x: endPoint.x });
+            modifiedPoints.add(line.startId);
+            anyChange = true;
+          } else if (modifiedPoints.has(line.startId) && !modifiedPoints.has(line.endId)) {
+            newPoints.set(line.endId, { ...endPoint, x: startPoint.x });
+            modifiedPoints.add(line.endId);
+            anyChange = true;
+          } else if (modifiedPoints.has(line.endId) && !modifiedPoints.has(line.startId)) {
+            newPoints.set(line.startId, { ...startPoint, x: endPoint.x });
+            modifiedPoints.add(line.startId);
+            anyChange = true;
+          }
+          break;
+        }
+
+        case 'pointOnLine': {
+          // Constrain a point to lie on a line
+          const polc = constraint as PointOnLineConstraint;
+          const constrainedPoint = newPoints.get(polc.pointId);
+          const line = entities.lines.get(polc.lineId);
+          if (!constrainedPoint || !line) break;
+
+          const lineStart = newPoints.get(line.startId);
+          const lineEnd = newPoints.get(line.endId);
+          if (!lineStart || !lineEnd) break;
+
+          // Calculate the nearest point on the line segment to the constrained point
+          const dx = lineEnd.x - lineStart.x;
+          const dy = lineEnd.y - lineStart.y;
+          const lenSq = dx * dx + dy * dy;
+
+          if (lenSq < 0.0001) break; // Degenerate line
+
+          // Project point onto line (not clamped to segment - allow extension)
+          const t = ((constrainedPoint.x - lineStart.x) * dx + (constrainedPoint.y - lineStart.y) * dy) / lenSq;
+          const projX = lineStart.x + t * dx;
+          const projY = lineStart.y + t * dy;
+
+          // Check if point is already on the line
+          const distSq = Math.pow(constrainedPoint.x - projX, 2) + Math.pow(constrainedPoint.y - projY, 2);
+          if (distSq < 0.0001) break; // Already on line
+
+          // Only move the constrained point if it was the one being dragged or modified
+          if (polc.pointId === userMovedPoint || modifiedPoints.has(polc.pointId)) {
+            newPoints.set(polc.pointId, { ...constrainedPoint, x: projX, y: projY });
+            anyChange = true;
+          }
+          break;
+        }
       }
     }
+
+    // Stop iterating if nothing changed
+    if (!anyChange) break;
   }
 
   return { ...entities, points: newPoints };
@@ -484,6 +504,8 @@ export function getConstraintStatus(dof: number, hasConflicts: boolean = false):
 
 // Entity constraint status - per-entity DOF calculation
 // Returns a map of entityId -> isFullyConstrained
+// A point is fully constrained if both X and Y are fixed
+// A line is fully constrained if both endpoints are fully constrained
 export function calculateEntityConstraintStatus(
   entities: SketchEntities,
   constraints: Map<string, Constraint>
@@ -501,7 +523,7 @@ export function calculateEntityConstraintStatus(
   // Origin is always fully constrained
   pointDOF.set(ORIGIN_POINT_ID, { x: true, y: true });
 
-  // First pass: apply direct point constraints
+  // First pass: apply direct point constraints (fixed, coincident with origin)
   for (const constraint of constraints.values()) {
     switch (constraint.type) {
       case 'fixed': {
@@ -516,97 +538,126 @@ export function calculateEntityConstraintStatus(
           const otherId = cc.point1Id === ORIGIN_POINT_ID ? cc.point2Id : cc.point1Id;
           pointDOF.set(otherId, { x: true, y: true });
         }
+        // If coincident with another point that's constrained, propagate
+        // This will be handled in the iteration loop below
         break;
       }
     }
   }
 
-  // Second pass: apply line constraints (horizontal/vertical constrain one axis)
-  for (const constraint of constraints.values()) {
-    switch (constraint.type) {
-      case 'horizontal': {
-        const hc = constraint as HorizontalConstraint;
-        const line = entities.lines.get(hc.lineId);
-        if (!line) break;
+  // Iterate to propagate constraints through linked geometry
+  // This handles cases where constraints chain together
+  const MAX_ITERATIONS = 10;
+  for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+    let anyChange = false;
 
-        const startDOF = pointDOF.get(line.startId);
-        const endDOF = pointDOF.get(line.endId);
-        if (startDOF && endDOF) {
-          // If one point's Y is constrained, the other's Y is too (they're linked)
-          if (startDOF.y || endDOF.y) {
-            pointDOF.set(line.startId, { ...startDOF, y: true });
-            pointDOF.set(line.endId, { ...endDOF, y: true });
-          }
+    for (const constraint of constraints.values()) {
+      switch (constraint.type) {
+        case 'coincident': {
+          const cc = constraint as CoincidentConstraint;
+          // Skip origin-based coincident (handled above)
+          if (cc.point1Id === ORIGIN_POINT_ID || cc.point2Id === ORIGIN_POINT_ID) break;
+
+          const dof1 = pointDOF.get(cc.point1Id);
+          const dof2 = pointDOF.get(cc.point2Id);
+          if (!dof1 || !dof2) break;
+
+          // If one point is more constrained, propagate to the other
+          if (dof1.x && !dof2.x) { pointDOF.set(cc.point2Id, { ...dof2, x: true }); anyChange = true; }
+          if (dof1.y && !dof2.y) { pointDOF.set(cc.point2Id, { ...dof2, y: true }); anyChange = true; }
+          if (dof2.x && !dof1.x) { pointDOF.set(cc.point1Id, { ...dof1, x: true }); anyChange = true; }
+          if (dof2.y && !dof1.y) { pointDOF.set(cc.point1Id, { ...dof1, y: true }); anyChange = true; }
+          break;
         }
-        break;
-      }
-      case 'vertical': {
-        const vc = constraint as VerticalConstraint;
-        const line = entities.lines.get(vc.lineId);
-        if (!line) break;
+        case 'horizontal': {
+          const hc = constraint as HorizontalConstraint;
+          const line = entities.lines.get(hc.lineId);
+          if (!line) break;
 
-        const startDOF = pointDOF.get(line.startId);
-        const endDOF = pointDOF.get(line.endId);
-        if (startDOF && endDOF) {
-          // If one point's X is constrained, the other's X is too (they're linked)
-          if (startDOF.x || endDOF.x) {
-            pointDOF.set(line.startId, { ...startDOF, x: true });
-            pointDOF.set(line.endId, { ...endDOF, x: true });
+          const startDOF = pointDOF.get(line.startId);
+          const endDOF = pointDOF.get(line.endId);
+          if (startDOF && endDOF) {
+            // Horizontal constraint links Y values - if one is constrained, so is the other
+            if (startDOF.y && !endDOF.y) {
+              pointDOF.set(line.endId, { ...endDOF, y: true });
+              anyChange = true;
+            }
+            if (endDOF.y && !startDOF.y) {
+              pointDOF.set(line.startId, { ...startDOF, y: true });
+              anyChange = true;
+            }
           }
+          break;
         }
-        break;
-      }
-      case 'length': {
-        const lc = constraint as LengthConstraint;
-        const line = entities.lines.get(lc.lineId);
-        if (!line) break;
+        case 'vertical': {
+          const vc = constraint as VerticalConstraint;
+          const line = entities.lines.get(vc.lineId);
+          if (!line) break;
 
-        const startDOF = pointDOF.get(line.startId);
-        const endDOF = pointDOF.get(line.endId);
-        if (startDOF && endDOF) {
-          // If start is fully constrained and we have length + direction, end is constrained
-          // Check for horizontal/vertical constraint on this line
-          let hasHorizontal = false;
-          let hasVertical = false;
-          for (const c of constraints.values()) {
-            if (c.type === 'horizontal' && (c as HorizontalConstraint).lineId === lc.lineId) {
-              hasHorizontal = true;
+          const startDOF = pointDOF.get(line.startId);
+          const endDOF = pointDOF.get(line.endId);
+          if (startDOF && endDOF) {
+            // Vertical constraint links X values - if one is constrained, so is the other
+            if (startDOF.x && !endDOF.x) {
+              pointDOF.set(line.endId, { ...endDOF, x: true });
+              anyChange = true;
             }
-            if (c.type === 'vertical' && (c as VerticalConstraint).lineId === lc.lineId) {
-              hasVertical = true;
+            if (endDOF.x && !startDOF.x) {
+              pointDOF.set(line.startId, { ...startDOF, x: true });
+              anyChange = true;
             }
           }
-
-          // If start is fully constrained
-          if (startDOF.x && startDOF.y) {
-            if (hasHorizontal) {
-              // Y is same as start (constrained), X is determined by length
-              pointDOF.set(line.endId, { x: true, y: true });
-            } else if (hasVertical) {
-              // X is same as start (constrained), Y is determined by length
-              pointDOF.set(line.endId, { x: true, y: true });
-            }
-          }
-          // If end is fully constrained
-          if (endDOF.x && endDOF.y) {
-            if (hasHorizontal) {
-              pointDOF.set(line.startId, { x: true, y: true });
-            } else if (hasVertical) {
-              pointDOF.set(line.startId, { x: true, y: true });
-            }
-          }
+          break;
         }
-        break;
-      }
-      case 'distance': {
-        const dc = constraint as DistanceConstraint;
-        const p1DOF = pointDOF.get(dc.point1Id);
-        const p2DOF = pointDOF.get(dc.point2Id);
-        // Distance alone doesn't fully constrain without direction
-        // But if one point is constrained and direction is known, the other is too
-        break;
+        case 'length': {
+          const lc = constraint as LengthConstraint;
+          const line = entities.lines.get(lc.lineId);
+          if (!line) break;
+
+          const startDOF = pointDOF.get(line.startId);
+          const endDOF = pointDOF.get(line.endId);
+          if (startDOF && endDOF) {
+            // If start is fully constrained and we have length + direction, end is constrained
+            // Check for horizontal/vertical constraint on this line
+            let hasHorizontal = false;
+            let hasVertical = false;
+            for (const c of constraints.values()) {
+              if (c.type === 'horizontal' && (c as HorizontalConstraint).lineId === lc.lineId) {
+                hasHorizontal = true;
+              }
+              if (c.type === 'vertical' && (c as VerticalConstraint).lineId === lc.lineId) {
+                hasVertical = true;
+              }
+            }
+
+            // If start is fully constrained and direction is known
+            if (startDOF.x && startDOF.y) {
+              const endDOFCurrent = pointDOF.get(line.endId)!;
+              if ((hasHorizontal || hasVertical) && (!endDOFCurrent.x || !endDOFCurrent.y)) {
+                pointDOF.set(line.endId, { x: true, y: true });
+                anyChange = true;
+              }
+            }
+            // If end is fully constrained and direction is known
+            if (endDOF.x && endDOF.y) {
+              const startDOFCurrent = pointDOF.get(line.startId)!;
+              if ((hasHorizontal || hasVertical) && (!startDOFCurrent.x || !startDOFCurrent.y)) {
+                pointDOF.set(line.startId, { x: true, y: true });
+                anyChange = true;
+              }
+            }
+          }
+          break;
+        }
+        case 'distance': {
+          // Distance alone doesn't fully constrain without direction
+          break;
+        }
       }
     }
+
+    // Stop iterating if nothing changed
+    if (!anyChange) break;
   }
 
   // Set point results
@@ -616,14 +667,32 @@ export function calculateEntityConstraintStatus(
     }
   }
 
-  // Set line results - a line is fully constrained if both endpoints are
+  // Set line results - a line is fully constrained if:
+  // 1. Both endpoints are fully constrained, OR
+  // 2. It has a direction constraint (H/V) and at least one endpoint is fully constrained
+  //    (the line's position is defined even if its length can vary)
   for (const [lineId, line] of entities.lines) {
     const startConstrained = pointDOF.get(line.startId);
     const endConstrained = pointDOF.get(line.endId);
-    result.set(
-      lineId,
-      !!(startConstrained?.x && startConstrained?.y && endConstrained?.x && endConstrained?.y)
-    );
+
+    const startFullyConstrained = !!(startConstrained?.x && startConstrained?.y);
+    const endFullyConstrained = !!(endConstrained?.x && endConstrained?.y);
+
+    // Check if line has direction constraint
+    let hasDirectionConstraint = false;
+    for (const c of constraints.values()) {
+      if ((c.type === 'horizontal' || c.type === 'vertical') &&
+          ((c as HorizontalConstraint).lineId === lineId || (c as VerticalConstraint).lineId === lineId)) {
+        hasDirectionConstraint = true;
+        break;
+      }
+    }
+
+    // Line is constrained if both ends are fixed, OR if direction is fixed and one end is fixed
+    const lineConstrained = (startFullyConstrained && endFullyConstrained) ||
+                           (hasDirectionConstraint && (startFullyConstrained || endFullyConstrained));
+
+    result.set(lineId, lineConstrained);
   }
 
   // Set circle results - center constrained + has radius constraint

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Toolbar from '@/components/cad/Toolbar';
 import StatusBar from '@/components/cad/StatusBar';
@@ -15,13 +15,16 @@ import {
   LengthConstraint,
   RadiusConstraint,
   DistanceConstraint,
+  DimensionDirection,
   AngleConstraint,
   FixedConstraint,
   HorizontalConstraint,
   VerticalConstraint,
   CoincidentConstraint,
+  PointOnLineConstraint,
   ORIGIN_POINT_ID,
 } from '@/lib/cad/types';
+import type { SnapInfo } from '@/components/cad/Canvas';
 import {
   createEmptyEntities,
   addPoint,
@@ -65,6 +68,12 @@ export default function CADPage() {
   // Sketch state
   const [entities, setEntities] = useState<SketchEntities>(createEmptyEntities);
   const [constraints, setConstraints] = useState<Map<string, Constraint>>(new Map());
+
+  // Ref to always have latest constraints (for use in callbacks that need latest state)
+  const constraintsRef = useRef(constraints);
+  useEffect(() => {
+    constraintsRef.current = constraints;
+  }, [constraints]);
 
   // Undo/Redo history
   type HistoryState = { entities: SketchEntities; constraints: Map<string, Constraint> };
@@ -170,61 +179,114 @@ export default function CADPage() {
     setActiveTool(tool);
   }, []);
 
-  // Helper to check if a point is at origin
-  const isAtOrigin = (x: number, y: number) => Math.abs(x) < 0.001 && Math.abs(y) < 0.001;
+  // Helper to check if a point is at origin (generous threshold to match snap behavior)
+  const isAtOrigin = (x: number, y: number) => Math.abs(x) < 0.1 && Math.abs(y) < 0.1;
 
-  // Helper to check if a line is horizontal (within threshold)
-  const isHorizontal = (y1: number, y2: number) => Math.abs(y1 - y2) < 0.001;
+  // Helper to check if a line is horizontal (within threshold - match origin threshold)
+  const isHorizontal = (y1: number, y2: number) => Math.abs(y1 - y2) < 0.1;
 
-  // Helper to check if a line is vertical (within threshold)
-  const isVertical = (x1: number, x2: number) => Math.abs(x1 - x2) < 0.001;
+  // Helper to check if a line is vertical (within threshold - match origin threshold)
+  const isVertical = (x1: number, x2: number) => Math.abs(x1 - x2) < 0.1;
 
   // Drawing handlers with auto-constraint inference
-  const handleAddPoint = useCallback((x: number, y: number) => {
+  const handleAddPoint = useCallback((x: number, y: number, snapInfo?: SnapInfo) => {
     saveToHistory();
-    let newPointId: string | null = null;
 
-    setEntities(prev => {
-      const { entities: newEntities, point } = addPoint(prev, x, y, constructionMode);
-      newPointId = point.id;
-      return newEntities;
-    });
+    // Create the point synchronously to get the ID before state updates
+    const { entities: newEntities, point } = addPoint(entities, x, y, constructionMode);
+    const newPointId = point.id;
 
-    // Auto-add Coincident constraint with origin if point is at origin
-    if (isAtOrigin(x, y) && newPointId) {
-      const constraint: CoincidentConstraint = {
+    // Update entities state
+    setEntities(newEntities);
+
+    const newConstraints: Constraint[] = [];
+
+    // Add constraint based on snap type
+    if (snapInfo) {
+      if (snapInfo.type === 'origin') {
+        newConstraints.push({
+          id: generateId('c'),
+          type: 'coincident',
+          point1Id: ORIGIN_POINT_ID,
+          point2Id: newPointId,
+        } as CoincidentConstraint);
+      } else if (snapInfo.type === 'point' && snapInfo.entityId) {
+        // Coincident with another point
+        newConstraints.push({
+          id: generateId('c'),
+          type: 'coincident',
+          point1Id: snapInfo.entityId,
+          point2Id: newPointId,
+        } as CoincidentConstraint);
+      } else if (snapInfo.type === 'nearest-on-line' && snapInfo.entityId) {
+        // Point on line constraint
+        newConstraints.push({
+          id: generateId('c'),
+          type: 'pointOnLine',
+          pointId: newPointId,
+          lineId: snapInfo.entityId,
+        } as PointOnLineConstraint);
+      }
+    } else if (isAtOrigin(x, y)) {
+      // Fallback: check coordinates if no snap info
+      newConstraints.push({
         id: generateId('c'),
         type: 'coincident',
         point1Id: ORIGIN_POINT_ID,
         point2Id: newPointId,
-      };
+      } as CoincidentConstraint);
+    }
+
+    if (newConstraints.length > 0) {
       setConstraints(prev => {
-        const newConstraints = new Map(prev);
-        newConstraints.set(constraint.id, constraint);
-        return newConstraints;
+        const updated = new Map(prev);
+        newConstraints.forEach(c => updated.set(c.id, c));
+        return updated;
       });
     }
-  }, [constructionMode, saveToHistory]);
+  }, [entities, constructionMode, saveToHistory]);
 
-  const handleAddLine = useCallback((x1: number, y1: number, x2: number, y2: number) => {
+  const handleAddLine = useCallback((x1: number, y1: number, x2: number, y2: number, startSnapInfo?: SnapInfo, endSnapInfo?: SnapInfo) => {
     saveToHistory();
-    let newLineId: string | null = null;
-    let startPointId: string | null = null;
-    let endPointId: string | null = null;
 
-    setEntities(prev => {
-      const { entities: newEntities, line, startPoint, endPoint } = addLine(prev, x1, y1, x2, y2, constructionMode);
-      newLineId = line.id;
-      startPointId = startPoint.id;
-      endPointId = endPoint.id;
-      return newEntities;
-    });
+    // Create the line synchronously to get the IDs before state updates
+    const { entities: newEntities, line, startPoint, endPoint } = addLine(entities, x1, y1, x2, y2, constructionMode);
+    const newLineId = line.id;
+    const startPointId = startPoint.id;
+    const endPointId = endPoint.id;
 
-    // Auto-add constraints based on geometry
+    // Update entities state
+    setEntities(newEntities);
+
+    // Auto-add constraints based on geometry and snap info
     const newConstraints: Constraint[] = [];
 
-    // Coincident constraint for start point at origin
-    if (isAtOrigin(x1, y1) && startPointId) {
+    // Constraints for start point based on snap info
+    if (startSnapInfo) {
+      if (startSnapInfo.type === 'origin') {
+        newConstraints.push({
+          id: generateId('c'),
+          type: 'coincident',
+          point1Id: ORIGIN_POINT_ID,
+          point2Id: startPointId,
+        } as CoincidentConstraint);
+      } else if (startSnapInfo.type === 'point' && startSnapInfo.entityId) {
+        newConstraints.push({
+          id: generateId('c'),
+          type: 'coincident',
+          point1Id: startSnapInfo.entityId,
+          point2Id: startPointId,
+        } as CoincidentConstraint);
+      } else if (startSnapInfo.type === 'nearest-on-line' && startSnapInfo.entityId) {
+        newConstraints.push({
+          id: generateId('c'),
+          type: 'pointOnLine',
+          pointId: startPointId,
+          lineId: startSnapInfo.entityId,
+        } as PointOnLineConstraint);
+      }
+    } else if (isAtOrigin(x1, y1)) {
+      // Fallback: check coordinates if no snap info
       newConstraints.push({
         id: generateId('c'),
         type: 'coincident',
@@ -233,8 +295,32 @@ export default function CADPage() {
       } as CoincidentConstraint);
     }
 
-    // Coincident constraint for end point at origin
-    if (isAtOrigin(x2, y2) && endPointId) {
+    // Constraints for end point based on snap info
+    if (endSnapInfo) {
+      if (endSnapInfo.type === 'origin') {
+        newConstraints.push({
+          id: generateId('c'),
+          type: 'coincident',
+          point1Id: ORIGIN_POINT_ID,
+          point2Id: endPointId,
+        } as CoincidentConstraint);
+      } else if (endSnapInfo.type === 'point' && endSnapInfo.entityId) {
+        newConstraints.push({
+          id: generateId('c'),
+          type: 'coincident',
+          point1Id: endSnapInfo.entityId,
+          point2Id: endPointId,
+        } as CoincidentConstraint);
+      } else if (endSnapInfo.type === 'nearest-on-line' && endSnapInfo.entityId) {
+        newConstraints.push({
+          id: generateId('c'),
+          type: 'pointOnLine',
+          pointId: endPointId,
+          lineId: endSnapInfo.entityId,
+        } as PointOnLineConstraint);
+      }
+    } else if (isAtOrigin(x2, y2)) {
+      // Fallback: check coordinates if no snap info
       newConstraints.push({
         id: generateId('c'),
         type: 'coincident',
@@ -244,7 +330,7 @@ export default function CADPage() {
     }
 
     // Horizontal constraint if line is horizontal
-    if (isHorizontal(y1, y2) && newLineId) {
+    if (isHorizontal(y1, y2)) {
       newConstraints.push({
         id: generateId('c'),
         type: 'horizontal',
@@ -253,7 +339,7 @@ export default function CADPage() {
     }
 
     // Vertical constraint if line is vertical
-    if (isVertical(x1, x2) && newLineId) {
+    if (isVertical(x1, x2)) {
       newConstraints.push({
         id: generateId('c'),
         type: 'vertical',
@@ -268,20 +354,19 @@ export default function CADPage() {
         return updated;
       });
     }
-  }, [constructionMode, saveToHistory]);
+  }, [entities, constructionMode, saveToHistory]);
 
   const handleAddCircle = useCallback((cx: number, cy: number, radius: number) => {
     saveToHistory();
-    let centerPointId: string | null = null;
 
-    setEntities(prev => {
-      const { entities: newEntities, centerPoint } = addCircle(prev, cx, cy, radius, constructionMode);
-      centerPointId = centerPoint.id;
-      return newEntities;
-    });
+    // Create the circle synchronously to get the IDs
+    const { entities: newEntities, centerPoint } = addCircle(entities, cx, cy, radius, constructionMode);
+    const centerPointId = centerPoint.id;
+
+    setEntities(newEntities);
 
     // Coincident constraint for center at origin
-    if (isAtOrigin(cx, cy) && centerPointId) {
+    if (isAtOrigin(cx, cy)) {
       const constraint: CoincidentConstraint = {
         id: generateId('c'),
         type: 'coincident',
@@ -294,21 +379,21 @@ export default function CADPage() {
         return newConstraints;
       });
     }
-  }, [constructionMode, saveToHistory]);
+  }, [entities, constructionMode, saveToHistory]);
 
   const handleAddRectangle = useCallback((x1: number, y1: number, x2: number, y2: number) => {
     saveToHistory();
-    // Track line IDs for constraint creation
-    const lineIds = { top: '', right: '', bottom: '', left: '' };
 
-    setEntities(prev => {
-      const result = addRectangle(prev, x1, y1, x2, y2, constructionMode);
-      lineIds.top = result.lines.top.id;
-      lineIds.right = result.lines.right.id;
-      lineIds.bottom = result.lines.bottom.id;
-      lineIds.left = result.lines.left.id;
-      return result.entities;
-    });
+    // Create the rectangle synchronously to get the IDs
+    const result = addRectangle(entities, x1, y1, x2, y2, constructionMode);
+    const lineIds = {
+      top: result.lines.top.id,
+      right: result.lines.right.id,
+      bottom: result.lines.bottom.id,
+      left: result.lines.left.id,
+    };
+
+    setEntities(result.entities);
 
     // Add horizontal and vertical constraints to maintain rectangular shape
     setConstraints(prev => {
@@ -325,7 +410,7 @@ export default function CADPage() {
       updated.set(vLeft.id, vLeft);
       return updated;
     });
-  }, [constructionMode, saveToHistory]);
+  }, [entities, constructionMode, saveToHistory]);
 
   // Selection state
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
@@ -333,14 +418,15 @@ export default function CADPage() {
   // Move point handler - applies constraint solver after moving
   // Note: Don't save to history here - it's called many times during drag
   // History is saved when drag starts in the Canvas component
+  // Use constraintsRef to always have latest constraints (avoids stale closure issue)
   const handleMovePoint = useCallback((pointId: string, x: number, y: number) => {
     setEntities(prev => {
       // First move the point
       const moved = movePoint(prev, pointId, x, y);
       // Then solve constraints to maintain geometric relationships
-      return solveConstraints(moved, constraints, pointId);
+      return solveConstraints(moved, constraintsRef.current, pointId);
     });
-  }, [constraints]);
+  }, []);
 
   // Add dimension handler - returns the constraint ID
   const handleAddDimension = useCallback((entityId: string, entityType: 'line' | 'circle', offset: number): string | null => {
@@ -398,16 +484,26 @@ export default function CADPage() {
   }, [entities, saveToHistory]);
 
   // Add distance dimension between two points
-  const handleAddDistanceDimension = useCallback((point1Id: string, point2Id: string, offset: number): string | null => {
+  const handleAddDistanceDimension = useCallback((point1Id: string, point2Id: string, offset: number, direction: DimensionDirection): string | null => {
     saveToHistory();
     const point1 = entities.points.get(point1Id);
     const point2 = entities.points.get(point2Id);
     if (!point1 || !point2) return null;
 
-    // Calculate distance
-    const distance = Math.sqrt(
-      Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2)
-    );
+    // Calculate distance based on direction
+    let distance: number;
+    if (direction === 'x') {
+      // Horizontal distance (delta X)
+      distance = Math.abs(point2.x - point1.x);
+    } else if (direction === 'y') {
+      // Vertical distance (delta Y)
+      distance = Math.abs(point2.y - point1.y);
+    } else {
+      // Direct (Euclidean) distance
+      distance = Math.sqrt(
+        Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2)
+      );
+    }
 
     const constraint: DistanceConstraint = {
       id: generateId('dim'),
@@ -415,6 +511,7 @@ export default function CADPage() {
       point1Id,
       point2Id,
       value: Math.round(distance * 10) / 10,
+      direction,
       offset,
     };
 
@@ -583,31 +680,99 @@ export default function CADPage() {
       const currentDistance = Math.sqrt(dx * dx + dy * dy);
       if (currentDistance < 0.001) return;
 
-      // Normalize direction
-      const dirX = dx / currentDistance;
-      const dirY = dy / currentDistance;
-
-      // Determine which point to move (similar logic to length)
-      const isP1AtOrigin = Math.abs(point1.x) < 0.001 && Math.abs(point1.y) < 0.001;
-      const isP2AtOrigin = Math.abs(point2.x) < 0.001 && Math.abs(point2.y) < 0.001;
-
-      let moveP2 = true;
-      if (isP2AtOrigin && !isP1AtOrigin) moveP2 = false;
-      else if (isP1AtOrigin && !isP2AtOrigin) moveP2 = true;
-
-      setEntities(prev => {
-        const newPoints = new Map(prev.points);
-        if (moveP2) {
-          const newX = point1.x + dirX * value;
-          const newY = point1.y + dirY * value;
-          newPoints.set(distanceConstraint.point2Id, { ...point2, x: newX, y: newY });
-        } else {
-          const newX = point2.x - dirX * value;
-          const newY = point2.y - dirY * value;
-          newPoints.set(distanceConstraint.point1Id, { ...point1, x: newX, y: newY });
+      // Check if these points are part of a rectangle
+      let rectangleId: string | null = null;
+      for (const rect of entities.rectangles.values()) {
+        if (rect.pointIds.includes(distanceConstraint.point1Id) &&
+            rect.pointIds.includes(distanceConstraint.point2Id)) {
+          rectangleId = rect.id;
+          break;
         }
-        return { ...prev, points: newPoints };
-      });
+      }
+
+      if (rectangleId) {
+        // Rectangle dimension - move all four corners to maintain shape
+        const rect = entities.rectangles.get(rectangleId)!;
+        const [tlId, trId, brId, blId] = rect.pointIds;
+
+        // Determine if this is a width or height dimension
+        const isVertical = Math.abs(dx) < 0.1; // Points are vertically aligned
+        const isHorizontal = Math.abs(dy) < 0.1; // Points are horizontally aligned
+
+        setEntities(prev => {
+          const newPoints = new Map(prev.points);
+          const tl = newPoints.get(tlId);
+          const tr = newPoints.get(trId);
+          const br = newPoints.get(brId);
+          const bl = newPoints.get(blId);
+          if (!tl || !tr || !br || !bl) return prev;
+
+          if (isVertical) {
+            // Height change - points are on left or right edge
+            const currentHeight = Math.abs(tl.y - bl.y);
+            const delta = value - currentHeight;
+
+            // Determine which side to adjust (top or bottom)
+            // Keep the lower Y values fixed, adjust higher Y values
+            if (tl.y > bl.y) {
+              // Top is higher, move top down by reducing Y
+              const newTopY = tl.y - delta;
+              newPoints.set(tlId, { ...tl, y: newTopY });
+              newPoints.set(trId, { ...tr, y: newTopY });
+            } else {
+              // Bottom is higher, move bottom up
+              const newBottomY = bl.y + delta;
+              newPoints.set(blId, { ...bl, y: newBottomY });
+              newPoints.set(brId, { ...br, y: newBottomY });
+            }
+          } else if (isHorizontal) {
+            // Width change - points are on top or bottom edge
+            const currentWidth = Math.abs(tr.x - tl.x);
+            const delta = value - currentWidth;
+
+            // Keep the lower X values fixed, adjust higher X values
+            if (tr.x > tl.x) {
+              // Right is further right, move right side
+              const newRightX = tr.x + delta;
+              newPoints.set(trId, { ...tr, x: newRightX });
+              newPoints.set(brId, { ...br, x: newRightX });
+            } else {
+              // Left is further right (inverted), move left side
+              const newLeftX = tl.x - delta;
+              newPoints.set(tlId, { ...tl, x: newLeftX });
+              newPoints.set(blId, { ...bl, x: newLeftX });
+            }
+          }
+
+          return { ...prev, points: newPoints };
+        });
+      } else {
+        // Regular distance constraint - move one point
+        const dirX = dx / currentDistance;
+        const dirY = dy / currentDistance;
+
+        // Determine which point to move (similar logic to length)
+        const isP1AtOrigin = Math.abs(point1.x) < 0.001 && Math.abs(point1.y) < 0.001;
+        const isP2AtOrigin = Math.abs(point2.x) < 0.001 && Math.abs(point2.y) < 0.001;
+
+        let moveP2 = true;
+        if (isP2AtOrigin && !isP1AtOrigin) moveP2 = false;
+        else if (isP1AtOrigin && !isP2AtOrigin) moveP2 = true;
+
+        setEntities(prev => {
+          const newPoints = new Map(prev.points);
+          if (moveP2) {
+            const newX = point1.x + dirX * value;
+            const newY = point1.y + dirY * value;
+            newPoints.set(distanceConstraint.point2Id, { ...point2, x: newX, y: newY });
+          } else {
+            const newX = point2.x - dirX * value;
+            const newY = point2.y - dirY * value;
+            newPoints.set(distanceConstraint.point1Id, { ...point1, x: newX, y: newY });
+          }
+          return { ...prev, points: newPoints };
+        });
+      }
     } else if (constraint.type === 'angle') {
       // Update angle between two lines by rotating line2 around the intersection point
       const angleConstraint = constraint as AngleConstraint;
@@ -674,6 +839,50 @@ export default function CADPage() {
         newConstraints.delete(selectedEntityId);
         return newConstraints;
       });
+      setSelectedEntityId(null);
+      return;
+    }
+
+    // Check if it's a rectangle (selected via group selection)
+    if (entities.rectangles.has(selectedEntityId)) {
+      const rect = entities.rectangles.get(selectedEntityId)!;
+
+      // Delete constraints that reference rectangle parts
+      setConstraints(prev => {
+        const newConstraints = new Map(prev);
+        for (const [constraintId, constraint] of prev) {
+          if (constraint.type === 'length' && rect.lineIds.includes((constraint as LengthConstraint).lineId)) {
+            newConstraints.delete(constraintId);
+          }
+          if (constraint.type === 'horizontal' && rect.lineIds.includes((constraint as HorizontalConstraint).lineId)) {
+            newConstraints.delete(constraintId);
+          }
+          if (constraint.type === 'vertical' && rect.lineIds.includes((constraint as VerticalConstraint).lineId)) {
+            newConstraints.delete(constraintId);
+          }
+          if (constraint.type === 'distance') {
+            const dc = constraint as DistanceConstraint;
+            if (rect.pointIds.includes(dc.point1Id) || rect.pointIds.includes(dc.point2Id)) {
+              newConstraints.delete(constraintId);
+            }
+          }
+        }
+        return newConstraints;
+      });
+
+      // Delete rectangle, its lines, and its points
+      setEntities(prev => {
+        const newRectangles = new Map(prev.rectangles);
+        const newLines = new Map(prev.lines);
+        const newPoints = new Map(prev.points);
+
+        newRectangles.delete(selectedEntityId);
+        rect.lineIds.forEach(id => newLines.delete(id));
+        rect.pointIds.forEach(id => newPoints.delete(id));
+
+        return { ...prev, rectangles: newRectangles, lines: newLines, points: newPoints };
+      });
+
       setSelectedEntityId(null);
       return;
     }
