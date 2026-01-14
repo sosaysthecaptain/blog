@@ -654,6 +654,7 @@ export default function CADPage() {
 
       setEntities(prev => {
         const newPoints = new Map(prev.points);
+        const movedPointId = moveEnd ? line.endId : line.startId;
         if (moveEnd) {
           // Keep start fixed, move end
           const newEndX = startPoint.x + dirX * value;
@@ -665,7 +666,9 @@ export default function CADPage() {
           const newStartY = endPoint.y - dirY * value;
           newPoints.set(line.startId, { ...startPoint, x: newStartX, y: newStartY });
         }
-        return { ...prev, points: newPoints };
+        // Run constraint solver to propagate changes
+        const updated = { ...prev, points: newPoints };
+        return solveConstraints(updated, constraintsRef.current, movedPointId);
       });
     } else if (constraint.type === 'radius') {
       const radiusConstraint = constraint as RadiusConstraint;
@@ -692,15 +695,19 @@ export default function CADPage() {
 
       // For directional dimensions (x/y), we move points along that axis
       if (direction === 'x' || direction === 'y') {
-        // One of the points might be the origin - can't move origin, move the other point
-        const movablePointId = isP1Origin ? distanceConstraint.point2Id : distanceConstraint.point1Id;
-        const fixedCoords = isP1Origin ? p1Coords : p2Coords;
-        const movableCoords = isP1Origin ? p2Coords : p1Coords;
+        // Determine which point to move - can't move origin
+        let moveP2 = !isP2Origin; // Default to moving P2 unless it's the origin
+        if (isP1Origin) moveP2 = true; // If P1 is origin, must move P2
+        if (isP2Origin) moveP2 = false; // If P2 is origin, must move P1
+
+        const movablePointId = moveP2 ? distanceConstraint.point2Id : distanceConstraint.point1Id;
+        const fixedCoords = moveP2 ? p1Coords : p2Coords;
+        const movableCoords = moveP2 ? p2Coords : p1Coords;
         const movablePoint = entities.points.get(movablePointId);
         if (!movablePoint) return;
 
         setEntities(prev => {
-          const newPoints = new Map(prev.points);
+          let newPoints = new Map(prev.points);
           if (direction === 'x') {
             // Horizontal distance - adjust X coordinate
             // Keep sign: if movable is to the right of fixed, stay right
@@ -713,7 +720,9 @@ export default function CADPage() {
             const newY = fixedCoords.y + sign * value;
             newPoints.set(movablePointId, { ...movablePoint, y: newY });
           }
-          return { ...prev, points: newPoints };
+          // Run constraint solver to propagate changes (e.g., keep rectangle edges aligned)
+          const updated = { ...prev, points: newPoints };
+          return solveConstraints(updated, constraintsRef.current, movablePointId);
         });
         return;
       }
@@ -788,7 +797,9 @@ export default function CADPage() {
             }
           }
 
-          return { ...prev, points: newPoints };
+          // Run constraint solver to ensure rectangle stays valid
+          const updated = { ...prev, points: newPoints };
+          return solveConstraints(updated, constraintsRef.current, tlId);
         });
       } else {
         // Regular distance constraint - move one point
@@ -825,7 +836,9 @@ export default function CADPage() {
             const newY = fixedCoords.y - dirY * value;
             newPoints.set(movablePointId, { ...movablePoint, x: newX, y: newY });
           }
-          return { ...prev, points: newPoints };
+          // Run constraint solver to propagate changes
+          const updated = { ...prev, points: newPoints };
+          return solveConstraints(updated, constraintsRef.current, movablePointId);
         });
       }
     } else if (constraint.type === 'angle') {
