@@ -681,12 +681,46 @@ export default function CADPage() {
     } else if (constraint.type === 'distance') {
       // Update distance between two points
       const distanceConstraint = constraint as DistanceConstraint;
-      const point1 = entities.points.get(distanceConstraint.point1Id);
-      const point2 = entities.points.get(distanceConstraint.point2Id);
-      if (!point1 || !point2) return;
+      const direction = distanceConstraint.direction ?? 'direct';
 
-      const dx = point2.x - point1.x;
-      const dy = point2.y - point1.y;
+      // Handle origin point specially
+      const isP1Origin = distanceConstraint.point1Id === ORIGIN_POINT_ID;
+      const isP2Origin = distanceConstraint.point2Id === ORIGIN_POINT_ID;
+      const p1Coords = isP1Origin ? { x: 0, y: 0 } : entities.points.get(distanceConstraint.point1Id);
+      const p2Coords = isP2Origin ? { x: 0, y: 0 } : entities.points.get(distanceConstraint.point2Id);
+      if (!p1Coords || !p2Coords) return;
+
+      // For directional dimensions (x/y), we move points along that axis
+      if (direction === 'x' || direction === 'y') {
+        // One of the points might be the origin - can't move origin, move the other point
+        const movablePointId = isP1Origin ? distanceConstraint.point2Id : distanceConstraint.point1Id;
+        const fixedCoords = isP1Origin ? p1Coords : p2Coords;
+        const movableCoords = isP1Origin ? p2Coords : p1Coords;
+        const movablePoint = entities.points.get(movablePointId);
+        if (!movablePoint) return;
+
+        setEntities(prev => {
+          const newPoints = new Map(prev.points);
+          if (direction === 'x') {
+            // Horizontal distance - adjust X coordinate
+            // Keep sign: if movable is to the right of fixed, stay right
+            const sign = movableCoords.x >= fixedCoords.x ? 1 : -1;
+            const newX = fixedCoords.x + sign * value;
+            newPoints.set(movablePointId, { ...movablePoint, x: newX });
+          } else {
+            // Vertical distance - adjust Y coordinate
+            const sign = movableCoords.y >= fixedCoords.y ? 1 : -1;
+            const newY = fixedCoords.y + sign * value;
+            newPoints.set(movablePointId, { ...movablePoint, y: newY });
+          }
+          return { ...prev, points: newPoints };
+        });
+        return;
+      }
+
+      // Direct distance handling
+      const dx = p2Coords.x - p1Coords.x;
+      const dy = p2Coords.y - p1Coords.y;
       const currentDistance = Math.sqrt(dx * dx + dy * dy);
       if (currentDistance < 0.001) return;
 
@@ -761,24 +795,35 @@ export default function CADPage() {
         const dirX = dx / currentDistance;
         const dirY = dy / currentDistance;
 
-        // Determine which point to move (similar logic to length)
-        const isP1AtOrigin = Math.abs(point1.x) < 0.001 && Math.abs(point1.y) < 0.001;
-        const isP2AtOrigin = Math.abs(point2.x) < 0.001 && Math.abs(point2.y) < 0.001;
-
+        // Can't move origin, so if one point is origin, move the other
+        // Otherwise prefer to keep point closer to origin fixed
         let moveP2 = true;
-        if (isP2AtOrigin && !isP1AtOrigin) moveP2 = false;
-        else if (isP1AtOrigin && !isP2AtOrigin) moveP2 = true;
+        if (isP2Origin) moveP2 = false;
+        else if (isP1Origin) moveP2 = true;
+        else {
+          // Neither is origin - prefer to move the one further from origin
+          const dist1 = Math.sqrt(p1Coords.x * p1Coords.x + p1Coords.y * p1Coords.y);
+          const dist2 = Math.sqrt(p2Coords.x * p2Coords.x + p2Coords.y * p2Coords.y);
+          moveP2 = dist2 >= dist1;
+        }
+
+        // Get the actual point object to move
+        const movablePointId = moveP2 ? distanceConstraint.point2Id : distanceConstraint.point1Id;
+        const movablePoint = entities.points.get(movablePointId);
+        if (!movablePoint) return;
+
+        const fixedCoords = moveP2 ? p1Coords : p2Coords;
 
         setEntities(prev => {
           const newPoints = new Map(prev.points);
           if (moveP2) {
-            const newX = point1.x + dirX * value;
-            const newY = point1.y + dirY * value;
-            newPoints.set(distanceConstraint.point2Id, { ...point2, x: newX, y: newY });
+            const newX = fixedCoords.x + dirX * value;
+            const newY = fixedCoords.y + dirY * value;
+            newPoints.set(movablePointId, { ...movablePoint, x: newX, y: newY });
           } else {
-            const newX = point2.x - dirX * value;
-            const newY = point2.y - dirY * value;
-            newPoints.set(distanceConstraint.point1Id, { ...point1, x: newX, y: newY });
+            const newX = fixedCoords.x - dirX * value;
+            const newY = fixedCoords.y - dirY * value;
+            newPoints.set(movablePointId, { ...movablePoint, x: newX, y: newY });
           }
           return { ...prev, points: newPoints };
         });

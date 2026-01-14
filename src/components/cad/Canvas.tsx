@@ -1051,18 +1051,18 @@ function determineDimensionType(
     return 'direct';
   }
 
-  // Determine H or V based on which side of the diagonal the cursor is on
-  // If cursor is mostly above/below the midpoint → horizontal dimension (measures X)
-  // If cursor is mostly left/right → vertical dimension (measures Y)
+  // Determine H or V based on cursor position relative to midpoint
+  // Cursor above/below → horizontal dimension line (measures Y distance)
+  // Cursor left/right → vertical dimension line (measures X distance)
   const absOffsetX = Math.abs(cursorOffsetX);
   const absOffsetY = Math.abs(cursorOffsetY);
 
   if (absOffsetY > absOffsetX * 1.5) {
-    // Cursor is mostly above/below - horizontal dimension line
-    return 'x';
-  } else if (absOffsetX > absOffsetY * 1.5) {
-    // Cursor is mostly left/right - vertical dimension line
+    // Cursor is mostly above/below - horizontal dimension line (measures Y)
     return 'y';
+  } else if (absOffsetX > absOffsetY * 1.5) {
+    // Cursor is mostly left/right - vertical dimension line (measures X)
+    return 'x';
   }
 
   return 'direct';
