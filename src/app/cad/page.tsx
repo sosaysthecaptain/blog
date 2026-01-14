@@ -752,6 +752,23 @@ export default function CADPage() {
         const isVertical = Math.abs(dx) < 0.1; // Points are vertically aligned
         const isHorizontal = Math.abs(dy) < 0.1; // Points are horizontally aligned
 
+        // Helper to check if a point has distance constraints (to origin or other points)
+        const hasDistanceConstraint = (pointId: string): boolean => {
+          for (const c of constraints.values()) {
+            if (c.type === 'distance') {
+              const dc = c as DistanceConstraint;
+              if (dc.point1Id === pointId || dc.point2Id === pointId) {
+                // Check if this is a constraint TO origin (not between rect corners)
+                const otherPointId = dc.point1Id === pointId ? dc.point2Id : dc.point1Id;
+                if (otherPointId === ORIGIN_POINT_ID || !rect.pointIds.includes(otherPointId)) {
+                  return true;
+                }
+              }
+            }
+          }
+          return false;
+        };
+
         setEntities(prev => {
           const newPoints = new Map(prev.points);
           const tl = newPoints.get(tlId);
@@ -765,16 +782,29 @@ export default function CADPage() {
             const currentHeight = Math.abs(tl.y - bl.y);
             const delta = value - currentHeight;
 
-            // Determine which side to adjust (top or bottom)
-            // Keep the lower Y values fixed, adjust higher Y values
-            if (tl.y > bl.y) {
-              // Top is higher, move top down by reducing Y
-              const newTopY = tl.y - delta;
+            // Check which side has distance constraints
+            const topHasConstraint = hasDistanceConstraint(tlId) || hasDistanceConstraint(trId);
+            const bottomHasConstraint = hasDistanceConstraint(blId) || hasDistanceConstraint(brId);
+
+            // Prefer to move the unconstrained side
+            let moveTop: boolean;
+            if (topHasConstraint && !bottomHasConstraint) {
+              moveTop = false; // Top is constrained, move bottom
+            } else if (bottomHasConstraint && !topHasConstraint) {
+              moveTop = true; // Bottom is constrained, move top
+            } else {
+              // Neither or both constrained - use Y position heuristic
+              moveTop = tl.y > bl.y;
+            }
+
+            if (moveTop) {
+              // Move top - adjust Y toward/away from bottom
+              const newTopY = bl.y + (tl.y > bl.y ? value : -value);
               newPoints.set(tlId, { ...tl, y: newTopY });
               newPoints.set(trId, { ...tr, y: newTopY });
             } else {
-              // Bottom is higher, move bottom up
-              const newBottomY = bl.y + delta;
+              // Move bottom - adjust Y toward/away from top
+              const newBottomY = tl.y + (bl.y > tl.y ? value : -value);
               newPoints.set(blId, { ...bl, y: newBottomY });
               newPoints.set(brId, { ...br, y: newBottomY });
             }
@@ -783,15 +813,29 @@ export default function CADPage() {
             const currentWidth = Math.abs(tr.x - tl.x);
             const delta = value - currentWidth;
 
-            // Keep the lower X values fixed, adjust higher X values
-            if (tr.x > tl.x) {
-              // Right is further right, move right side
-              const newRightX = tr.x + delta;
+            // Check which side has distance constraints
+            const leftHasConstraint = hasDistanceConstraint(tlId) || hasDistanceConstraint(blId);
+            const rightHasConstraint = hasDistanceConstraint(trId) || hasDistanceConstraint(brId);
+
+            // Prefer to move the unconstrained side
+            let moveRight: boolean;
+            if (rightHasConstraint && !leftHasConstraint) {
+              moveRight = false; // Right is constrained, move left
+            } else if (leftHasConstraint && !rightHasConstraint) {
+              moveRight = true; // Left is constrained, move right
+            } else {
+              // Neither or both constrained - use X position heuristic
+              moveRight = tr.x > tl.x;
+            }
+
+            if (moveRight) {
+              // Move right side
+              const newRightX = tl.x + (tr.x > tl.x ? value : -value);
               newPoints.set(trId, { ...tr, x: newRightX });
               newPoints.set(brId, { ...br, x: newRightX });
             } else {
-              // Left is further right (inverted), move left side
-              const newLeftX = tl.x - delta;
+              // Move left side
+              const newLeftX = tr.x + (tl.x > tr.x ? value : -value);
               newPoints.set(tlId, { ...tl, x: newLeftX });
               newPoints.set(blId, { ...bl, x: newLeftX });
             }
