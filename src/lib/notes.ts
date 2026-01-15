@@ -15,9 +15,22 @@ import { db } from "./firebase";
 
 const NOTES_COLLECTION = "notes";
 
+export interface MoodboardImage {
+  id: string;           // Unique ID within moodboard
+  url: string;          // Original image URL (Firebase Storage)
+  thumbnailUrl?: string; // Generated thumbnail URL
+  caption?: string;
+  source?: string;      // Attribution/reference URL
+  width: number;        // Original dimensions (for masonry layout)
+  height: number;
+  fileSize: number;     // File size in bytes
+  order: number;        // For manual ordering
+  createdAt: Timestamp; // When image was added
+}
+
 export interface NoteItem {
   id?: string;
-  type: "note" | "folder";
+  type: "note" | "folder" | "moodboard";
   title: string;
   parentId: string | null;
   createdAt: Timestamp;
@@ -28,6 +41,10 @@ export interface NoteItem {
   date?: string;
   time?: string | null; // HH:MM format, optional
   tags?: string[];
+
+  // Moodboard-specific fields
+  images?: MoodboardImage[];
+  gridSize?: "small" | "medium" | "large"; // User preference for grid density
 
   // Publishing fields (for blog folder)
   published?: boolean;
@@ -151,6 +168,7 @@ export async function deleteFolderRecursive(folderId: string): Promise<void> {
       if (child.type === "folder") {
         await deleteFolderRecursive(child.id);
       } else {
+        // Both notes and moodboards are deleted the same way
         await deleteNote(child.id);
       }
     }
@@ -184,7 +202,7 @@ export function searchNotes(
   const scope = getDescendants(items, folderId);
 
   return scope
-    .filter((item) => item.type === "note")
+    .filter((item) => item.type === "note" || item.type === "moodboard")
     .map((note) => ({
       note,
       score: getSearchScore(note, q),

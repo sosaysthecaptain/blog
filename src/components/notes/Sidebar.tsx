@@ -19,6 +19,7 @@ interface SidebarProps {
   onToggleCollapse: () => void;
   onCreateNote: (parentId: string | null) => void;
   onCreateFolder: (parentId: string | null) => void;
+  onCreateMoodboard: (parentId: string | null) => void;
   onDelete: (item: NoteItem) => void;
   onRename: (item: NoteItem) => void;
   onRenameSubmit: (itemId: string, newName: string) => void;
@@ -51,6 +52,7 @@ export default function Sidebar({
   onToggleCollapse,
   onCreateNote,
   onCreateFolder,
+  onCreateMoodboard,
   onDelete,
   onRename,
   onRenameSubmit,
@@ -253,6 +255,20 @@ export default function Sidebar({
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+            </svg>
+          </button>
+          {/* New Moodboard */}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onCreateMoodboard(currentFolderId); }}
+            className="p-1.5 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded"
+            title="New moodboard"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+              <rect x="3" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="3" width="7" height="7" rx="1" />
+              <rect x="3" y="14" width="7" height="7" rx="1" />
+              <rect x="14" y="14" width="7" height="7" rx="1" />
             </svg>
           </button>
           {/* Collapse */}
@@ -476,6 +492,16 @@ export default function Sidebar({
             className="context-menu-item"
           >
             New Folder
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onCreateMoodboard(contextMenu.item?.type === "folder" ? contextMenu.item.id! : contextMenu.parentId);
+              closeContextMenu();
+            }}
+            className="context-menu-item"
+          >
+            New Moodboard
           </button>
           {contextMenu.item && (
             <>

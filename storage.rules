@@ -1,0 +1,12 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Notes storage - authenticated users only for write
+    match /notes/{noteId}/{allPaths=**} {
+      // Anyone can read (needed for public blog images and moodboard viewing)
+      allow read: if true;
+      // Only authenticated users can write
+      allow write: if request.auth != null;
+    }
+  }
+}

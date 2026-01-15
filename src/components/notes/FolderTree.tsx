@@ -284,7 +284,7 @@ export default function FolderTree({
           );
         }
 
-        // Note item
+        // Note or Moodboard item
         return (
           <div key={item.id} className="relative">
             {/* Drop indicator - before */}
@@ -318,7 +318,11 @@ export default function FolderTree({
                 color: isSelected ? 'white' : 'var(--foreground)',
               }}
             >
-              <NoteIcon className="w-3.5 h-3.5 flex-shrink-0" />
+              {item.type === "moodboard" ? (
+                <MoodboardIcon className="w-3.5 h-3.5 flex-shrink-0" />
+              ) : (
+                <NoteIcon className="w-3.5 h-3.5 flex-shrink-0" />
+              )}
               {isRenaming ? (
                 <RenameInput
                   initialValue={item.title}
@@ -366,6 +370,17 @@ function NoteIcon({ className }: { className?: string }) {
         strokeWidth={2}
         d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
       />
+    </svg>
+  );
+}
+
+function MoodboardIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
     </svg>
   );
 }

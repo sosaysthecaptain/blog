@@ -23,6 +23,7 @@ import { deleteNoteImages, downloadImageBlob } from "@/lib/notes-storage";
 import { useDarkMode } from "@/hooks/useDarkMode";
 import Sidebar from "@/components/notes/Sidebar";
 import NoteEditor, { NoteEditorRef } from "@/components/notes/NoteEditor";
+import MoodboardEditor, { MoodboardEditorRef } from "@/components/notes/MoodboardEditor";
 import FolderView from "@/components/notes/FolderView";
 import { ConfirmDialog, AlertDialog, ProgressDialog, SaveDiscardDialog } from "@/components/ui/Dialog";
 import JSZip from "jszip";
@@ -64,6 +65,7 @@ export default function NotesPage() {
 
   // Unsaved changes state
   const noteEditorRef = useRef<NoteEditorRef>(null);
+  const moodboardEditorRef = useRef<MoodboardEditorRef>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<{
     item: NoteItem | null;
@@ -221,6 +223,9 @@ export default function NotesPage() {
     if (noteEditorRef.current) {
       await noteEditorRef.current.save();
     }
+    if (moodboardEditorRef.current) {
+      await moodboardEditorRef.current.save();
+    }
     setUnsavedDialog(false);
     if (pendingNavigation) {
       performNavigation(pendingNavigation.item, pendingNavigation.action);
@@ -242,8 +247,8 @@ export default function NotesPage() {
   }, []);
 
   const handleSelect = (item: NoteItem) => {
-    // Check if we're leaving a note with unsaved changes
-    if (selectedItem?.type === "note" && hasUnsavedChanges && item.id !== selectedItem.id) {
+    // Check if we're leaving a note or moodboard with unsaved changes
+    if ((selectedItem?.type === "note" || selectedItem?.type === "moodboard") && hasUnsavedChanges && item.id !== selectedItem.id) {
       setPendingNavigation({ item, action: "select" });
       setUnsavedDialog(true);
       return;
@@ -303,6 +308,29 @@ export default function NotesPage() {
     setRenamingId(id);
   };
 
+  const handleCreateMoodboard = async (parentId: string | null) => {
+    const now = new Date();
+    const dateStr = now.toISOString().split("T")[0];
+    const timeStr = now.toTimeString().slice(0, 5);
+    const newMoodboard: NoteItem = {
+      type: "moodboard",
+      title: `${dateStr} ${timeStr}`,
+      parentId,
+      date: dateStr,
+      images: [],
+      gridSize: "medium",
+      tags: [],
+      createdAt: now as any,
+      updatedAt: now as any,
+    };
+    const id = await createNote(newMoodboard);
+    newMoodboard.id = id;
+    setItems((prev) => [...prev, newMoodboard]);
+    setSelectedItem(newMoodboard);
+    // Auto-enter rename mode with name highlighted
+    setRenamingId(id);
+  };
+
   const handleDelete = async (item: NoteItem) => {
     if (!item.id) return;
 
@@ -321,12 +349,13 @@ export default function NotesPage() {
       await loadNotes();
     };
 
+    const typeLabel = item.type === "folder" ? "Folder" : item.type === "moodboard" ? "Moodboard" : "Note";
     setConfirmDialog({
       open: true,
-      title: item.type === "folder" ? "Delete Folder" : "Delete Note",
+      title: `Delete ${typeLabel}`,
       message: item.type === "folder"
         ? "Delete this folder and all its contents? This cannot be undone."
-        : "Delete this note? This cannot be undone.",
+        : `Delete this ${typeLabel.toLowerCase()}? This cannot be undone.`,
       variant: "danger",
       onConfirm: () => {
         setConfirmDialog(prev => ({ ...prev, open: false }));
@@ -905,6 +934,7 @@ ${content}`;
           onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
           onCreateNote={handleCreateNote}
           onCreateFolder={handleCreateFolder}
+          onCreateMoodboard={handleCreateMoodboard}
           onDelete={handleDelete}
           onRename={handleRename}
           onRenameSubmit={handleRenameSubmit}
@@ -962,6 +992,16 @@ ${content}`;
             isFullWidth={isFullWidth}
             onUnsavedChangesChange={setHasUnsavedChanges}
           />
+        ) : selectedItem?.type === "moodboard" ? (
+          <MoodboardEditor
+            ref={moodboardEditorRef}
+            moodboard={selectedItem}
+            parentFolder={selectedItem.parentId ? items.find(i => i.id === selectedItem.parentId && i.type === "folder") || null : null}
+            onUpdate={handleNoteUpdate}
+            onBack={handleBackWithUnsavedCheck}
+            isFullWidth={isFullWidth}
+            onUnsavedChangesChange={setHasUnsavedChanges}
+          />
         ) : (
           <FolderView
             folder={selectedItem}
@@ -973,6 +1013,7 @@ ${content}`;
             onBack={handleBack}
             onCreateNote={handleCreateNote}
             onCreateFolder={handleCreateFolder}
+            onCreateMoodboard={handleCreateMoodboard}
             onDelete={handleDelete}
             onRename={(item) => setRenamingId(item.id!)}
           />
