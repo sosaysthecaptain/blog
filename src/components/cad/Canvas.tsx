@@ -681,6 +681,18 @@ interface SnapResult {
   lineId?: string; // For midpoint snaps, the line the midpoint belongs to
 }
 
+// Wake reference for inference lines - when you hover over a snap point, it "wakes up"
+// and an alignment line extends from it that you can snap to
+interface WakeReference {
+  id: string; // Unique ID for this reference
+  x: number;  // Reference point X
+  y: number;  // Reference point Y
+  direction: 'horizontal' | 'vertical'; // Direction of the inference line
+  snapType: SnapInfo['type']; // For constraint creation
+  entityId?: string; // The entity this came from
+  lineId?: string; // For midpoint references
+}
+
 function findSnapPoint(
   worldX: number,
   worldY: number,
@@ -808,6 +820,62 @@ function snapResultToInfo(snap: SnapResult | null): SnapInfo | undefined {
     entityId: snap.entityId,
     lineId: snap.lineId,
   };
+}
+
+// Create wake references from a snap point
+// - Midpoints create ONE reference perpendicular to their line
+// - Other points (origin, endpoints, centers) create TWO references (H and V)
+function createWakeReferences(
+  snap: SnapResult,
+  entities: SketchEntities,
+  idCounter: React.MutableRefObject<number>
+): WakeReference[] {
+  const refs: WakeReference[] = [];
+  const snapType = snap.type === 'endpoint' ? 'point' : snap.type as SnapInfo['type'];
+
+  if (snap.type === 'midpoint' && snap.lineId) {
+    // For midpoints, create ONE line perpendicular to the parent line
+    const line = entities.lines.get(snap.lineId);
+    if (line) {
+      const startPoint = entities.points.get(line.startId);
+      const endPoint = entities.points.get(line.endId);
+      if (startPoint && endPoint) {
+        const dx = Math.abs(endPoint.x - startPoint.x);
+        const dy = Math.abs(endPoint.y - startPoint.y);
+        // If line is more horizontal, inference line is vertical (and vice versa)
+        const direction: 'horizontal' | 'vertical' = dx > dy ? 'vertical' : 'horizontal';
+        refs.push({
+          id: `wake_${++idCounter.current}`,
+          x: snap.x,
+          y: snap.y,
+          direction,
+          snapType,
+          entityId: snap.entityId,
+          lineId: snap.lineId,
+        });
+      }
+    }
+  } else {
+    // For other snap types, create BOTH horizontal and vertical references
+    refs.push({
+      id: `wake_${++idCounter.current}`,
+      x: snap.x,
+      y: snap.y,
+      direction: 'horizontal',
+      snapType,
+      entityId: snap.entityId,
+    });
+    refs.push({
+      id: `wake_${++idCounter.current}`,
+      x: snap.x,
+      y: snap.y,
+      direction: 'vertical',
+      snapType,
+      entityId: snap.entityId,
+    });
+  }
+
+  return refs;
 }
 
 // Find if an entity belongs to a rectangle, return rectangle ID if so
@@ -1013,6 +1081,133 @@ function renderSnapIndicator(
 
   scene.add(group);
   snapIndicatorRef.current = group;
+}
+
+// Render inference lines from wake references (dotted alignment lines)
+function renderInferenceLines(
+  scene: THREE.Scene,
+  inferenceGroupRef: React.MutableRefObject<THREE.Group | null>,
+  wakeReferences: WakeReference[],
+  cursorWorld: { x: number; y: number } | null,
+  colors: CADColors,
+  zoom: number,
+  viewExtent: number // How far to extend lines (in world units)
+) {
+  // Remove old inference group
+  if (inferenceGroupRef.current) {
+    scene.remove(inferenceGroupRef.current);
+    inferenceGroupRef.current.traverse((obj) => {
+      if (obj instanceof THREE.Line) {
+        obj.geometry.dispose();
+        (obj.material as THREE.Material).dispose();
+      }
+    });
+    inferenceGroupRef.current = null;
+  }
+
+  if (wakeReferences.length === 0 || !cursorWorld) return;
+
+  const group = new THREE.Group();
+
+  // Threshold for showing inference line (cursor must be within this distance from line)
+  const proximityThreshold = 30 / zoom; // 30 pixels in world units
+
+  for (const ref of wakeReferences) {
+    // Calculate distance from cursor to this reference line
+    let distanceToLine: number;
+    if (ref.direction === 'horizontal') {
+      distanceToLine = Math.abs(cursorWorld.y - ref.y);
+    } else {
+      distanceToLine = Math.abs(cursorWorld.x - ref.x);
+    }
+
+    // Only show line if cursor is within proximity threshold
+    if (distanceToLine > proximityThreshold) continue;
+
+    // Create dashed line material
+    const material = new THREE.LineDashedMaterial({
+      color: colors.snap,
+      dashSize: 8 / zoom,
+      gapSize: 4 / zoom,
+      linewidth: 1,
+    });
+
+    let startPoint: THREE.Vector3;
+    let endPoint: THREE.Vector3;
+
+    if (ref.direction === 'horizontal') {
+      // Horizontal line through ref.y
+      startPoint = new THREE.Vector3(ref.x - viewExtent, ref.y, 0.85);
+      endPoint = new THREE.Vector3(ref.x + viewExtent, ref.y, 0.85);
+    } else {
+      // Vertical line through ref.x
+      startPoint = new THREE.Vector3(ref.x, ref.y - viewExtent, 0.85);
+      endPoint = new THREE.Vector3(ref.x, ref.y + viewExtent, 0.85);
+    }
+
+    const geometry = new THREE.BufferGeometry().setFromPoints([startPoint, endPoint]);
+    const line = new THREE.Line(geometry, material);
+    line.computeLineDistances(); // Required for dashed lines
+    group.add(line);
+
+    // Also add a small indicator at the reference point
+    const indicatorSize = 6 / zoom;
+    const indicatorGeometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(ref.x - indicatorSize, ref.y, 0.86),
+      new THREE.Vector3(ref.x + indicatorSize, ref.y, 0.86),
+    ]);
+    const indicatorGeometry2 = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(ref.x, ref.y - indicatorSize, 0.86),
+      new THREE.Vector3(ref.x, ref.y + indicatorSize, 0.86),
+    ]);
+    const indicatorMaterial = new THREE.LineBasicMaterial({ color: colors.snap, linewidth: 1 });
+    group.add(new THREE.Line(indicatorGeometry, indicatorMaterial));
+    group.add(new THREE.Line(indicatorGeometry2, indicatorMaterial));
+  }
+
+  if (group.children.length > 0) {
+    scene.add(group);
+    inferenceGroupRef.current = group;
+  }
+}
+
+// Find alignment snaps from wake references
+// Returns adjusted x/y coordinates that align to any nearby inference lines
+interface AlignmentResult {
+  x: number;
+  y: number;
+  alignedRefs: WakeReference[]; // Which references we aligned to
+}
+
+function findAlignmentSnap(
+  worldX: number,
+  worldY: number,
+  wakeReferences: WakeReference[],
+  threshold: number // in world units
+): AlignmentResult {
+  let resultX = worldX;
+  let resultY = worldY;
+  const alignedRefs: WakeReference[] = [];
+
+  for (const ref of wakeReferences) {
+    if (ref.direction === 'horizontal') {
+      // Check if cursor is close to this horizontal line
+      const distance = Math.abs(worldY - ref.y);
+      if (distance < threshold) {
+        resultY = ref.y;
+        alignedRefs.push(ref);
+      }
+    } else {
+      // Check if cursor is close to this vertical line
+      const distance = Math.abs(worldX - ref.x);
+      if (distance < threshold) {
+        resultX = ref.x;
+        alignedRefs.push(ref);
+      }
+    }
+  }
+
+  return { x: resultX, y: resultY, alignedRefs };
 }
 
 // Angle snap - snap to horizontal/vertical/45degrees when within threshold
@@ -1827,6 +2022,11 @@ export default function Canvas({
   const draggingDimensionRef = useRef<string | null>(null);
   const dimensionDragStartRef = useRef<{ worldX: number; worldY: number; initialOffset: number } | null>(null);
 
+  // Wake references for inference lines (Onshape-style "wake up" behavior)
+  const [wakeReferences, setWakeReferences] = useState<WakeReference[]>([]);
+  const inferenceGroupRef = useRef<THREE.Group | null>(null);
+  const wakeIdCounter = useRef(0);
+
   // Dimension creation state - supports drag-to-place workflow
   // Phase 1: 'selecting' - user has clicked first entity, waiting for second click
   // Phase 2: 'placing' - user is dragging to position the dimension, type updates based on cursor
@@ -1861,6 +2061,36 @@ export default function Canvas({
     const screenY = -worldY * viewState.zoom - viewState.panY + containerSize.height / 2;
     return { x: screenX, y: screenY };
   }, [viewState, containerSize]);
+
+  // Wake up inference references when hovering over snap points
+  useEffect(() => {
+    // Only wake when a drawing tool is active and we have a snap point
+    if (activeTool === 'select' || activeTool === 'dimension' || !snapPoint) return;
+    // Don't wake for nearest-on-line (that's for point-on-line snapping, not alignment)
+    if (snapPoint.type === 'nearest-on-line') return;
+
+    // Check if we already have a reference at this exact position
+    const alreadyHas = wakeReferences.some(ref =>
+      Math.abs(ref.x - snapPoint.x) < 0.001 &&
+      Math.abs(ref.y - snapPoint.y) < 0.001 &&
+      // For midpoints, also check if it's the same direction
+      (snapPoint.type !== 'midpoint' || ref.lineId === snapPoint.lineId)
+    );
+
+    if (!alreadyHas) {
+      const newRefs = createWakeReferences(snapPoint, entities, wakeIdCounter);
+      if (newRefs.length > 0) {
+        setWakeReferences(prev => [...prev, ...newRefs]);
+      }
+    }
+  }, [snapPoint, activeTool, entities, wakeReferences]);
+
+  // Clear wake references when tool changes or on escape
+  useEffect(() => {
+    if (activeTool === 'select') {
+      setWakeReferences([]);
+    }
+  }, [activeTool]);
 
   // Handle dimension label dragging with document-level events
   const handleDimensionDragStart = useCallback((constraintId: string, e: React.MouseEvent) => {
@@ -2162,6 +2392,10 @@ export default function Canvas({
     // Render snap indicator
     renderSnapIndicator(scene, snapIndicatorRef, snapPoint, colors, viewState.zoom);
 
+    // Render inference lines from wake references
+    const viewExtent = Math.max(containerSize.width, containerSize.height) / viewState.zoom;
+    renderInferenceLines(scene, inferenceGroupRef, wakeReferences, currentMouse, colors, viewState.zoom, viewExtent);
+
     // Update camera
     camera.left = -containerSize.width / 2 / viewState.zoom;
     camera.right = containerSize.width / 2 / viewState.zoom;
@@ -2172,7 +2406,7 @@ export default function Canvas({
     camera.updateProjectionMatrix();
 
     renderer.render(scene, camera);
-  }, [viewState, colors, containerSize, entities, constraints, pendingPoints, currentMouse, activeTool, snapPoint, selectedEntityId, hoveredEntityId, pendingDimension, overConstrainedEntities, entityConstraintStatus, getConstraintsForEntity]);
+  }, [viewState, colors, containerSize, entities, constraints, pendingPoints, currentMouse, activeTool, snapPoint, selectedEntityId, hoveredEntityId, pendingDimension, overConstrainedEntities, entityConstraintStatus, getConstraintsForEntity, wakeReferences]);
 
   // Clear pending points and dimension when tool changes
   useEffect(() => {
@@ -2257,9 +2491,17 @@ export default function Canvas({
       ? findSnapPoint(world.x, world.y, entities, snapThreshold)
       : null;
 
-    // Use snapped coordinates if available
-    const clickX = freshSnapPoint ? freshSnapPoint.x : world.x;
-    const clickY = freshSnapPoint ? freshSnapPoint.y : world.y;
+    // Apply alignment snap from wake references first
+    const alignmentThreshold = 15 / viewState.zoom;
+    const alignment = findAlignmentSnap(world.x, world.y, wakeReferences, alignmentThreshold);
+
+    // Use alignment-adjusted coordinates, then snap point if available
+    let clickX = alignment.x;
+    let clickY = alignment.y;
+    if (freshSnapPoint) {
+      clickX = freshSnapPoint.x;
+      clickY = freshSnapPoint.y;
+    }
 
     switch (activeTool) {
       case 'select': {
@@ -2282,6 +2524,7 @@ export default function Canvas({
 
       case 'point': {
         onAddPoint(clickX, clickY, snapResultToInfo(freshSnapPoint));
+        setWakeReferences([]); // Clear inference lines after placing geometry
         break;
       }
 
@@ -2297,6 +2540,7 @@ export default function Canvas({
           );
           onAddLine(pendingPoints[0].x, pendingPoints[0].y, angleSnap.x, angleSnap.y, pendingPoints[0].snapInfo, snapResultToInfo(freshSnapPoint));
           setPendingPoints([]);
+          setWakeReferences([]); // Clear inference lines after placing geometry
         }
         break;
 
@@ -2311,6 +2555,7 @@ export default function Canvas({
           );
           onAddCircle(pendingPoints[0].x, pendingPoints[0].y, radius, pendingPoints[0].snapInfo);
           setPendingPoints([]);
+          setWakeReferences([]); // Clear inference lines after placing geometry
         }
         break;
 
@@ -2320,6 +2565,7 @@ export default function Canvas({
         } else {
           onAddRectangle(pendingPoints[0].x, pendingPoints[0].y, clickX, clickY);
           setPendingPoints([]);
+          setWakeReferences([]); // Clear inference lines after placing geometry
         }
         break;
 
@@ -2336,6 +2582,7 @@ export default function Canvas({
             pendingPoints[0].y + halfH
           );
           setPendingPoints([]);
+          setWakeReferences([]); // Clear inference lines after placing geometry
         }
         break;
 
@@ -2573,7 +2820,7 @@ export default function Canvas({
         break;
       }
     }
-  }, [activeTool, pendingPoints, pendingDimension, screenToWorld, viewState.zoom, entities, constraints, onAddPoint, onAddLine, onAddCircle, onAddRectangle, onAddDimension, onAddDistanceDimension, onAddAngleDimension, onSelectEntity]);
+  }, [activeTool, pendingPoints, pendingDimension, screenToWorld, viewState.zoom, entities, constraints, onAddPoint, onAddLine, onAddCircle, onAddRectangle, onAddDimension, onAddDistanceDimension, onAddAngleDimension, onSelectEntity, wakeReferences]);
 
   // Pan and drag handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
