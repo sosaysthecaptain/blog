@@ -7,6 +7,7 @@ import JSZip from "jszip";
 import TagInput from "./TagInput";
 import MoodboardCarousel from "./MoodboardCarousel";
 import SortableImageGrid from "./SortableImageGrid";
+import JustifiedImageGrid from "./JustifiedImageGrid";
 
 export interface MoodboardEditorRef {
   save: () => Promise<void>;
@@ -33,6 +34,7 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
   const [tags, setTags] = useState<string[]>(moodboard.tags || []);
   const [images, setImages] = useState<MoodboardImage[]>(moodboard.images || []);
   const [gridSize, setGridSize] = useState<"small" | "medium" | "large">(moodboard.gridSize || "medium");
+  const [sortMode, setSortMode] = useState<"chronological" | "manual">(moodboard.sortMode || "manual");
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [tagColors, setTagColors] = useState<TagColorsMap>({});
 
@@ -70,7 +72,11 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
     tags: string[];
     images: MoodboardImage[];
     gridSize: "small" | "medium" | "large";
+    sortMode: "chronological" | "manual";
   } | null>(null);
+
+  // Autosave timer ref
+  const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load available tags
   useEffect(() => {
@@ -86,6 +92,7 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
     setTags(moodboard.tags || []);
     setImages(moodboard.images || []);
     setGridSize(moodboard.gridSize || "medium");
+    setSortMode(moodboard.sortMode || "manual");
     setHasLocalChanges(false);
 
     savedVersionRef.current = {
@@ -95,6 +102,7 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
       tags: moodboard.tags || [],
       images: moodboard.images || [],
       gridSize: moodboard.gridSize || "medium",
+      sortMode: moodboard.sortMode || "manual",
     };
   }, [moodboard.id]);
 
@@ -103,21 +111,34 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
     if (!moodboard.id) return;
 
     const unsubscribe = subscribeToNote(moodboard.id, (updated) => {
-      if (!updated || hasLocalChanges) return;
-      // Auto-apply remote changes if no local changes
+      if (!updated) return;
+      // Always update from remote - autosave means we should stay in sync
       setTitle(updated.title);
       setDate(updated.date || new Date().toISOString().split("T")[0]);
       setTime(updated.time || "");
       setTags(updated.tags || []);
       setImages(updated.images || []);
       setGridSize(updated.gridSize || "medium");
+      setSortMode(updated.sortMode || "manual");
+
+      // Update saved version ref to match remote
+      savedVersionRef.current = {
+        title: updated.title,
+        date: updated.date || new Date().toISOString().split("T")[0],
+        time: updated.time || "",
+        tags: updated.tags || [],
+        images: updated.images || [],
+        gridSize: updated.gridSize || "medium",
+        sortMode: updated.sortMode || "manual",
+      };
+      setHasLocalChanges(false);
       onUpdate(updated);
     });
 
     return () => unsubscribe();
-  }, [moodboard.id, hasLocalChanges, onUpdate]);
+  }, [moodboard.id, onUpdate]);
 
-  // Track local changes
+  // Track local changes and trigger autosave
   useEffect(() => {
     const saved = savedVersionRef.current;
     if (!saved) return;
@@ -128,18 +149,35 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
       time !== saved.time ||
       JSON.stringify(tags) !== JSON.stringify(saved.tags) ||
       JSON.stringify(images) !== JSON.stringify(saved.images) ||
-      gridSize !== saved.gridSize;
+      gridSize !== saved.gridSize ||
+      sortMode !== saved.sortMode;
 
     setHasLocalChanges(changed);
-  }, [title, date, time, tags, images, gridSize]);
+
+    // Autosave after 1 second of no changes
+    if (changed && moodboard.id) {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+      autosaveTimerRef.current = setTimeout(() => {
+        performAutosave();
+      }, 1000);
+    }
+
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+    };
+  }, [title, date, time, tags, images, gridSize, sortMode, moodboard.id]);
 
   // Notify parent of unsaved changes
   useEffect(() => {
     onUnsavedChangesChange?.(hasLocalChanges);
   }, [hasLocalChanges, onUnsavedChangesChange]);
 
-  // Save function
-  const handleSave = useCallback(async () => {
+  // Autosave function (called by debounced effect)
+  const performAutosave = useCallback(async () => {
     if (!moodboard.id || isSaving) return;
 
     setIsSaving(true);
@@ -151,16 +189,25 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
         tags,
         images,
         gridSize,
+        sortMode,
       });
 
-      savedVersionRef.current = { title, date, time, tags, images, gridSize };
+      savedVersionRef.current = { title, date, time, tags, images, gridSize, sortMode };
       setHasLocalChanges(false);
-      onUpdate({ ...moodboard, title, date, time, tags, images, gridSize });
+      onUpdate({ ...moodboard, title, date, time, tags, images, gridSize, sortMode });
     } catch (error) {
       console.error("Failed to save moodboard:", error);
     }
     setIsSaving(false);
-  }, [moodboard, title, date, time, tags, images, gridSize, isSaving, onUpdate]);
+  }, [moodboard, title, date, time, tags, images, gridSize, sortMode, isSaving, onUpdate]);
+
+  // Manual save function (for keyboard shortcut and ref)
+  const handleSave = useCallback(async () => {
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+    }
+    await performAutosave();
+  }, [performAutosave]);
 
   // Expose save function via ref
   useImperativeHandle(ref, () => ({
@@ -420,31 +467,26 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
               </button>
             )}
 
-            {/* Save button */}
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={!hasLocalChanges || isSaving}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors ${
-                hasLocalChanges
-                  ? "bg-[--foreground] text-[--background] hover:opacity-90"
-                  : "bg-[--hover] text-[--muted] cursor-default"
-              }`}
-              title={hasLocalChanges ? "Save changes (Cmd+S)" : "No unsaved changes"}
-            >
+            {/* Save status indicator */}
+            <div className="flex items-center gap-1.5 text-xs text-[--muted]">
               {isSaving ? (
-                <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
+                <>
+                  <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span>Saving...</span>
+                </>
+              ) : hasLocalChanges ? (
+                <span className="text-[--accent]">Unsaved</span>
               ) : (
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/>
-                </svg>
+                <>
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>Saved</span>
+                </>
               )}
-              <span className="text-sm font-medium hidden sm:inline">
-                {isSaving ? "Saving..." : hasLocalChanges ? "Save" : "Saved"}
-              </span>
-            </button>
+            </div>
           </div>
         </div>
 
@@ -512,8 +554,37 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
           />
         </div>
 
-        {/* Grid size control */}
-        <div className="flex items-center gap-2 mb-6">
+        {/* View controls */}
+        <div className="flex items-center gap-4 mb-6">
+          {/* Sort mode toggle */}
+          <div className="flex items-center bg-[--hover] rounded-lg p-0.5">
+            <button
+              type="button"
+              onClick={() => setSortMode("chronological")}
+              className={`px-2.5 py-1 text-xs rounded transition-colors ${
+                sortMode === "chronological"
+                  ? "bg-[--background] text-[--foreground] shadow-sm"
+                  : "text-[--muted] hover:text-[--foreground]"
+              }`}
+              title="Sort by date added"
+            >
+              Chronological
+            </button>
+            <button
+              type="button"
+              onClick={() => setSortMode("manual")}
+              className={`px-2.5 py-1 text-xs rounded transition-colors ${
+                sortMode === "manual"
+                  ? "bg-[--background] text-[--foreground] shadow-sm"
+                  : "text-[--muted] hover:text-[--foreground]"
+              }`}
+              title="Manual order (drag to reorder)"
+            >
+              Manual
+            </button>
+          </div>
+
+          {/* Grid size control */}
           <div className="flex items-center bg-[--hover] rounded-lg p-0.5">
             {(["small", "medium", "large"] as const).map((size) => (
               <button
@@ -600,13 +671,23 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
           </div>
         ) : (
           <>
-            <SortableImageGrid
-              images={images}
-              gridSize={gridSize}
-              onReorder={handleReorder}
-              onDelete={handleDeleteImage}
-              onImageClick={openCarousel}
-            />
+            {sortMode === "chronological" ? (
+              <JustifiedImageGrid
+                images={images}
+                targetRowHeight={gridSize === "small" ? 120 : gridSize === "medium" ? 180 : 250}
+                gap={8}
+                onDelete={handleDeleteImage}
+                onImageClick={openCarousel}
+              />
+            ) : (
+              <SortableImageGrid
+                images={images}
+                gridSize={gridSize}
+                onReorder={handleReorder}
+                onDelete={handleDeleteImage}
+                onImageClick={openCarousel}
+              />
+            )}
 
             {/* Add more images button */}
             <div className="mt-6 flex justify-center">

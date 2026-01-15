@@ -45,6 +45,7 @@ export interface NoteItem {
   // Moodboard-specific fields
   images?: MoodboardImage[];
   gridSize?: "small" | "medium" | "large"; // User preference for grid density
+  sortMode?: "chronological" | "manual"; // How images are sorted/displayed
 
   // Publishing fields (for blog folder)
   published?: boolean;
