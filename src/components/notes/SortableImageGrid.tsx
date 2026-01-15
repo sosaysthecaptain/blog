@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState } from "react";
 import {
   DndContext,
   closestCenter,
@@ -10,7 +10,7 @@ import {
   DragEndEvent,
   DragStartEvent,
   DragOverlay,
-  DragMoveEvent,
+  DragOverEvent,
 } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -24,10 +24,10 @@ interface SortableImageProps {
   onDelete: (image: MoodboardImage) => void;
   onClick: () => void;
   isDragging?: boolean;
-  isOver?: boolean;
+  insertPosition?: "before" | "after" | null;
 }
 
-function SortableImage({ image, onDelete, onClick, isDragging, isOver }: SortableImageProps) {
+function SortableImage({ image, onDelete, onClick, isDragging, insertPosition }: SortableImageProps) {
   const {
     attributes,
     listeners,
@@ -40,16 +40,18 @@ function SortableImage({ image, onDelete, onClick, isDragging, isOver }: Sortabl
       ref={setNodeRef}
       className={`break-inside-avoid mb-4 group relative transition-all duration-200 ${
         isDragging ? "opacity-30 scale-95" : ""
-      } ${
-        isOver ? "ring-2 ring-[--accent] ring-offset-2 ring-offset-[--background] rounded-lg" : ""
       }`}
     >
+      {/* Insertion line - before */}
+      {insertPosition === "before" && (
+        <div className="absolute -top-2 left-0 right-0 h-1 bg-[--accent] rounded-full z-20" />
+      )}
+
       <div
         {...attributes}
         {...listeners}
         className="cursor-grab active:cursor-grabbing"
         onClick={(e) => {
-          // Only trigger click if not dragging
           if (!transform) {
             onClick();
           }
@@ -63,6 +65,7 @@ function SortableImage({ image, onDelete, onClick, isDragging, isOver }: Sortabl
           draggable={false}
         />
       </div>
+
       {/* Delete button */}
       <button
         type="button"
@@ -77,10 +80,16 @@ function SortableImage({ image, onDelete, onClick, isDragging, isOver }: Sortabl
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
         </svg>
       </button>
+
       {image.caption && (
         <p className="mt-1 text-xs text-[--muted] truncate">
           {image.caption}
         </p>
+      )}
+
+      {/* Insertion line - after */}
+      {insertPosition === "after" && (
+        <div className="absolute -bottom-2 left-0 right-0 h-1 bg-[--accent] rounded-full z-20" />
       )}
     </div>
   );
@@ -92,7 +101,7 @@ interface DragOverlayImageProps {
 
 function DragOverlayImage({ image }: DragOverlayImageProps) {
   return (
-    <div className="shadow-2xl rounded-lg overflow-hidden rotate-3">
+    <div className="shadow-2xl rounded-lg overflow-hidden rotate-3 opacity-90">
       <img
         src={image.thumbnailUrl || image.url}
         alt={image.caption || ""}
@@ -137,7 +146,7 @@ export default function SortableImageGrid({
     setActiveId(event.active.id as string);
   };
 
-  const handleDragOver = (event: DragMoveEvent) => {
+  const handleDragOver = (event: DragOverEvent) => {
     const over = event.over;
     setOverId(over ? (over.id as string) : null);
   };
@@ -167,6 +176,18 @@ export default function SortableImageGrid({
 
   const activeImage = activeId ? images.find((img) => img.id === activeId) : null;
 
+  // Determine insert position (before or after target)
+  const getInsertPosition = (imageId: string): "before" | "after" | null => {
+    if (!activeId || !overId || overId !== imageId || activeId === imageId) return null;
+
+    const activeIndex = images.findIndex((img) => img.id === activeId);
+    const overIndex = images.findIndex((img) => img.id === overId);
+
+    // If dragging from later to earlier, show line before
+    // If dragging from earlier to later, show line after
+    return activeIndex > overIndex ? "before" : "after";
+  };
+
   const columnClass = {
     small: "columns-4 md:columns-5 lg:columns-6",
     medium: "columns-2 md:columns-3 lg:columns-4",
@@ -191,7 +212,7 @@ export default function SortableImageGrid({
               onDelete={onDelete}
               onClick={() => onImageClick(index)}
               isDragging={activeId === image.id}
-              isOver={overId === image.id && activeId !== image.id}
+              insertPosition={getInsertPosition(image.id)}
             />
           ))}
         </div>

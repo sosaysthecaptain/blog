@@ -197,6 +197,17 @@ export default function MoodboardCarousel({
               {currentImage.caption || (onUpdateCaption ? "Click to add caption" : "")}
             </p>
           )}
+
+          {/* Size and date info */}
+          <p className="mt-2 text-xs text-white/40">
+            {currentImage.width} × {currentImage.height}
+            {currentImage.fileSize && (
+              <span> · {(currentImage.fileSize / (1024 * 1024)).toFixed(1)} MB</span>
+            )}
+            {currentImage.createdAt && (
+              <span> · {currentImage.createdAt.toDate?.().toLocaleDateString()}</span>
+            )}
+          </p>
         </div>
       </div>
 
