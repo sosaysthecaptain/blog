@@ -620,7 +620,6 @@ export function calculateEntityConstraintStatus(
           const startDOF = pointDOF.get(line.startId);
           const endDOF = pointDOF.get(line.endId);
           if (startDOF && endDOF) {
-            // If start is fully constrained and we have length + direction, end is constrained
             // Check for horizontal/vertical constraint on this line
             let hasHorizontal = false;
             let hasVertical = false;
@@ -633,7 +632,32 @@ export function calculateEntityConstraintStatus(
               }
             }
 
-            // If start is fully constrained and direction is known
+            // For horizontal line + length: X position propagates (length constrains X difference)
+            // For vertical line + length: Y position propagates (length constrains Y difference)
+            if (hasHorizontal) {
+              // Horizontal line: length constrains the X axis difference
+              if (startDOF.x && !endDOF.x) {
+                pointDOF.set(line.endId, { ...endDOF, x: true });
+                anyChange = true;
+              }
+              if (endDOF.x && !startDOF.x) {
+                pointDOF.set(line.startId, { ...startDOF, x: true });
+                anyChange = true;
+              }
+            }
+            if (hasVertical) {
+              // Vertical line: length constrains the Y axis difference
+              if (startDOF.y && !endDOF.y) {
+                pointDOF.set(line.endId, { ...endDOF, y: true });
+                anyChange = true;
+              }
+              if (endDOF.y && !startDOF.y) {
+                pointDOF.set(line.startId, { ...startDOF, y: true });
+                anyChange = true;
+              }
+            }
+
+            // If one endpoint is fully constrained and direction is known, other is fully constrained
             if (startDOF.x && startDOF.y) {
               const endDOFCurrent = pointDOF.get(line.endId)!;
               if ((hasHorizontal || hasVertical) && (!endDOFCurrent.x || !endDOFCurrent.y)) {
@@ -641,7 +665,6 @@ export function calculateEntityConstraintStatus(
                 anyChange = true;
               }
             }
-            // If end is fully constrained and direction is known
             if (endDOF.x && endDOF.y) {
               const startDOFCurrent = pointDOF.get(line.startId)!;
               if ((hasHorizontal || hasVertical) && (!startDOFCurrent.x || !startDOFCurrent.y)) {
