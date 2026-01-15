@@ -9,13 +9,14 @@ import {
   useSensors,
   DragEndEvent,
   DragStartEvent,
-  DragOverlay,
   DragOverEvent,
+  DragOverlay,
 } from "@dnd-kit/core";
 import {
   arrayMove,
   SortableContext,
   useSortable,
+  verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { MoodboardImage } from "@/lib/notes";
 
@@ -24,35 +25,33 @@ interface SortableImageProps {
   onDelete: (image: MoodboardImage) => void;
   onClick: () => void;
   isDragging?: boolean;
-  insertPosition?: "before" | "after" | null;
+  showDropIndicator?: "before" | "after" | null;
 }
 
-function SortableImage({ image, onDelete, onClick, isDragging, insertPosition }: SortableImageProps) {
+function SortableImage({ image, onDelete, onClick, isDragging, showDropIndicator }: SortableImageProps) {
   const {
     attributes,
     listeners,
     setNodeRef,
-    transform,
   } = useSortable({ id: image.id });
 
   return (
     <div
       ref={setNodeRef}
-      className={`break-inside-avoid mb-4 group relative transition-all duration-200 ${
-        isDragging ? "opacity-30 scale-95" : ""
-      }`}
+      className="relative break-inside-avoid mb-4"
+      style={{ opacity: isDragging ? 0.3 : 1 }}
     >
-      {/* Insertion line - before */}
-      {insertPosition === "before" && (
-        <div className="absolute -top-2 left-0 right-0 h-1 bg-[--accent] rounded-full z-20" />
+      {/* Drop indicator before */}
+      {showDropIndicator === "before" && (
+        <div className="absolute -top-2 left-0 right-0 h-1 bg-blue-500 rounded-full z-20" />
       )}
 
       <div
         {...attributes}
         {...listeners}
-        className="cursor-grab active:cursor-grabbing"
+        className="group relative cursor-grab active:cursor-grabbing"
         onClick={(e) => {
-          if (!transform) {
+          if (!isDragging) {
             onClick();
           }
         }}
@@ -64,22 +63,24 @@ function SortableImage({ image, onDelete, onClick, isDragging, insertPosition }:
           style={{ aspectRatio: `${image.width}/${image.height}` }}
           draggable={false}
         />
-      </div>
 
-      {/* Delete button */}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete(image);
-        }}
-        className="absolute top-2 right-2 w-7 h-7 bg-black/60 hover:bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
-        title="Delete image"
-      >
-        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
+        {/* Delete button */}
+        {!isDragging && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(image);
+            }}
+            className="absolute top-2 right-2 w-7 h-7 bg-black/60 hover:bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+            title="Delete image"
+          >
+            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+      </div>
 
       {image.caption && (
         <p className="mt-1 text-xs text-[--muted] truncate">
@@ -87,32 +88,28 @@ function SortableImage({ image, onDelete, onClick, isDragging, insertPosition }:
         </p>
       )}
 
-      {/* Insertion line - after */}
-      {insertPosition === "after" && (
-        <div className="absolute -bottom-2 left-0 right-0 h-1 bg-[--accent] rounded-full z-20" />
+      {/* Drop indicator after */}
+      {showDropIndicator === "after" && (
+        <div className="absolute -bottom-2 left-0 right-0 h-1 bg-blue-500 rounded-full z-20" />
       )}
     </div>
   );
 }
 
-interface DragOverlayImageProps {
-  image: MoodboardImage;
-}
-
-function DragOverlayImage({ image }: DragOverlayImageProps) {
+// Simple drag overlay - just the image, nothing else
+function DragOverlayImage({ image }: { image: MoodboardImage }) {
   return (
-    <div className="shadow-2xl rounded-lg overflow-hidden rotate-3 opacity-90">
-      <img
-        src={image.thumbnailUrl || image.url}
-        alt={image.caption || ""}
-        className="rounded-lg"
-        style={{
-          aspectRatio: `${image.width}/${image.height}`,
-          width: "180px",
-        }}
-        draggable={false}
-      />
-    </div>
+    <img
+      src={image.thumbnailUrl || image.url}
+      alt={image.caption || ""}
+      className="rounded-lg shadow-2xl"
+      style={{
+        width: "150px",
+        aspectRatio: `${image.width}/${image.height}`,
+        transform: "rotate(3deg)",
+      }}
+      draggable={false}
+    />
   );
 }
 
@@ -147,8 +144,7 @@ export default function SortableImageGrid({
   };
 
   const handleDragOver = (event: DragOverEvent) => {
-    const over = event.over;
-    setOverId(over ? (over.id as string) : null);
+    setOverId(event.over?.id as string | null);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -176,18 +172,19 @@ export default function SortableImageGrid({
 
   const activeImage = activeId ? images.find((img) => img.id === activeId) : null;
 
-  // Determine insert position (before or after target)
-  const getInsertPosition = (imageId: string): "before" | "after" | null => {
-    if (!activeId || !overId || overId !== imageId || activeId === imageId) return null;
+  // Determine drop indicator position
+  const getDropIndicator = (imageId: string): "before" | "after" | null => {
+    if (!activeId || !overId || activeId === imageId) return null;
+    if (overId !== imageId) return null;
 
     const activeIndex = images.findIndex((img) => img.id === activeId);
     const overIndex = images.findIndex((img) => img.id === overId);
 
-    // If dragging from later to earlier, show line before
-    // If dragging from earlier to later, show line after
+    // Show indicator based on whether we're moving up or down
     return activeIndex > overIndex ? "before" : "after";
   };
 
+  // CSS columns for masonry layout
   const columnClass = {
     small: "columns-4 md:columns-5 lg:columns-6",
     medium: "columns-2 md:columns-3 lg:columns-4",
@@ -203,7 +200,7 @@ export default function SortableImageGrid({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <SortableContext items={images.map((img) => img.id)}>
+      <SortableContext items={images.map((img) => img.id)} strategy={verticalListSortingStrategy}>
         <div className={`${columnClass} gap-4`}>
           {images.map((image, index) => (
             <SortableImage
@@ -212,13 +209,13 @@ export default function SortableImageGrid({
               onDelete={onDelete}
               onClick={() => onImageClick(index)}
               isDragging={activeId === image.id}
-              insertPosition={getInsertPosition(image.id)}
+              showDropIndicator={getDropIndicator(image.id)}
             />
           ))}
         </div>
       </SortableContext>
 
-      <DragOverlay dropAnimation={null}>
+      <DragOverlay>
         {activeImage ? <DragOverlayImage image={activeImage} /> : null}
       </DragOverlay>
     </DndContext>

@@ -61,6 +61,12 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
   // Export state
   const [isExporting, setIsExporting] = useState(false);
 
+  // Dropdown menu state
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const [gridMenuOpen, setGridMenuOpen] = useState(false);
+  const sortMenuRef = useRef<HTMLDivElement>(null);
+  const gridMenuRef = useRef<HTMLDivElement>(null);
+
   // File input ref
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -82,6 +88,20 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
   useEffect(() => {
     getAllNoteTags().then(setAvailableTags);
     getTagColors().then(setTagColors);
+  }, []);
+
+  // Close dropdown menus when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (sortMenuRef.current && !sortMenuRef.current.contains(e.target as Node)) {
+        setSortMenuOpen(false);
+      }
+      if (gridMenuRef.current && !gridMenuRef.current.contains(e.target as Node)) {
+        setGridMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   // Initialize state when moodboard changes
@@ -442,85 +462,187 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
           )}
 
           {/* Action buttons and controls */}
-          <div className="flex items-center gap-3">
-            {/* Sort mode toggle */}
+          <div className="flex items-center gap-2">
+            {/* Sort mode dropdown */}
             {images.length > 0 && (
-              <div className="hidden sm:flex items-center bg-[--hover] rounded-lg p-0.5">
+              <div className="relative" ref={sortMenuRef}>
                 <button
                   type="button"
-                  onClick={() => setSortMode("chronological")}
-                  className={`px-2 py-1 text-xs rounded transition-colors ${
-                    sortMode === "chronological"
-                      ? "bg-[--background] text-[--foreground] shadow-sm"
-                      : "text-[--muted] hover:text-[--foreground]"
-                  }`}
-                  title="Sort by date added"
+                  onClick={() => {
+                    setSortMenuOpen(!sortMenuOpen);
+                    setGridMenuOpen(false);
+                  }}
+                  className="flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-colors bg-[--hover] text-[--muted] hover:text-[--foreground]"
+                  title={sortMode === "chronological" ? "Sorted by date" : "Manual order"}
                 >
-                  Date
+                  {sortMode === "chronological" ? (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                    </svg>
+                  )}
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setSortMode("manual")}
-                  className={`px-2 py-1 text-xs rounded transition-colors ${
-                    sortMode === "manual"
-                      ? "bg-[--background] text-[--foreground] shadow-sm"
-                      : "text-[--muted] hover:text-[--foreground]"
-                  }`}
-                  title="Manual order (drag to reorder)"
-                >
-                  Manual
-                </button>
+                {sortMenuOpen && (
+                  <div className="absolute right-0 mt-1 bg-[--background] border border-[--border] rounded-lg shadow-lg py-1 z-20 min-w-[140px]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSortMode("chronological");
+                        setSortMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                        sortMode === "chronological"
+                          ? "text-[--foreground] bg-[--hover]"
+                          : "text-[--muted] hover:text-[--foreground] hover:bg-[--hover]"
+                      }`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                      </svg>
+                      By date
+                      {sortMode === "chronological" && (
+                        <svg className="w-4 h-4 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSortMode("manual");
+                        setSortMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                        sortMode === "manual"
+                          ? "text-[--foreground] bg-[--hover]"
+                          : "text-[--muted] hover:text-[--foreground] hover:bg-[--hover]"
+                      }`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                      </svg>
+                      Manual
+                      {sortMode === "manual" && (
+                        <svg className="w-4 h-4 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Grid size control */}
+            {/* Grid size dropdown */}
             {images.length > 0 && (
-              <div className="hidden sm:flex items-center bg-[--hover] rounded-lg p-0.5">
-                {(["small", "medium", "large"] as const).map((size) => (
-                  <button
-                    key={size}
-                    type="button"
-                    onClick={() => setGridSize(size)}
-                    className={`p-1 rounded transition-colors ${
-                      gridSize === size
-                        ? "bg-[--background] text-[--foreground] shadow-sm"
-                        : "text-[--muted] hover:text-[--foreground]"
-                    }`}
-                    title={`${size.charAt(0).toUpperCase() + size.slice(1)} grid`}
-                  >
-                    {size === "small" && (
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-                        <rect x="1" y="1" width="3" height="3" rx="0.5" />
-                        <rect x="5" y="1" width="3" height="3" rx="0.5" />
-                        <rect x="9" y="1" width="3" height="3" rx="0.5" />
-                        <rect x="1" y="5" width="3" height="3" rx="0.5" />
-                        <rect x="5" y="5" width="3" height="3" rx="0.5" />
-                        <rect x="9" y="5" width="3" height="3" rx="0.5" />
-                        <rect x="1" y="9" width="3" height="3" rx="0.5" />
-                        <rect x="5" y="9" width="3" height="3" rx="0.5" />
-                        <rect x="9" y="9" width="3" height="3" rx="0.5" />
-                      </svg>
-                    )}
-                    {size === "medium" && (
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-                        <rect x="1" y="1" width="4" height="4" rx="0.5" />
-                        <rect x="6" y="1" width="4" height="4" rx="0.5" />
-                        <rect x="11" y="1" width="4" height="4" rx="0.5" />
-                        <rect x="1" y="6" width="4" height="4" rx="0.5" />
-                        <rect x="6" y="6" width="4" height="4" rx="0.5" />
-                        <rect x="11" y="6" width="4" height="4" rx="0.5" />
-                      </svg>
-                    )}
-                    {size === "large" && (
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-                        <rect x="1" y="1" width="6" height="6" rx="0.5" />
-                        <rect x="9" y="1" width="6" height="6" rx="0.5" />
-                        <rect x="1" y="9" width="6" height="6" rx="0.5" />
-                        <rect x="9" y="9" width="6" height="6" rx="0.5" />
-                      </svg>
-                    )}
-                  </button>
-                ))}
+              <div className="relative" ref={gridMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGridMenuOpen(!gridMenuOpen);
+                    setSortMenuOpen(false);
+                  }}
+                  className="flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-colors bg-[--hover] text-[--muted] hover:text-[--foreground]"
+                  title={`${gridSize.charAt(0).toUpperCase() + gridSize.slice(1)} grid`}
+                >
+                  {gridSize === "small" && (
+                    <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                      <rect x="1" y="1" width="3" height="3" rx="0.5" />
+                      <rect x="6" y="1" width="3" height="3" rx="0.5" />
+                      <rect x="11" y="1" width="3" height="3" rx="0.5" />
+                      <rect x="1" y="6" width="3" height="3" rx="0.5" />
+                      <rect x="6" y="6" width="3" height="3" rx="0.5" />
+                      <rect x="11" y="6" width="3" height="3" rx="0.5" />
+                      <rect x="1" y="11" width="3" height="3" rx="0.5" />
+                      <rect x="6" y="11" width="3" height="3" rx="0.5" />
+                      <rect x="11" y="11" width="3" height="3" rx="0.5" />
+                    </svg>
+                  )}
+                  {gridSize === "medium" && (
+                    <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                      <rect x="1" y="1" width="4" height="4" rx="0.5" />
+                      <rect x="6" y="1" width="4" height="4" rx="0.5" />
+                      <rect x="11" y="1" width="4" height="4" rx="0.5" />
+                      <rect x="1" y="6" width="4" height="4" rx="0.5" />
+                      <rect x="6" y="6" width="4" height="4" rx="0.5" />
+                      <rect x="11" y="6" width="4" height="4" rx="0.5" />
+                    </svg>
+                  )}
+                  {gridSize === "large" && (
+                    <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                      <rect x="1" y="1" width="6" height="6" rx="0.5" />
+                      <rect x="9" y="1" width="6" height="6" rx="0.5" />
+                      <rect x="1" y="9" width="6" height="6" rx="0.5" />
+                      <rect x="9" y="9" width="6" height="6" rx="0.5" />
+                    </svg>
+                  )}
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {gridMenuOpen && (
+                  <div className="absolute right-0 mt-1 bg-[--background] border border-[--border] rounded-lg shadow-lg py-1 z-20 min-w-[120px]">
+                    {(["small", "medium", "large"] as const).map((size) => (
+                      <button
+                        key={size}
+                        type="button"
+                        onClick={() => {
+                          setGridSize(size);
+                          setGridMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                          gridSize === size
+                            ? "text-[--foreground] bg-[--hover]"
+                            : "text-[--muted] hover:text-[--foreground] hover:bg-[--hover]"
+                        }`}
+                      >
+                        {size === "small" && (
+                          <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                            <rect x="1" y="1" width="3" height="3" rx="0.5" />
+                            <rect x="6" y="1" width="3" height="3" rx="0.5" />
+                            <rect x="11" y="1" width="3" height="3" rx="0.5" />
+                            <rect x="1" y="6" width="3" height="3" rx="0.5" />
+                            <rect x="6" y="6" width="3" height="3" rx="0.5" />
+                            <rect x="11" y="6" width="3" height="3" rx="0.5" />
+                            <rect x="1" y="11" width="3" height="3" rx="0.5" />
+                            <rect x="6" y="11" width="3" height="3" rx="0.5" />
+                            <rect x="11" y="11" width="3" height="3" rx="0.5" />
+                          </svg>
+                        )}
+                        {size === "medium" && (
+                          <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                            <rect x="1" y="1" width="4" height="4" rx="0.5" />
+                            <rect x="6" y="1" width="4" height="4" rx="0.5" />
+                            <rect x="11" y="1" width="4" height="4" rx="0.5" />
+                            <rect x="1" y="6" width="4" height="4" rx="0.5" />
+                            <rect x="6" y="6" width="4" height="4" rx="0.5" />
+                            <rect x="11" y="6" width="4" height="4" rx="0.5" />
+                          </svg>
+                        )}
+                        {size === "large" && (
+                          <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                            <rect x="1" y="1" width="6" height="6" rx="0.5" />
+                            <rect x="9" y="1" width="6" height="6" rx="0.5" />
+                            <rect x="1" y="9" width="6" height="6" rx="0.5" />
+                            <rect x="9" y="9" width="6" height="6" rx="0.5" />
+                          </svg>
+                        )}
+                        {size.charAt(0).toUpperCase() + size.slice(1)}
+                        {gridSize === size && (
+                          <svg className="w-4 h-4 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
