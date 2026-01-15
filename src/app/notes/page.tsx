@@ -317,6 +317,7 @@ export default function NotesPage() {
       title: `${dateStr} ${timeStr}`,
       parentId,
       date: dateStr,
+      time: timeStr,
       images: [],
       gridSize: "medium",
       tags: [],

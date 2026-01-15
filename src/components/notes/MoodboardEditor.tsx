@@ -29,6 +29,7 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
   // Local editing state
   const [title, setTitle] = useState(moodboard.title);
   const [date, setDate] = useState(moodboard.date || new Date().toISOString().split("T")[0]);
+  const [time, setTime] = useState(moodboard.time || "");
   const [tags, setTags] = useState<string[]>(moodboard.tags || []);
   const [images, setImages] = useState<MoodboardImage[]>(moodboard.images || []);
   const [gridSize, setGridSize] = useState<"small" | "medium" | "large">(moodboard.gridSize || "medium");
@@ -65,6 +66,7 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
   const savedVersionRef = useRef<{
     title: string;
     date: string;
+    time: string;
     tags: string[];
     images: MoodboardImage[];
     gridSize: "small" | "medium" | "large";
@@ -80,6 +82,7 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
   useEffect(() => {
     setTitle(moodboard.title);
     setDate(moodboard.date || new Date().toISOString().split("T")[0]);
+    setTime(moodboard.time || "");
     setTags(moodboard.tags || []);
     setImages(moodboard.images || []);
     setGridSize(moodboard.gridSize || "medium");
@@ -88,6 +91,7 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
     savedVersionRef.current = {
       title: moodboard.title,
       date: moodboard.date || new Date().toISOString().split("T")[0],
+      time: moodboard.time || "",
       tags: moodboard.tags || [],
       images: moodboard.images || [],
       gridSize: moodboard.gridSize || "medium",
@@ -103,6 +107,7 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
       // Auto-apply remote changes if no local changes
       setTitle(updated.title);
       setDate(updated.date || new Date().toISOString().split("T")[0]);
+      setTime(updated.time || "");
       setTags(updated.tags || []);
       setImages(updated.images || []);
       setGridSize(updated.gridSize || "medium");
@@ -120,12 +125,13 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
     const changed =
       title !== saved.title ||
       date !== saved.date ||
+      time !== saved.time ||
       JSON.stringify(tags) !== JSON.stringify(saved.tags) ||
       JSON.stringify(images) !== JSON.stringify(saved.images) ||
       gridSize !== saved.gridSize;
 
     setHasLocalChanges(changed);
-  }, [title, date, tags, images, gridSize]);
+  }, [title, date, time, tags, images, gridSize]);
 
   // Notify parent of unsaved changes
   useEffect(() => {
@@ -141,19 +147,20 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
       await updateNote(moodboard.id, {
         title,
         date,
+        time: time || null,
         tags,
         images,
         gridSize,
       });
 
-      savedVersionRef.current = { title, date, tags, images, gridSize };
+      savedVersionRef.current = { title, date, time, tags, images, gridSize };
       setHasLocalChanges(false);
-      onUpdate({ ...moodboard, title, date, tags, images, gridSize });
+      onUpdate({ ...moodboard, title, date, time, tags, images, gridSize });
     } catch (error) {
       console.error("Failed to save moodboard:", error);
     }
     setIsSaving(false);
-  }, [moodboard, title, date, tags, images, gridSize, isSaving, onUpdate]);
+  }, [moodboard, title, date, time, tags, images, gridSize, isSaving, onUpdate]);
 
   // Expose save function via ref
   useImperativeHandle(ref, () => ({
@@ -459,6 +466,35 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
             className="bg-transparent outline-none italic cursor-pointer"
             style={{ colorScheme: 'light dark' }}
           />
+          {time ? (
+            <span className="flex items-center gap-1">
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className="bg-transparent outline-none italic cursor-pointer"
+                style={{ colorScheme: 'light dark' }}
+              />
+              <button
+                type="button"
+                onClick={() => setTime("")}
+                className="text-[--muted] hover:text-[--foreground] p-0.5"
+                title="Clear time"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setTime(new Date().toTimeString().slice(0, 5))}
+              className="text-[--muted] hover:text-[--foreground] italic"
+            >
+              + time
+            </button>
+          )}
           <span className="text-xs">
             {images.length} {images.length === 1 ? "image" : "images"}
             {totalSizeBytes > 0 && ` · ${totalSizeMB} MB`}

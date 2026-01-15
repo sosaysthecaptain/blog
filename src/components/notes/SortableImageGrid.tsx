@@ -1,25 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   DndContext,
   closestCenter,
-  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   DragEndEvent,
   DragStartEvent,
   DragOverlay,
+  DragMoveEvent,
 } from "@dnd-kit/core";
 import {
   arrayMove,
   SortableContext,
-  sortableKeyboardCoordinates,
-  rectSortingStrategy,
   useSortable,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { MoodboardImage } from "@/lib/notes";
 
 interface SortableImageProps {
@@ -27,28 +24,25 @@ interface SortableImageProps {
   onDelete: (image: MoodboardImage) => void;
   onClick: () => void;
   isDragging?: boolean;
+  isOver?: boolean;
 }
 
-function SortableImage({ image, onDelete, onClick, isDragging }: SortableImageProps) {
+function SortableImage({ image, onDelete, onClick, isDragging, isOver }: SortableImageProps) {
   const {
     attributes,
     listeners,
     setNodeRef,
     transform,
-    transition,
   } = useSortable({ id: image.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.3 : 1,
-  };
 
   return (
     <div
       ref={setNodeRef}
-      style={style}
-      className="group relative"
+      className={`break-inside-avoid mb-4 group relative transition-all duration-200 ${
+        isDragging ? "opacity-30 scale-95" : ""
+      } ${
+        isOver ? "ring-2 ring-[--accent] ring-offset-2 ring-offset-[--background] rounded-lg" : ""
+      }`}
     >
       <div
         {...attributes}
@@ -98,14 +92,14 @@ interface DragOverlayImageProps {
 
 function DragOverlayImage({ image }: DragOverlayImageProps) {
   return (
-    <div className="shadow-2xl rounded-lg overflow-hidden">
+    <div className="shadow-2xl rounded-lg overflow-hidden rotate-3">
       <img
         src={image.thumbnailUrl || image.url}
         alt={image.caption || ""}
-        className="w-full rounded-lg"
+        className="rounded-lg"
         style={{
           aspectRatio: `${image.width}/${image.height}`,
-          maxWidth: "200px",
+          width: "180px",
         }}
         draggable={false}
       />
@@ -129,15 +123,13 @@ export default function SortableImageGrid({
   onImageClick,
 }: SortableImageGridProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8, // 8px movement before drag starts
+        distance: 8,
       },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
     })
   );
 
@@ -145,9 +137,15 @@ export default function SortableImageGrid({
     setActiveId(event.active.id as string);
   };
 
+  const handleDragOver = (event: DragMoveEvent) => {
+    const over = event.over;
+    setOverId(over ? (over.id as string) : null);
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveId(null);
+    setOverId(null);
 
     if (over && active.id !== over.id) {
       const oldIndex = images.findIndex((img) => img.id === active.id);
@@ -162,12 +160,17 @@ export default function SortableImageGrid({
     }
   };
 
+  const handleDragCancel = () => {
+    setActiveId(null);
+    setOverId(null);
+  };
+
   const activeImage = activeId ? images.find((img) => img.id === activeId) : null;
 
-  const gridColumnClass = {
-    small: "grid-cols-4 md:grid-cols-5 lg:grid-cols-6",
-    medium: "grid-cols-2 md:grid-cols-3 lg:grid-cols-4",
-    large: "grid-cols-1 md:grid-cols-2 lg:grid-cols-3",
+  const columnClass = {
+    small: "columns-4 md:columns-5 lg:columns-6",
+    medium: "columns-2 md:columns-3 lg:columns-4",
+    large: "columns-1 md:columns-2 lg:columns-3",
   }[gridSize];
 
   return (
@@ -175,10 +178,12 @@ export default function SortableImageGrid({
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
-      <SortableContext items={images.map((img) => img.id)} strategy={rectSortingStrategy}>
-        <div className={`grid ${gridColumnClass} gap-4`}>
+      <SortableContext items={images.map((img) => img.id)}>
+        <div className={`${columnClass} gap-4`}>
           {images.map((image, index) => (
             <SortableImage
               key={image.id}
@@ -186,12 +191,13 @@ export default function SortableImageGrid({
               onDelete={onDelete}
               onClick={() => onImageClick(index)}
               isDragging={activeId === image.id}
+              isOver={overId === image.id && activeId !== image.id}
             />
           ))}
         </div>
       </SortableContext>
 
-      <DragOverlay>
+      <DragOverlay dropAnimation={null}>
         {activeImage ? <DragOverlayImage image={activeImage} /> : null}
       </DragOverlay>
     </DndContext>
