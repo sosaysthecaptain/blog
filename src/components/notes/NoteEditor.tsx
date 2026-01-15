@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, useImperativeHandle, forwardRef } from "react";
 import { NoteItem, updateNote, subscribeToNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap, generateSlug, blogSlugExists, recipeSlugExists } from "@/lib/notes";
 import { findRemovedFiles, deleteFileByUrl } from "@/lib/notes-storage";
 import { getCurrentUser, isAdminEmail } from "@/lib/auth";
@@ -9,15 +9,24 @@ import TagInput from "./TagInput";
 import ImageLightbox, { extractImagesFromHtml } from "@/components/ImageLightbox";
 import { ConfirmDialog } from "@/components/ui/Dialog";
 
+export interface NoteEditorRef {
+  save: () => Promise<void>;
+  hasUnsavedChanges: () => boolean;
+}
+
 interface NoteEditorProps {
   note: NoteItem;
   parentFolder: NoteItem | null;
   onUpdate: (note: NoteItem) => void;
   onBack: () => void;
   isFullWidth: boolean;
+  onUnsavedChangesChange?: (hasChanges: boolean) => void;
 }
 
-export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFullWidth }: NoteEditorProps) {
+const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEditor(
+  { note, parentFolder, onUpdate, onBack, isFullWidth, onUnsavedChangesChange },
+  ref
+) {
   // Local editing state
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content || "");
@@ -183,6 +192,11 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
     setHasLocalChanges(changed);
   }, [title, content, date, time, tags, published, slug]);
 
+  // Notify parent of unsaved changes
+  useEffect(() => {
+    onUnsavedChangesChange?.(hasLocalChanges);
+  }, [hasLocalChanges, onUnsavedChangesChange]);
+
   // Core save function (actually performs the save)
   const performSave = useCallback(async (filesToDelete: string[] = []) => {
     if (!note.id || isSaving) return;
@@ -233,6 +247,12 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
       await performSave();
     }
   }, [note.id, isSaving, content, performSave]);
+
+  // Expose save function and unsaved state to parent via ref
+  useImperativeHandle(ref, () => ({
+    save: performSave,
+    hasUnsavedChanges: () => hasLocalChanges,
+  }), [performSave, hasLocalChanges]);
 
   // Handle confirming file deletion
   const handleConfirmDeleteFiles = useCallback(async () => {
@@ -531,4 +551,6 @@ export default function NoteEditor({ note, parentFolder, onUpdate, onBack, isFul
       />
     </div>
   );
-}
+});
+
+export default NoteEditor;

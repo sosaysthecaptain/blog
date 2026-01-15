@@ -248,40 +248,58 @@ export const CircularPatternIcon = (
 // 3D FEATURES
 // ============================================================================
 
-// Extrude - 2D shape with upward arrow
+// Extrude - white cube with darker cube directly attached
 export const ExtrudeIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <rect x="6" y="14" width="12" height="6" strokeWidth={1.5} />
-    <path strokeLinecap="round" strokeWidth={1.5} d="M12 12V4" />
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 8l4-4 4 4" />
+    {/* Back/white cube - larger */}
+    <path stroke="currentColor" strokeWidth={1} d="M2 8l6-4 6 4-6 4z" />
+    <path stroke="currentColor" strokeWidth={1} d="M2 8v6l6 4v-6" />
+    <path stroke="currentColor" strokeWidth={1} d="M14 8v6l-6 4v-6" />
+    {/* Front/dark cube - directly touching */}
+    <path fill="currentColor" fillOpacity={0.35} stroke="currentColor" strokeWidth={1} d="M10 14l6-4 6 4-6 4z" />
+    <path fill="currentColor" fillOpacity={0.2} stroke="currentColor" strokeWidth={1} d="M10 14v6l6 4v-6" />
+    <path fill="currentColor" fillOpacity={0.45} stroke="currentColor" strokeWidth={1} d="M22 14v6l-6 4v-6" />
   </svg>
 );
 
-// Revolve - profile with circular rotation arrow
+// Revolve - 3D donut with right quadrant open
 export const RevolveIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeWidth={1.5} d="M12 6v12" />
-    <path strokeWidth={1.5} d="M12 10h4v8h-4" />
-    <path strokeLinecap="round" strokeWidth={1.5} d="M19 8 A7 7 0 0 0 5 8" />
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 5v3h3" />
+    {/* 3D torus - outer ring */}
+    <ellipse cx="12" cy="12" rx="9" ry="4" fill="none" stroke="currentColor" strokeWidth={1} />
+    {/* Inner hole */}
+    <ellipse cx="12" cy="12" rx="4" ry="1.5" fill="none" stroke="currentColor" strokeWidth={1} />
+    {/* Filled 3/4 section */}
+    <path fill="currentColor" fillOpacity={0.3} stroke="currentColor" strokeWidth={1}
+      d="M3 12 A9 4 0 0 1 12 8 A4 1.5 0 0 0 12 10.5 A9 4 0 0 0 3 12z" />
+    <path fill="currentColor" fillOpacity={0.3} stroke="currentColor" strokeWidth={1}
+      d="M3 12 A9 4 0 0 0 12 16 A4 1.5 0 0 1 12 13.5 A9 4 0 0 1 3 12z" />
+    {/* Gap indicator on right */}
+    <path stroke="currentColor" strokeWidth={1} strokeDasharray="2 2" d="M21 12 A9 4 0 0 0 12 8" />
   </svg>
 );
 
-// Sweep - circle profile along curved path
+// Sweep - filled circle profile tracing S-curve
 export const SweepIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <circle cx="5" cy="12" r="3" strokeWidth={1.5} />
-    <path strokeLinecap="round" strokeWidth={1.5} d="M8 12 Q12 6 16 10 T20 8" />
-    <path strokeLinecap="round" strokeWidth={1.5} d="M18 6l2 2-2 2" />
+    {/* Swept tube body along S-curve */}
+    <path fill="currentColor" fillOpacity={0.35} stroke="currentColor" strokeWidth={1}
+      d="M4 4 Q4 12 12 12 Q20 12 20 20 L20 18 Q18 12 12 12 Q6 12 6 6 z" />
+    {/* Circle profile - filled */}
+    <circle cx="5" cy="5" r="3" fill="currentColor" fillOpacity={0.4} stroke="currentColor" strokeWidth={1} />
   </svg>
 );
 
-// Loft - two profiles connected by lines
+// Loft - square on bottom lofted to filled circle on top
 export const LoftIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <rect x="4" y="16" width="16" height="4" strokeWidth={1.5} />
-    <rect x="8" y="4" width="8" height="4" strokeWidth={1.5} />
-    <path strokeWidth={1.5} d="M4 16L8 8M20 16L16 8" />
+    {/* Lofted body - solid */}
+    <path fill="currentColor" fillOpacity={0.35} stroke="currentColor" strokeWidth={1}
+      d="M5 20 L8 8 L16 8 L19 20 z" />
+    {/* Circle at top - filled */}
+    <ellipse cx="12" cy="6" rx="4" ry="2" fill="currentColor" fillOpacity={0.4} stroke="currentColor" strokeWidth={1} />
+    {/* Square at bottom */}
+    <path stroke="currentColor" strokeWidth={1} d="M5 20h14" />
   </svg>
 );
 

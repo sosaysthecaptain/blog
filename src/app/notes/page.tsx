@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { User } from "firebase/auth";
 import Link from "next/link";
 import {
@@ -22,9 +22,9 @@ import { getAllPosts, Post } from "@/lib/firestore";
 import { deleteNoteImages, downloadImageBlob } from "@/lib/notes-storage";
 import { useDarkMode } from "@/hooks/useDarkMode";
 import Sidebar from "@/components/notes/Sidebar";
-import NoteEditor from "@/components/notes/NoteEditor";
+import NoteEditor, { NoteEditorRef } from "@/components/notes/NoteEditor";
 import FolderView from "@/components/notes/FolderView";
-import { ConfirmDialog, AlertDialog, ProgressDialog } from "@/components/ui/Dialog";
+import { ConfirmDialog, AlertDialog, ProgressDialog, SaveDiscardDialog } from "@/components/ui/Dialog";
 import JSZip from "jszip";
 
 export default function NotesPage() {
@@ -61,6 +61,15 @@ export default function NotesPage() {
     detail: string;
   }>({ open: false, message: "", progress: 0, detail: "" });
   const [exportCancelled, setExportCancelled] = useState(false);
+
+  // Unsaved changes state
+  const noteEditorRef = useRef<NoteEditorRef>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<{
+    item: NoteItem | null;
+    action: "select" | "back";
+  } | null>(null);
+  const [unsavedDialog, setUnsavedDialog] = useState(false);
 
   // Auth
   useEffect(() => {
@@ -177,22 +186,91 @@ export default function NotesPage() {
     await signOut();
   };
 
-  const handleSelect = (item: NoteItem) => {
-    setSelectedItem(item);
-    if (item.type === "folder") {
-      setCurrentFolderId(item.id!);
+  // Perform the actual navigation
+  const performNavigation = useCallback((item: NoteItem | null, action: "select" | "back") => {
+    if (action === "select" && item) {
+      setSelectedItem(item);
+      if (item.type === "folder") {
+        setCurrentFolderId(item.id!);
+      }
+      updateUrlForItem(item, items);
+    } else if (action === "back") {
+      // Navigate back to parent folder or root
+      if (selectedItem?.parentId) {
+        const parent = items.find(i => i.id === selectedItem.parentId);
+        if (parent) {
+          setSelectedItem(parent);
+          setCurrentFolderId(parent.id!);
+          updateUrlForItem(parent, items);
+        } else {
+          setSelectedItem(null);
+          setCurrentFolderId(null);
+          updateUrlForItem(null, items);
+        }
+      } else {
+        setSelectedItem(null);
+        setCurrentFolderId(null);
+        updateUrlForItem(null, items);
+      }
     }
-    updateUrlForItem(item, items);
+    setHasUnsavedChanges(false);
+  }, [items, selectedItem, updateUrlForItem]);
+
+  // Handle unsaved changes dialog actions
+  const handleSaveAndNavigate = useCallback(async () => {
+    if (noteEditorRef.current) {
+      await noteEditorRef.current.save();
+    }
+    setUnsavedDialog(false);
+    if (pendingNavigation) {
+      performNavigation(pendingNavigation.item, pendingNavigation.action);
+      setPendingNavigation(null);
+    }
+  }, [pendingNavigation, performNavigation]);
+
+  const handleDiscardAndNavigate = useCallback(() => {
+    setUnsavedDialog(false);
+    if (pendingNavigation) {
+      performNavigation(pendingNavigation.item, pendingNavigation.action);
+      setPendingNavigation(null);
+    }
+  }, [pendingNavigation, performNavigation]);
+
+  const handleCancelNavigation = useCallback(() => {
+    setUnsavedDialog(false);
+    setPendingNavigation(null);
+  }, []);
+
+  const handleSelect = (item: NoteItem) => {
+    // Check if we're leaving a note with unsaved changes
+    if (selectedItem?.type === "note" && hasUnsavedChanges && item.id !== selectedItem.id) {
+      setPendingNavigation({ item, action: "select" });
+      setUnsavedDialog(true);
+      return;
+    }
+    performNavigation(item, "select");
   };
+
+  const handleBackWithUnsavedCheck = useCallback(() => {
+    if (hasUnsavedChanges) {
+      setPendingNavigation({ item: null, action: "back" });
+      setUnsavedDialog(true);
+      return;
+    }
+    performNavigation(null, "back");
+  }, [hasUnsavedChanges, performNavigation]);
 
   const handleCreateNote = async (parentId: string | null) => {
     const now = new Date();
+    // Format: YYYY-MM-DD HH:MM
+    const dateStr = now.toISOString().split("T")[0];
+    const timeStr = now.toTimeString().slice(0, 5);
     const newNote: NoteItem = {
       type: "note",
-      title: "Untitled",
+      title: `${dateStr} ${timeStr}`,
       parentId,
       content: "",
-      date: now.toISOString().split("T")[0],
+      date: dateStr,
       tags: [],
       published: false,
       createdAt: now as any,
@@ -203,6 +281,8 @@ export default function NotesPage() {
     // Add to items immediately so it shows in the list
     setItems((prev) => [...prev, newNote]);
     setSelectedItem(newNote);
+    // Auto-enter rename mode with name highlighted
+    setRenamingId(id);
   };
 
   const handleCreateFolder = async (parentId: string | null) => {
@@ -874,23 +954,13 @@ ${content}`;
 
         {selectedItem?.type === "note" ? (
           <NoteEditor
+            ref={noteEditorRef}
             note={selectedItem}
             parentFolder={selectedItem.parentId ? items.find(i => i.id === selectedItem.parentId && i.type === "folder") || null : null}
             onUpdate={handleNoteUpdate}
-            onBack={() => {
-              // Navigate back to parent folder or root
-              const parent = items.find(i => i.id === selectedItem.parentId);
-              if (parent) {
-                setSelectedItem(parent);
-                setCurrentFolderId(parent.id!);
-                updateUrlForItem(parent, items);
-              } else {
-                setSelectedItem(null);
-                setCurrentFolderId(null);
-                updateUrlForItem(null, items);
-              }
-            }}
+            onBack={handleBackWithUnsavedCheck}
             isFullWidth={isFullWidth}
+            onUnsavedChangesChange={setHasUnsavedChanges}
           />
         ) : (
           <FolderView
@@ -935,6 +1005,14 @@ ${content}`;
           setExportCancelled(true);
           setExportProgress({ open: false, message: "", progress: 0, detail: "" });
         }}
+      />
+      <SaveDiscardDialog
+        open={unsavedDialog}
+        title="Unsaved Changes"
+        message="You have unsaved changes. Would you like to save them before leaving?"
+        onSave={handleSaveAndNavigate}
+        onDiscard={handleDiscardAndNavigate}
+        onCancel={handleCancelNavigation}
       />
     </div>
   );

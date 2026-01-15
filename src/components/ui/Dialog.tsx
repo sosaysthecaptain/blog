@@ -173,6 +173,66 @@ export function useConfirmDialog() {
   return { confirm };
 }
 
+// Save/Discard dialog for unsaved changes
+interface SaveDiscardDialogProps {
+  open: boolean;
+  title: string;
+  message: string;
+  onSave: () => void;
+  onDiscard: () => void;
+  onCancel: () => void;
+}
+
+export function SaveDiscardDialog({
+  open,
+  title,
+  message,
+  onSave,
+  onDiscard,
+  onCancel,
+}: SaveDiscardDialogProps) {
+  const saveRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (open && saveRef.current) {
+      saveRef.current.focus();
+    }
+  }, [open]);
+
+  return (
+    <Dialog open={open} onClose={onCancel}>
+      <div className="p-6">
+        <h2 className="text-lg font-semibold text-[--foreground] mb-2">{title}</h2>
+        <p className="text-sm text-[--muted] mb-6 leading-relaxed">{message}</p>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="dialog-btn dialog-btn-secondary"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onDiscard}
+            className="dialog-btn dialog-btn-danger"
+          >
+            Discard
+          </button>
+          <button
+            ref={saveRef}
+            type="button"
+            onClick={onSave}
+            className="dialog-btn dialog-btn-primary"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
 // Progress dialog for long-running operations
 interface ProgressDialogProps {
   open: boolean;

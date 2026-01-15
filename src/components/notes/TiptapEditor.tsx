@@ -4,6 +4,40 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
+import TaskList from "@tiptap/extension-task-list";
+import TaskItem from "@tiptap/extension-task-item";
+import { Extension, InputRule } from "@tiptap/core";
+
+// Custom input rules for "- []" and "- [x]" syntax
+const TaskListInputRules = Extension.create({
+  name: "taskListInputRules",
+
+  addInputRules() {
+    return [
+      // "- []" at start of line creates unchecked task
+      new InputRule({
+        find: /^-\s?\[\]\s$/,
+        handler: ({ state, range, chain }) => {
+          chain()
+            .deleteRange(range)
+            .toggleTaskList()
+            .run();
+        },
+      }),
+      // "- [x]" or "- [X]" at start of line creates checked task
+      new InputRule({
+        find: /^-\s?\[[xX]\]\s$/,
+        handler: ({ state, range, chain }) => {
+          chain()
+            .deleteRange(range)
+            .toggleTaskList()
+            .updateAttributes("taskItem", { checked: true })
+            .run();
+        },
+      }),
+    ];
+  },
+});
 import { useEffect, useCallback, useRef, useState } from "react";
 import { uploadNoteImage, uploadNoteFile } from "@/lib/notes-storage";
 import { ImagePlaceholder } from "./ImagePlaceholder";
@@ -55,6 +89,11 @@ export default function TiptapEditor({
           class: "text-[--accent] underline",
         },
       }),
+      TaskList,
+      TaskItem.configure({
+        nested: true,
+      }),
+      TaskListInputRules,
     ],
     content,
     onUpdate: ({ editor }) => {
@@ -497,6 +536,40 @@ export default function TiptapEditor({
         }
         .tiptap-editor .ProseMirror em {
           font-style: italic;
+        }
+
+        /* Task list / checklist styles */
+        .tiptap-editor .ProseMirror ul[data-type="taskList"] {
+          list-style: none;
+          padding-left: 0;
+          margin: 1rem 0;
+        }
+        .tiptap-editor .ProseMirror ul[data-type="taskList"] li {
+          display: flex;
+          align-items: flex-start;
+          gap: 0.5rem;
+          margin: 0.25rem 0;
+        }
+        .tiptap-editor .ProseMirror ul[data-type="taskList"] li > label {
+          flex-shrink: 0;
+          margin-top: 0.25rem;
+        }
+        .tiptap-editor .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"] {
+          width: 1.1rem;
+          height: 1.1rem;
+          cursor: pointer;
+          accent-color: var(--accent);
+        }
+        .tiptap-editor .ProseMirror ul[data-type="taskList"] li > div {
+          flex: 1;
+        }
+        .tiptap-editor .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div {
+          text-decoration: line-through;
+          color: var(--muted);
+        }
+        /* Nested task lists */
+        .tiptap-editor .ProseMirror ul[data-type="taskList"] ul[data-type="taskList"] {
+          margin: 0.25rem 0 0.25rem 1.5rem;
         }
 
         /* Dark mode adjustments */
