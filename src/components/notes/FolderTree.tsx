@@ -289,7 +289,7 @@ export default function FolderTree({
           <div key={item.id} className="relative">
             {/* Drop indicator - before */}
             {isDropBefore && (
-              <div className="absolute left-0 right-0 top-0 h-0.5 bg-blue-500 z-10" style={{ marginLeft: `${level * 12 + 20}px` }} />
+              <div className="absolute left-0 right-0 top-0 h-0.5 bg-blue-500 z-10" style={{ marginLeft: `${level * 12 + 8}px` }} />
             )}
             <button
               type="button"
@@ -313,11 +313,13 @@ export default function FolderTree({
                 !isSelected ? "hover:bg-[--hover]" : ""
               } ${isDragging ? "opacity-50" : ""}`}
               style={{
-                paddingLeft: `${level * 12 + 20}px`,
+                paddingLeft: `${level * 12 + 8}px`,
                 backgroundColor: isSelected ? 'var(--accent-muted)' : undefined,
                 color: isSelected ? 'white' : 'var(--foreground)',
               }}
             >
+              {/* Spacer to align with folder expand arrows */}
+              <span className="w-4 h-3 flex-shrink-0" />
               {item.type === "moodboard" ? (
                 <MoodboardIcon className="w-3.5 h-3.5 flex-shrink-0" />
               ) : (
@@ -344,7 +346,7 @@ export default function FolderTree({
             </button>
             {/* Drop indicator - after */}
             {isDropAfter && (
-              <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-blue-500 z-10" style={{ marginLeft: `${level * 12 + 20}px` }} />
+              <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-blue-500 z-10" style={{ marginLeft: `${level * 12 + 8}px` }} />
             )}
           </div>
         );
@@ -355,8 +357,8 @@ export default function FolderTree({
 
 function FolderIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} fill="currentColor" viewBox="0 0 20 20">
-      <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
     </svg>
   );
 }
