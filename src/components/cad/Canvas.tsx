@@ -1132,17 +1132,18 @@ function renderInferenceLines(
       linewidth: 1,
     });
 
+    // Line goes from reference point toward cursor (projected onto the alignment axis)
     let startPoint: THREE.Vector3;
     let endPoint: THREE.Vector3;
 
     if (ref.direction === 'horizontal') {
-      // Horizontal line through ref.y
-      startPoint = new THREE.Vector3(ref.x - viewExtent, ref.y, 0.85);
-      endPoint = new THREE.Vector3(ref.x + viewExtent, ref.y, 0.85);
+      // Horizontal line from ref point to cursor's X position (at ref.y)
+      startPoint = new THREE.Vector3(ref.x, ref.y, 0.85);
+      endPoint = new THREE.Vector3(cursorWorld.x, ref.y, 0.85);
     } else {
-      // Vertical line through ref.x
-      startPoint = new THREE.Vector3(ref.x, ref.y - viewExtent, 0.85);
-      endPoint = new THREE.Vector3(ref.x, ref.y + viewExtent, 0.85);
+      // Vertical line from ref point to cursor's Y position (at ref.x)
+      startPoint = new THREE.Vector3(ref.x, ref.y, 0.85);
+      endPoint = new THREE.Vector3(ref.x, cursorWorld.y, 0.85);
     }
 
     const geometry = new THREE.BufferGeometry().setFromPoints([startPoint, endPoint]);
