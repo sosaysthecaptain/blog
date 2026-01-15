@@ -24,8 +24,9 @@ import {
 
 // Snap info passed to parent when creating entities
 export interface SnapInfo {
-  type: 'origin' | 'point' | 'midpoint' | 'nearest-on-line' | 'center';
+  type: 'origin' | 'point' | 'midpoint' | 'nearest-on-line' | 'center' | 'rectangle-center';
   entityId?: string; // The entity that was snapped to (for point-on-line constraints)
+  lineId?: string; // For midpoint snaps, the line the midpoint belongs to
 }
 
 interface CanvasProps {
@@ -675,8 +676,9 @@ function renderDimensions(
 interface SnapResult {
   x: number;
   y: number;
-  type: 'origin' | 'point' | 'endpoint' | 'midpoint' | 'nearest-on-line' | 'center';
+  type: 'origin' | 'point' | 'endpoint' | 'midpoint' | 'nearest-on-line' | 'center' | 'rectangle-center';
   entityId?: string;
+  lineId?: string; // For midpoint snaps, the line the midpoint belongs to
 }
 
 function findSnapPoint(
@@ -737,7 +739,7 @@ function findSnapPoint(
     );
     if (midDist < bestDistance) {
       bestDistance = midDist;
-      bestSnap = { x: midX, y: midY, type: 'midpoint', entityId: line.id };
+      bestSnap = { x: midX, y: midY, type: 'midpoint', entityId: line.id, lineId: line.id };
     }
 
     // Nearest point on line segment
@@ -776,7 +778,36 @@ function findSnapPoint(
     }
   }
 
+  // Check rectangle centers (implicit - computed from corner points)
+  for (const rect of entities.rectangles.values()) {
+    // Get all four corner points: TL, TR, BR, BL
+    const corners = rect.pointIds.map(id => entities.points.get(id));
+    if (corners.some(c => !c)) continue;
+
+    // Center is average of all corners (or just opposite corners)
+    const centerX = (corners[0]!.x + corners[1]!.x + corners[2]!.x + corners[3]!.x) / 4;
+    const centerY = (corners[0]!.y + corners[1]!.y + corners[2]!.y + corners[3]!.y) / 4;
+
+    const dist = Math.sqrt(
+      Math.pow(worldX - centerX, 2) + Math.pow(worldY - centerY, 2)
+    );
+    if (dist < bestDistance) {
+      bestDistance = dist;
+      bestSnap = { x: centerX, y: centerY, type: 'rectangle-center', entityId: rect.id };
+    }
+  }
+
   return bestSnap;
+}
+
+// Convert SnapResult to SnapInfo for passing to parent handlers
+function snapResultToInfo(snap: SnapResult | null): SnapInfo | undefined {
+  if (!snap) return undefined;
+  return {
+    type: snap.type === 'endpoint' ? 'point' : snap.type as SnapInfo['type'],
+    entityId: snap.entityId,
+    lineId: snap.lineId,
+  };
 }
 
 // Find if an entity belongs to a rectangle, return rectangle ID if so
@@ -941,6 +972,33 @@ function renderSnapIndicator(
     ]);
     group.add(new THREE.Line(geometry1, material));
     group.add(new THREE.Line(geometry2, material));
+  } else if (snapPoint.type === 'rectangle-center') {
+    // Crosshair with circle for rectangle center (inferred point)
+    // Horizontal line
+    const geometry1 = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(snapPoint.x - size * 0.7, snapPoint.y, 0.9),
+      new THREE.Vector3(snapPoint.x + size * 0.7, snapPoint.y, 0.9),
+    ]);
+    // Vertical line
+    const geometry2 = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(snapPoint.x, snapPoint.y - size * 0.7, 0.9),
+      new THREE.Vector3(snapPoint.x, snapPoint.y + size * 0.7, 0.9),
+    ]);
+    // Small circle around center
+    const circlePoints: THREE.Vector3[] = [];
+    const segments = 16;
+    for (let i = 0; i <= segments; i++) {
+      const angle = (i / segments) * Math.PI * 2;
+      circlePoints.push(new THREE.Vector3(
+        snapPoint.x + Math.cos(angle) * size * 0.4,
+        snapPoint.y + Math.sin(angle) * size * 0.4,
+        0.9
+      ));
+    }
+    const geometry3 = new THREE.BufferGeometry().setFromPoints(circlePoints);
+    group.add(new THREE.Line(geometry1, material));
+    group.add(new THREE.Line(geometry2, material));
+    group.add(new THREE.Line(geometry3, material));
   } else {
     // Square for points/endpoints/centers
     const geometry = new THREE.BufferGeometry().setFromPoints([
@@ -2223,35 +2281,21 @@ export default function Canvas({
       }
 
       case 'point': {
-        // Convert snap result to SnapInfo
-        const pointSnapInfo: SnapInfo | undefined = freshSnapPoint ? {
-          type: freshSnapPoint.type === 'endpoint' ? 'point' : freshSnapPoint.type as SnapInfo['type'],
-          entityId: freshSnapPoint.entityId,
-        } : undefined;
-        onAddPoint(clickX, clickY, pointSnapInfo);
+        onAddPoint(clickX, clickY, snapResultToInfo(freshSnapPoint));
         break;
       }
 
       case 'line':
         if (pendingPoints.length === 0) {
           // Store first point with its snap info
-          const startSnapInfo: SnapInfo | undefined = freshSnapPoint ? {
-            type: freshSnapPoint.type === 'endpoint' ? 'point' : freshSnapPoint.type as SnapInfo['type'],
-            entityId: freshSnapPoint.entityId,
-          } : undefined;
-          setPendingPoints([{ x: clickX, y: clickY, snapInfo: startSnapInfo }]);
+          setPendingPoints([{ x: clickX, y: clickY, snapInfo: snapResultToInfo(freshSnapPoint) }]);
         } else {
           // Apply angle snapping
           const angleSnap = applyAngleSnap(
             pendingPoints[0].x, pendingPoints[0].y,
             clickX, clickY
           );
-          // Get snap info for end point
-          const endSnapInfo: SnapInfo | undefined = freshSnapPoint ? {
-            type: freshSnapPoint.type === 'endpoint' ? 'point' : freshSnapPoint.type as SnapInfo['type'],
-            entityId: freshSnapPoint.entityId,
-          } : undefined;
-          onAddLine(pendingPoints[0].x, pendingPoints[0].y, angleSnap.x, angleSnap.y, pendingPoints[0].snapInfo, endSnapInfo);
+          onAddLine(pendingPoints[0].x, pendingPoints[0].y, angleSnap.x, angleSnap.y, pendingPoints[0].snapInfo, snapResultToInfo(freshSnapPoint));
           setPendingPoints([]);
         }
         break;
@@ -2259,11 +2303,7 @@ export default function Canvas({
       case 'circle':
         if (pendingPoints.length === 0) {
           // Store center point with snap info
-          const centerSnapInfo: SnapInfo | undefined = freshSnapPoint ? {
-            type: freshSnapPoint.type === 'endpoint' ? 'point' : freshSnapPoint.type as SnapInfo['type'],
-            entityId: freshSnapPoint.entityId,
-          } : undefined;
-          setPendingPoints([{ x: clickX, y: clickY, snapInfo: centerSnapInfo }]);
+          setPendingPoints([{ x: clickX, y: clickY, snapInfo: snapResultToInfo(freshSnapPoint) }]);
         } else {
           const radius = Math.sqrt(
             Math.pow(clickX - pendingPoints[0].x, 2) +

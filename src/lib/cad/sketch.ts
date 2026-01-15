@@ -15,6 +15,7 @@ import {
   DistanceConstraint,
   CoincidentConstraint,
   PointOnLineConstraint,
+  MidpointConstraint,
   ORIGIN_POINT_ID,
 } from './types';
 
@@ -382,6 +383,32 @@ export function solveConstraints(
             newPoints.set(polc.pointId, { ...constrainedPoint, x: projX, y: projY });
             anyChange = true;
           }
+          break;
+        }
+
+        case 'midpoint': {
+          // Constrain a point to the midpoint of a line
+          const mc = constraint as MidpointConstraint;
+          const constrainedPoint = newPoints.get(mc.pointId);
+          const line = entities.lines.get(mc.lineId);
+          if (!constrainedPoint || !line) break;
+
+          const lineStart = newPoints.get(line.startId);
+          const lineEnd = newPoints.get(line.endId);
+          if (!lineStart || !lineEnd) break;
+
+          // Calculate midpoint
+          const midX = (lineStart.x + lineEnd.x) / 2;
+          const midY = (lineStart.y + lineEnd.y) / 2;
+
+          // Check if point is already at midpoint
+          const distSq = Math.pow(constrainedPoint.x - midX, 2) + Math.pow(constrainedPoint.y - midY, 2);
+          if (distSq < 0.0001) break; // Already at midpoint
+
+          // Move the constrained point to the midpoint
+          newPoints.set(mc.pointId, { ...constrainedPoint, x: midX, y: midY });
+          modifiedPoints.add(mc.pointId);
+          anyChange = true;
           break;
         }
       }

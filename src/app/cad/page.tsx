@@ -22,6 +22,7 @@ import {
   VerticalConstraint,
   CoincidentConstraint,
   PointOnLineConstraint,
+  MidpointConstraint,
   ORIGIN_POINT_ID,
 } from '@/lib/cad/types';
 import type { SnapInfo } from '@/components/cad/Canvas';
@@ -226,6 +227,31 @@ export default function CADPage() {
           pointId: newPointId,
           lineId: snapInfo.entityId,
         } as PointOnLineConstraint);
+      } else if (snapInfo.type === 'midpoint' && snapInfo.lineId) {
+        // Midpoint constraint
+        newConstraints.push({
+          id: generateId('c'),
+          type: 'midpoint',
+          pointId: newPointId,
+          lineId: snapInfo.lineId,
+        } as MidpointConstraint);
+      } else if (snapInfo.type === 'rectangle-center' && snapInfo.entityId) {
+        // Center of rectangle - create midpoint constraints to two perpendicular sides
+        const rect = entities.rectangles.get(snapInfo.entityId);
+        if (rect) {
+          newConstraints.push({
+            id: generateId('c'),
+            type: 'midpoint',
+            pointId: newPointId,
+            lineId: rect.lineIds[0], // Top line
+          } as MidpointConstraint);
+          newConstraints.push({
+            id: generateId('c'),
+            type: 'midpoint',
+            pointId: newPointId,
+            lineId: rect.lineIds[3], // Left line
+          } as MidpointConstraint);
+        }
       }
     } else if (isAtOrigin(x, y)) {
       // Fallback: check coordinates if no snap info
@@ -284,6 +310,29 @@ export default function CADPage() {
           pointId: startPointId,
           lineId: startSnapInfo.entityId,
         } as PointOnLineConstraint);
+      } else if (startSnapInfo.type === 'midpoint' && startSnapInfo.lineId) {
+        newConstraints.push({
+          id: generateId('c'),
+          type: 'midpoint',
+          pointId: startPointId,
+          lineId: startSnapInfo.lineId,
+        } as MidpointConstraint);
+      } else if (startSnapInfo.type === 'rectangle-center' && startSnapInfo.entityId) {
+        const rect = entities.rectangles.get(startSnapInfo.entityId);
+        if (rect) {
+          newConstraints.push({
+            id: generateId('c'),
+            type: 'midpoint',
+            pointId: startPointId,
+            lineId: rect.lineIds[0], // Top line
+          } as MidpointConstraint);
+          newConstraints.push({
+            id: generateId('c'),
+            type: 'midpoint',
+            pointId: startPointId,
+            lineId: rect.lineIds[3], // Left line
+          } as MidpointConstraint);
+        }
       }
     } else if (isAtOrigin(x1, y1)) {
       // Fallback: check coordinates if no snap info
@@ -318,6 +367,29 @@ export default function CADPage() {
           pointId: endPointId,
           lineId: endSnapInfo.entityId,
         } as PointOnLineConstraint);
+      } else if (endSnapInfo.type === 'midpoint' && endSnapInfo.lineId) {
+        newConstraints.push({
+          id: generateId('c'),
+          type: 'midpoint',
+          pointId: endPointId,
+          lineId: endSnapInfo.lineId,
+        } as MidpointConstraint);
+      } else if (endSnapInfo.type === 'rectangle-center' && endSnapInfo.entityId) {
+        const rect = entities.rectangles.get(endSnapInfo.entityId);
+        if (rect) {
+          newConstraints.push({
+            id: generateId('c'),
+            type: 'midpoint',
+            pointId: endPointId,
+            lineId: rect.lineIds[0], // Top line
+          } as MidpointConstraint);
+          newConstraints.push({
+            id: generateId('c'),
+            type: 'midpoint',
+            pointId: endPointId,
+            lineId: rect.lineIds[3], // Left line
+          } as MidpointConstraint);
+        }
       }
     } else if (isAtOrigin(x2, y2)) {
       // Fallback: check coordinates if no snap info
@@ -406,6 +478,46 @@ export default function CADPage() {
         newConstraints.set(constraint.id, constraint);
         return newConstraints;
       });
+    } else if (centerSnapInfo?.type === 'midpoint' && centerSnapInfo.lineId) {
+      // Center snapped to line midpoint - create midpoint constraint
+      const constraint: MidpointConstraint = {
+        id: generateId('c'),
+        type: 'midpoint',
+        pointId: centerPointId,
+        lineId: centerSnapInfo.lineId,
+      };
+      setConstraints(prev => {
+        const newConstraints = new Map(prev);
+        newConstraints.set(constraint.id, constraint);
+        return newConstraints;
+      });
+    } else if (centerSnapInfo?.type === 'rectangle-center' && centerSnapInfo.entityId) {
+      // Center snapped to rectangle center - create midpoint constraints to opposite sides
+      // This places the point at the intersection of the diagonals
+      const rect = entities.rectangles.get(centerSnapInfo.entityId) || newEntities.rectangles.get(centerSnapInfo.entityId);
+      if (rect) {
+        // Create two midpoint constraints - one for top/bottom, one for left/right
+        // Top line and bottom line share the horizontal center
+        // Left line and right line share the vertical center
+        const topMidpoint: MidpointConstraint = {
+          id: generateId('c'),
+          type: 'midpoint',
+          pointId: centerPointId,
+          lineId: rect.lineIds[0], // Top line
+        };
+        const leftMidpoint: MidpointConstraint = {
+          id: generateId('c'),
+          type: 'midpoint',
+          pointId: centerPointId,
+          lineId: rect.lineIds[3], // Left line
+        };
+        setConstraints(prev => {
+          const newConstraints = new Map(prev);
+          newConstraints.set(topMidpoint.id, topMidpoint);
+          newConstraints.set(leftMidpoint.id, leftMidpoint);
+          return newConstraints;
+        });
+      }
     }
   }, [entities, constructionMode, saveToHistory]);
 
