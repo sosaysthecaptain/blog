@@ -11,6 +11,7 @@ import {
   DragStartEvent,
   DragOverEvent,
   DragOverlay,
+  Modifier,
 } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -112,6 +113,21 @@ function DragOverlayImage({ image }: { image: MoodboardImage }) {
     />
   );
 }
+
+// Modifier to center the drag overlay on the cursor
+const centerOnCursor: Modifier = ({ transform, draggingNodeRect }) => {
+  if (!draggingNodeRect) return transform;
+
+  // Offset to center a 150px wide overlay on cursor
+  const overlayWidth = 150;
+  const overlayHeight = draggingNodeRect.height * (overlayWidth / draggingNodeRect.width);
+
+  return {
+    ...transform,
+    x: transform.x - draggingNodeRect.width / 2 + overlayWidth / 2,
+    y: transform.y - draggingNodeRect.height / 2 + overlayHeight / 2,
+  };
+};
 
 interface SortableImageGridProps {
   images: MoodboardImage[];
@@ -215,7 +231,7 @@ export default function SortableImageGrid({
         </div>
       </SortableContext>
 
-      <DragOverlay>
+      <DragOverlay modifiers={[centerOnCursor]}>
         {activeImage ? <DragOverlayImage image={activeImage} /> : null}
       </DragOverlay>
     </DndContext>
