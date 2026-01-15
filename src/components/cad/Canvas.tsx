@@ -38,7 +38,7 @@ interface CanvasProps {
   constructionMode: boolean;
   onAddPoint: (x: number, y: number, snapInfo?: SnapInfo) => void;
   onAddLine: (x1: number, y1: number, x2: number, y2: number, startSnapInfo?: SnapInfo, endSnapInfo?: SnapInfo) => void;
-  onAddCircle: (cx: number, cy: number, radius: number) => void;
+  onAddCircle: (cx: number, cy: number, radius: number, centerSnapInfo?: SnapInfo) => void;
   onAddRectangle: (x1: number, y1: number, x2: number, y2: number) => void;
   onMovePoint: (pointId: string, x: number, y: number) => void;
   onDragStart?: () => void; // Called when point drag begins for undo history
@@ -46,6 +46,7 @@ interface CanvasProps {
   onAddDistanceDimension: (point1Id: string, point2Id: string, offset: number, direction: 'x' | 'y' | 'direct') => string | null;
   onAddAngleDimension: (line1Id: string, line2Id: string, offset: number) => string | null;
   onUpdateConstraint: (constraintId: string, value: number) => void;
+  onUpdateDimensionOffset?: (constraintId: string, offset: number) => void;
   selectedEntityId: string | null;
   onSelectEntity: (entityId: string | null) => void;
   overConstrainedEntities: Set<string>;
@@ -1723,6 +1724,7 @@ export default function Canvas({
   onAddDistanceDimension,
   onAddAngleDimension,
   onUpdateConstraint,
+  onUpdateDimensionOffset,
   selectedEntityId,
   onSelectEntity,
   overConstrainedEntities,
@@ -1763,6 +1765,10 @@ export default function Canvas({
   const draggingPointIdRef = useRef<string | null>(null);
   const didDragRef = useRef(false); // Track if a drag occurred to skip click
 
+  // Drag state for repositioning dimension labels
+  const draggingDimensionRef = useRef<string | null>(null);
+  const dimensionDragStartRef = useRef<{ worldX: number; worldY: number; initialOffset: number } | null>(null);
+
   // Dimension creation state - supports drag-to-place workflow
   // Phase 1: 'selecting' - user has clicked first entity, waiting for second click
   // Phase 2: 'placing' - user is dragging to position the dimension, type updates based on cursor
@@ -1797,6 +1803,114 @@ export default function Canvas({
     const screenY = -worldY * viewState.zoom - viewState.panY + containerSize.height / 2;
     return { x: screenX, y: screenY };
   }, [viewState, containerSize]);
+
+  // Handle dimension label dragging with document-level events
+  const handleDimensionDragStart = useCallback((constraintId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const constraint = constraints.get(constraintId);
+    if (!constraint) return;
+
+    // Get current offset from constraint
+    let initialOffset = 30 / viewState.zoom; // default
+    if ('offset' in constraint && typeof constraint.offset === 'number') {
+      initialOffset = constraint.offset;
+    }
+
+    const world = screenToWorld(e.clientX, e.clientY);
+    draggingDimensionRef.current = constraintId;
+    dimensionDragStartRef.current = { worldX: world.x, worldY: world.y, initialOffset };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!draggingDimensionRef.current || !dimensionDragStartRef.current) return;
+
+      const world = screenToWorld(moveEvent.clientX, moveEvent.clientY);
+      const constraint = constraints.get(draggingDimensionRef.current);
+      if (!constraint) return;
+
+      // Calculate offset based on constraint type and drag direction
+      let newOffset = dimensionDragStartRef.current.initialOffset;
+
+      if (constraint.type === 'length') {
+        // Length constraint - offset is perpendicular to line
+        const lc = constraint as LengthConstraint;
+        const line = entities.lines.get(lc.lineId);
+        if (line) {
+          const startPoint = entities.points.get(line.startId);
+          const endPoint = entities.points.get(line.endId);
+          if (startPoint && endPoint) {
+            const midX = (startPoint.x + endPoint.x) / 2;
+            const midY = (startPoint.y + endPoint.y) / 2;
+            const dx = endPoint.x - startPoint.x;
+            const dy = endPoint.y - startPoint.y;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            if (len > 0) {
+              const perpX = -dy / len;
+              const perpY = dx / len;
+              newOffset = (world.x - midX) * perpX + (world.y - midY) * perpY;
+            }
+          }
+        }
+      } else if (constraint.type === 'distance') {
+        // Distance constraint - offset depends on direction
+        const dc = constraint as DistanceConstraint;
+        const getPointCoords = (id: string): { x: number; y: number } | null => {
+          if (id === ORIGIN_POINT_ID) return { x: 0, y: 0 };
+          const point = entities.points.get(id);
+          return point ? { x: point.x, y: point.y } : null;
+        };
+        const p1 = getPointCoords(dc.point1Id);
+        const p2 = getPointCoords(dc.point2Id);
+        if (p1 && p2) {
+          const midX = (p1.x + p2.x) / 2;
+          const midY = (p1.y + p2.y) / 2;
+          if (dc.direction === 'x') {
+            // Horizontal line - Y offset
+            newOffset = world.y - midY;
+          } else if (dc.direction === 'y') {
+            // Vertical line - X offset
+            newOffset = world.x - midX;
+          } else {
+            // Direct - perpendicular offset
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            if (len > 0) {
+              const perpX = -dy / len;
+              const perpY = dx / len;
+              newOffset = (world.x - midX) * perpX + (world.y - midY) * perpY;
+            }
+          }
+        }
+      } else if (constraint.type === 'radius') {
+        // Radius constraint - simple offset from center
+        const rc = constraint as RadiusConstraint;
+        const circle = entities.circles.get(rc.circleId);
+        if (circle) {
+          const center = entities.points.get(circle.centerId);
+          if (center) {
+            newOffset = Math.sqrt(Math.pow(world.x - center.x, 2) + Math.pow(world.y - center.y, 2));
+          }
+        }
+      }
+
+      // Update the offset in real-time
+      if (onUpdateDimensionOffset) {
+        onUpdateDimensionOffset(draggingDimensionRef.current, newOffset);
+      }
+    };
+
+    const handleMouseUp = () => {
+      draggingDimensionRef.current = null;
+      dimensionDragStartRef.current = null;
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [constraints, entities, screenToWorld, viewState.zoom, onUpdateDimensionOffset]);
 
   // Initialize Three.js
   useEffect(() => {
@@ -2144,13 +2258,18 @@ export default function Canvas({
 
       case 'circle':
         if (pendingPoints.length === 0) {
-          setPendingPoints([{ x: clickX, y: clickY }]);
+          // Store center point with snap info
+          const centerSnapInfo: SnapInfo | undefined = freshSnapPoint ? {
+            type: freshSnapPoint.type === 'endpoint' ? 'point' : freshSnapPoint.type as SnapInfo['type'],
+            entityId: freshSnapPoint.entityId,
+          } : undefined;
+          setPendingPoints([{ x: clickX, y: clickY, snapInfo: centerSnapInfo }]);
         } else {
           const radius = Math.sqrt(
             Math.pow(clickX - pendingPoints[0].x, 2) +
             Math.pow(clickY - pendingPoints[0].y, 2)
           );
-          onAddCircle(pendingPoints[0].x, pendingPoints[0].y, radius);
+          onAddCircle(pendingPoints[0].x, pendingPoints[0].y, radius, pendingPoints[0].snapInfo);
           setPendingPoints([]);
         }
         break;
@@ -2644,7 +2763,7 @@ export default function Canvas({
           return (
             <div
               key={label.id}
-              className="absolute transform -translate-x-1/2 -translate-y-1/2 px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap cursor-pointer pointer-events-auto hover:opacity-80"
+              className="absolute transform -translate-x-1/2 -translate-y-1/2 px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap cursor-move pointer-events-auto hover:opacity-80"
               style={{
                 left: screen.x,
                 top: screen.y,
@@ -2653,16 +2772,22 @@ export default function Canvas({
                 border: `2px solid ${labelColor}`,
                 fontSize: '12px',
               }}
+              onMouseDown={(e) => {
+                // Start drag on mouse down
+                handleDimensionDragStart(label.id, e);
+              }}
               onClick={(e) => {
                 e.stopPropagation();
-                // Single click selects
-                onSelectEntity(label.id);
+                // Single click selects (only if not dragging)
+                if (!draggingDimensionRef.current) {
+                  onSelectEntity(label.id);
+                }
               }}
               onDoubleClick={(e) => {
                 e.stopPropagation();
                 // Double click edits
                 setEditingDimension(label.id);
-                setEditValue(label.value.replace('R', '')); // Remove 'R' prefix for radius
+                setEditValue(label.value.replace('R', '').replace('⌀', '')); // Remove prefix
               }}
             >
               {label.value}

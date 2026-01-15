@@ -489,6 +489,9 @@ export function calculateDOF(entities: SketchEntities, constraints: Map<string, 
       case 'concentric':
         dof -= 2;
         break;
+      case 'distance':
+        dof -= 1; // constrains distance (1 equation)
+        break;
     }
   }
 
@@ -650,7 +653,38 @@ export function calculateEntityConstraintStatus(
           break;
         }
         case 'distance': {
-          // Distance alone doesn't fully constrain without direction
+          // Distance constraint with direction constrains that axis
+          const dc = constraint as DistanceConstraint;
+          const dof1 = pointDOF.get(dc.point1Id);
+          const dof2 = pointDOF.get(dc.point2Id);
+          if (!dof1 || !dof2) break;
+
+          if (dc.direction === 'x') {
+            // X distance - constrains X axis
+            if (dof1.x && !dof2.x) {
+              pointDOF.set(dc.point2Id, { ...dof2, x: true });
+              anyChange = true;
+            }
+            if (dof2.x && !dof1.x) {
+              pointDOF.set(dc.point1Id, { ...dof1, x: true });
+              anyChange = true;
+            }
+          } else if (dc.direction === 'y') {
+            // Y distance - constrains Y axis
+            if (dof1.y && !dof2.y) {
+              pointDOF.set(dc.point2Id, { ...dof2, y: true });
+              anyChange = true;
+            }
+            if (dof2.y && !dof1.y) {
+              pointDOF.set(dc.point1Id, { ...dof1, y: true });
+              anyChange = true;
+            }
+          } else {
+            // Direct distance - if one point is fully constrained,
+            // the other is constrained to a circle (1 DOF remaining)
+            // For simplicity, we don't mark it as fully constrained here
+            // unless combined with another constraint
+          }
           break;
         }
       }

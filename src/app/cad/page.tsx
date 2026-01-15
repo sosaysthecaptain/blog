@@ -356,7 +356,7 @@ export default function CADPage() {
     }
   }, [entities, constructionMode, saveToHistory]);
 
-  const handleAddCircle = useCallback((cx: number, cy: number, radius: number) => {
+  const handleAddCircle = useCallback((cx: number, cy: number, radius: number, centerSnapInfo?: SnapInfo) => {
     saveToHistory();
 
     // Create the circle synchronously to get the IDs
@@ -371,6 +371,34 @@ export default function CADPage() {
         id: generateId('c'),
         type: 'coincident',
         point1Id: ORIGIN_POINT_ID,
+        point2Id: centerPointId,
+      };
+      setConstraints(prev => {
+        const newConstraints = new Map(prev);
+        newConstraints.set(constraint.id, constraint);
+        return newConstraints;
+      });
+    } else if (centerSnapInfo?.type === 'nearest-on-line' && centerSnapInfo.entityId) {
+      // Center snapped to a line - create pointOnLine constraint
+      if (entities.lines.has(centerSnapInfo.entityId) || newEntities.lines.has(centerSnapInfo.entityId)) {
+        const constraint: PointOnLineConstraint = {
+          id: generateId('c'),
+          type: 'pointOnLine',
+          pointId: centerPointId,
+          lineId: centerSnapInfo.entityId,
+        };
+        setConstraints(prev => {
+          const newConstraints = new Map(prev);
+          newConstraints.set(constraint.id, constraint);
+          return newConstraints;
+        });
+      }
+    } else if (centerSnapInfo?.type === 'point' && centerSnapInfo.entityId) {
+      // Center snapped to another point - create coincident constraint
+      const constraint: CoincidentConstraint = {
+        id: generateId('c'),
+        type: 'coincident',
+        point1Id: centerSnapInfo.entityId,
         point2Id: centerPointId,
       };
       setConstraints(prev => {
@@ -939,6 +967,18 @@ export default function CADPage() {
     }
   }, [constraints, entities, saveToHistory]);
 
+  // Update dimension offset (for visual repositioning only)
+  const handleUpdateDimensionOffset = useCallback((constraintId: string, offset: number) => {
+    setConstraints(prev => {
+      const newConstraints = new Map(prev);
+      const constraint = newConstraints.get(constraintId);
+      if (constraint && ('offset' in constraint || constraint.type === 'length' || constraint.type === 'distance' || constraint.type === 'radius' || constraint.type === 'angle')) {
+        newConstraints.set(constraintId, { ...constraint, offset });
+      }
+      return newConstraints;
+    });
+  }, []);
+
   // Delete selected entity handler
   const handleDeleteSelected = useCallback(() => {
     if (!selectedEntityId) return;
@@ -1454,6 +1494,7 @@ export default function CADPage() {
             onAddDistanceDimension={handleAddDistanceDimension}
             onAddAngleDimension={handleAddAngleDimension}
             onUpdateConstraint={handleUpdateConstraint}
+            onUpdateDimensionOffset={handleUpdateDimensionOffset}
             selectedEntityId={selectedEntityId}
             onSelectEntity={setSelectedEntityId}
             overConstrainedEntities={overConstrainedEntities}
