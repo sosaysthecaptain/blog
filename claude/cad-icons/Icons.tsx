@@ -7,87 +7,90 @@
 // SKETCH TOOLS
 // ============================================================================
 
-// Line - diagonal line with hollow circles on both ends
+// Line - diagonal line with white-filled circles on both ends
 export const LineIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 19L19 5" />
-    <circle cx="5" cy="19" r="2" fill="none" strokeWidth={1.5} />
-    <circle cx="19" cy="5" r="2" fill="none" strokeWidth={1.5} />
+    <circle cx="5" cy="19" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="19" cy="5" r="1.5" fill="white" strokeWidth={1.5} />
   </svg>
 );
 
-// Corner Rectangle - rectangle with hollow circles at opposite corners
+// Corner Rectangle - rectangle with white-filled circles at opposite corners
 export const CornerRectangleIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <rect x="4" y="6" width="16" height="12" strokeWidth={1.5} />
-    <circle cx="4" cy="6" r="2" fill="none" strokeWidth={1.5} />
-    <circle cx="20" cy="18" r="2" fill="none" strokeWidth={1.5} />
+    <circle cx="4" cy="6" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="20" cy="18" r="1.5" fill="white" strokeWidth={1.5} />
   </svg>
 );
 
-// Center Point Rectangle - rectangle with hollow circles at center and corner
+// Center Point Rectangle - rectangle with white-filled circles at center and corner
 export const CenterPointRectangleIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <rect x="4" y="6" width="16" height="12" strokeWidth={1.5} />
-    <circle cx="12" cy="12" r="2" fill="none" strokeWidth={1.5} />
-    <circle cx="20" cy="6" r="2" fill="none" strokeWidth={1.5} />
+    <circle cx="12" cy="12" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="20" cy="6" r="1.5" fill="white" strokeWidth={1.5} />
   </svg>
 );
 
-// Center Point Circle - circle with hollow center point
+// Center Point Circle - circle with white-filled center point
 export const CenterPointCircleIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <circle cx="12" cy="12" r="8" strokeWidth={1.5} />
-    <circle cx="12" cy="12" r="2" fill="none" strokeWidth={1.5} />
+    <circle cx="12" cy="12" r="1.5" fill="white" strokeWidth={1.5} />
   </svg>
 );
 
-// Three Point Circle - circle with 3 hollow circles on circumference
+// Three Point Circle - circle with 3 white-filled circles on circumference
 export const ThreePointCircleIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <circle cx="12" cy="12" r="8" strokeWidth={1.5} />
-    <circle cx="12" cy="4" r="2" fill="none" strokeWidth={1.5} />
-    <circle cx="18.9" cy="16" r="2" fill="none" strokeWidth={1.5} />
-    <circle cx="5.1" cy="16" r="2" fill="none" strokeWidth={1.5} />
+    <circle cx="12" cy="4" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="18.9" cy="16" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="5.1" cy="16" r="1.5" fill="white" strokeWidth={1.5} />
   </svg>
 );
 
-// Ellipse - ellipse with dashed axes and hollow center point
+// Ellipse - ellipse with dashed axes and white-filled center point
 export const EllipseIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <ellipse cx="12" cy="12" rx="9" ry="5" strokeWidth={1.5} />
     <path strokeWidth={1} strokeDasharray="2 2" d="M12 7v10M3 12h18" />
-    <circle cx="12" cy="12" r="2" fill="none" strokeWidth={1.5} />
+    <circle cx="12" cy="12" r="1.5" fill="white" strokeWidth={1.5} />
   </svg>
 );
 
-// Three Point Arc - arc with 3 hollow circles at endpoints and on the arc
+// Three Point Arc - arc with 3 white-filled circles at endpoints and on the arc
 export const ThreePointArcIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeWidth={1.5} d="M4 18 A8 8 0 0 1 20 18" />
-    <circle cx="4" cy="18" r="2" fill="none" strokeWidth={1.5} />
-    <circle cx="12" cy="10" r="2" fill="none" strokeWidth={1.5} />
-    <circle cx="20" cy="18" r="2" fill="none" strokeWidth={1.5} />
+    <circle cx="4" cy="18" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="12" cy="10" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="20" cy="18" r="1.5" fill="white" strokeWidth={1.5} />
   </svg>
 );
 
-// Tangent Arc - arc with tangent tail curving away
+// Tangent Arc - right half of circle with line extending from top
 export const TangentArcIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeWidth={1.5} d="M4 10 A8 8 0 0 0 12 18" />
-    <path strokeLinecap="round" strokeWidth={1.5} d="M12 18 Q16 18 20 14" />
-    <circle cx="20" cy="14" r="2" fill="none" strokeWidth={1.5} />
+    <path strokeLinecap="round" strokeWidth={1.5} d="M12 19 A7 7 0 0 0 12 5" />
+    <path strokeLinecap="round" strokeWidth={1.5} d="M12 5H4" />
+    <circle cx="12" cy="19" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="19" cy="12" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="12" cy="5" r="1.5" fill="white" strokeWidth={1.5} />
+    <path strokeWidth={1} d="M11 12h2M12 11v2" />
   </svg>
 );
 
-// Center Point Arc - rounder arc with center point and radius lines
+// Center Point Arc - top half of circle with center point
 export const CenterPointArcIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeWidth={1.5} d="M4 14 A10 10 0 0 1 20 14" />
-    <circle cx="12" cy="14" r="2" fill="none" strokeWidth={1.5} />
-    <path strokeWidth={1} strokeDasharray="2 2" d="M12 14L4 14M12 14L20 14" />
-    <circle cx="4" cy="14" r="2" fill="none" strokeWidth={1.5} />
-    <circle cx="20" cy="14" r="2" fill="none" strokeWidth={1.5} />
+    <path strokeLinecap="round" strokeWidth={1.5} d="M4 16 A8 8 0 0 1 20 16" />
+    <circle cx="4" cy="16" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="12" cy="8" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="20" cy="16" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="12" cy="16" r="1.5" fill="white" strokeWidth={1.5} />
   </svg>
 );
 
@@ -95,22 +98,22 @@ export const CenterPointArcIcon = (
 export const CircumscribedPolygonIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <circle cx="12" cy="12" r="7" strokeWidth={1.5} />
-    <circle cx="12" cy="5" r="1.5" fill="none" strokeWidth={1.5} />
-    <circle cx="18.1" cy="8.5" r="1.5" fill="none" strokeWidth={1.5} />
-    <circle cx="18.1" cy="15.5" r="1.5" fill="none" strokeWidth={1.5} />
-    <circle cx="12" cy="19" r="1.5" fill="none" strokeWidth={1.5} />
-    <circle cx="5.9" cy="15.5" r="1.5" fill="none" strokeWidth={1.5} />
-    <circle cx="5.9" cy="8.5" r="1.5" fill="none" strokeWidth={1.5} />
+    <circle cx="12" cy="5" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="18.1" cy="8.5" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="18.1" cy="15.5" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="12" cy="19" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="5.9" cy="15.5" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="5.9" cy="8.5" r="1.5" fill="white" strokeWidth={1.5} />
   </svg>
 );
 
-// Spline - smooth curve with hollow control points
+// Spline - smooth curve with white-filled control points
 export const SplineIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeWidth={1.5} d="M4 18 Q8 4 12 12 T20 6" />
-    <circle cx="4" cy="18" r="2" fill="none" strokeWidth={1.5} />
-    <circle cx="12" cy="12" r="2" fill="none" strokeWidth={1.5} />
-    <circle cx="20" cy="6" r="2" fill="none" strokeWidth={1.5} />
+    <circle cx="4" cy="18" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="12" cy="12" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="20" cy="6" r="1.5" fill="white" strokeWidth={1.5} />
   </svg>
 );
 
@@ -136,21 +139,21 @@ export const UseIcon = (
   </svg>
 );
 
-// Intersection - two overlapping circles with hollow point
+// Intersection - two overlapping circles with white-filled point
 export const IntersectionIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <circle cx="9" cy="12" r="6" strokeWidth={1.5} />
     <circle cx="15" cy="12" r="6" strokeWidth={1.5} />
-    <circle cx="12" cy="12" r="2" fill="none" strokeWidth={1.5} />
+    <circle cx="12" cy="12" r="1.5" fill="white" strokeWidth={1.5} />
   </svg>
 );
 
-// Construction - dashed line with hollow circles at ends
+// Construction - dashed line with white-filled circles at ends
 export const ConstructionIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeWidth={1.5} strokeDasharray="3 3" d="M5 19L19 5" />
-    <circle cx="5" cy="19" r="2" fill="none" strokeWidth={1.5} />
-    <circle cx="19" cy="5" r="2" fill="none" strokeWidth={1.5} />
+    <circle cx="5" cy="19" r="1.5" fill="white" strokeWidth={1.5} />
+    <circle cx="19" cy="5" r="1.5" fill="white" strokeWidth={1.5} />
   </svg>
 );
 
@@ -158,18 +161,21 @@ export const ConstructionIcon = (
 // MODIFY TOOLS
 // ============================================================================
 
-// Fillet - corner with rounded arc
+// Fillet - two lines with rounded corner
 export const FilletIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeWidth={1.5} d="M4 12V4h8" />
-    <path strokeLinecap="round" strokeWidth={1.5} d="M4 12 A8 8 0 0 0 12 4" />
+    <path strokeLinecap="round" strokeWidth={1.5} d="M4 20V10" />
+    <path strokeLinecap="round" strokeWidth={1.5} d="M4 10 Q4 4 10 4" />
+    <path strokeLinecap="round" strokeWidth={1.5} d="M10 4h10" />
   </svg>
 );
 
-// Chamfer - corner with angled cut
+// Chamfer - two lines with diagonal cut corner
 export const ChamferIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 14V4h10M4 14L14 4" />
+    <path strokeLinecap="round" strokeWidth={1.5} d="M4 20V10" />
+    <path strokeLinecap="round" strokeWidth={1.5} d="M4 10L10 4" />
+    <path strokeLinecap="round" strokeWidth={1.5} d="M10 4h10" />
   </svg>
 );
 
@@ -182,20 +188,20 @@ export const TrimIcon = (
   </svg>
 );
 
-// Extend - line with dashed extension and hollow point
+// Extend - line with dashed extension and white-filled point
 export const ExtendIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeWidth={1.5} d="M4 12h10" />
     <path strokeLinecap="round" strokeWidth={1.5} strokeDasharray="2 2" d="M14 12h6" />
-    <circle cx="14" cy="12" r="2" fill="none" strokeWidth={1.5} />
+    <circle cx="14" cy="12" r="1.5" fill="white" strokeWidth={1.5} />
   </svg>
 );
 
-// Split - circle with hollow break point
+// Split - circle with white-filled break point
 export const SplitIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeWidth={1.5} d="M12 4 A8 8 0 1 1 11.9 4" />
-    <circle cx="12" cy="4" r="2" fill="none" strokeWidth={1.5} />
+    <circle cx="12" cy="4" r="1.5" fill="white" strokeWidth={1.5} />
     <path strokeWidth={1.5} d="M12 4v4" />
   </svg>
 );
@@ -227,14 +233,14 @@ export const LinearPatternIcon = (
   </svg>
 );
 
-// Circular Pattern - circles arranged radially with hollow center
+// Circular Pattern - circles arranged radially with white-filled center
 export const CircularPatternIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <circle cx="12" cy="5" r="2.5" strokeWidth={1.5} />
     <circle cx="19" cy="12" r="2.5" strokeWidth={1.5} />
     <circle cx="12" cy="19" r="2.5" strokeWidth={1.5} />
     <circle cx="5" cy="12" r="2.5" strokeWidth={1.5} />
-    <circle cx="12" cy="12" r="1.5" fill="none" strokeWidth={1.5} />
+    <circle cx="12" cy="12" r="1.5" fill="white" strokeWidth={1.5} />
   </svg>
 );
 
@@ -242,39 +248,40 @@ export const CircularPatternIcon = (
 // 3D FEATURES
 // ============================================================================
 
-// Extrude - isometric box with up arrow
+// Extrude - 2D shape with upward arrow
 export const ExtrudeIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinejoin="round" strokeWidth={1.5} d="M5 16l7 4 7-4V8l-7-4-7 4z" />
-    <path strokeWidth={1.5} d="M5 8l7 4 7-4M12 12v8" />
-    <path strokeLinecap="round" strokeWidth={1.5} d="M12 2v4M10 4l2-2 2 2" />
+    <rect x="6" y="14" width="12" height="6" strokeWidth={1.5} />
+    <path strokeLinecap="round" strokeWidth={1.5} d="M12 12V4" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 8l4-4 4 4" />
   </svg>
 );
 
-// Revolve - rotation arrow around axis
+// Revolve - profile with circular rotation arrow
 export const RevolveIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeWidth={1.5} d="M12 4v16" />
-    <path strokeLinecap="round" strokeWidth={1.5} d="M8 8 A6 6 0 1 1 8 16" />
-    <path strokeLinecap="round" strokeWidth={1.5} d="M8 8l-2-2M8 8l2-2" />
+    <path strokeWidth={1.5} d="M12 6v12" />
+    <path strokeWidth={1.5} d="M12 10h4v8h-4" />
+    <path strokeLinecap="round" strokeWidth={1.5} d="M19 8 A7 7 0 0 0 5 8" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 5v3h3" />
   </svg>
 );
 
-// Sweep - profile along path
+// Sweep - circle profile along curved path
 export const SweepIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <ellipse cx="6" cy="12" rx="2" ry="4" strokeWidth={1.5} />
-    <path strokeLinecap="round" strokeWidth={1.5} d="M8 12 Q12 6 16 12 T20 12" />
-    <ellipse cx="20" cy="12" rx="1.5" ry="3" strokeWidth={1.5} strokeDasharray="2 2" />
+    <circle cx="5" cy="12" r="3" strokeWidth={1.5} />
+    <path strokeLinecap="round" strokeWidth={1.5} d="M8 12 Q12 6 16 10 T20 8" />
+    <path strokeLinecap="round" strokeWidth={1.5} d="M18 6l2 2-2 2" />
   </svg>
 );
 
-// Loft - tapered shape
+// Loft - two profiles connected by lines
 export const LoftIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <ellipse cx="12" cy="19" rx="8" ry="2" strokeWidth={1.5} />
-    <ellipse cx="12" cy="5" rx="4" ry="1" strokeWidth={1.5} />
-    <path strokeWidth={1.5} d="M4 19c0-8 4-14 8-14s8 6 8 14" />
+    <rect x="4" y="16" width="16" height="4" strokeWidth={1.5} />
+    <rect x="8" y="4" width="8" height="4" strokeWidth={1.5} />
+    <path strokeWidth={1.5} d="M4 16L8 8M20 16L16 8" />
   </svg>
 );
 
@@ -335,14 +342,14 @@ export const LinearPattern3DIcon = (
   </svg>
 );
 
-// Circular Pattern 3D - cubes arranged radially with hollow center
+// Circular Pattern 3D - cubes arranged radially with white-filled center
 export const CircularPattern3DIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <rect x="10" y="2" width="4" height="4" strokeWidth={1.5} transform="rotate(0 12 4)" />
     <rect x="18" y="10" width="4" height="4" strokeWidth={1.5} />
     <rect x="10" y="18" width="4" height="4" strokeWidth={1.5} />
     <rect x="2" y="10" width="4" height="4" strokeWidth={1.5} />
-    <circle cx="12" cy="12" r="1.5" fill="none" strokeWidth={1.5} />
+    <circle cx="12" cy="12" r="1.5" fill="white" strokeWidth={1.5} />
     <circle cx="12" cy="12" r="4" strokeWidth={1} strokeDasharray="2 2" />
   </svg>
 );
