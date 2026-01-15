@@ -478,19 +478,29 @@ export default function TiptapEditor({
         }
         .tiptap-editor .ProseMirror ul {
           list-style-type: disc;
-          padding-left: 1.5rem;
-          margin: 1rem 0;
+          padding-left: 1.25rem;
+          margin: 0.5rem 0;
         }
         .tiptap-editor .ProseMirror ol {
           list-style-type: decimal;
-          padding-left: 1.5rem;
-          margin: 1rem 0;
+          padding-left: 1.25rem;
+          margin: 0.5rem 0;
         }
         .tiptap-editor .ProseMirror li {
-          margin: 0.25rem 0;
+          margin: 0.125rem 0;
         }
         .tiptap-editor .ProseMirror li p {
           margin: 0;
+        }
+        /* Nested lists - same spacing as list items */
+        .tiptap-editor .ProseMirror li > ul,
+        .tiptap-editor .ProseMirror li > ol {
+          margin: 0;
+        }
+        /* Strikethrough */
+        .tiptap-editor .ProseMirror s {
+          text-decoration: line-through;
+          color: var(--muted);
         }
         .tiptap-editor .ProseMirror blockquote {
           border-left: 3px solid var(--border);
@@ -542,21 +552,21 @@ export default function TiptapEditor({
         .tiptap-editor .ProseMirror ul[data-type="taskList"] {
           list-style: none;
           padding-left: 0;
-          margin: 1rem 0;
+          margin: 0.5rem 0;
         }
         .tiptap-editor .ProseMirror ul[data-type="taskList"] li {
           display: flex;
           align-items: flex-start;
           gap: 0.5rem;
-          margin: 0.25rem 0;
+          margin: 0.125rem 0;
         }
         .tiptap-editor .ProseMirror ul[data-type="taskList"] li > label {
           flex-shrink: 0;
-          margin-top: 0.25rem;
+          margin-top: 0.2rem;
         }
         .tiptap-editor .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"] {
-          width: 1.1rem;
-          height: 1.1rem;
+          width: 1rem;
+          height: 1rem;
           cursor: pointer;
           accent-color: var(--accent);
         }
@@ -569,7 +579,11 @@ export default function TiptapEditor({
         }
         /* Nested task lists */
         .tiptap-editor .ProseMirror ul[data-type="taskList"] ul[data-type="taskList"] {
-          margin: 0.25rem 0 0.25rem 1.5rem;
+          margin: 0.125rem 0 0.125rem 1.25rem;
+        }
+        /* Task list nested under regular list */
+        .tiptap-editor .ProseMirror li > ul[data-type="taskList"] {
+          margin: 0.125rem 0;
         }
 
         /* Dark mode adjustments */

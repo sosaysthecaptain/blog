@@ -699,8 +699,8 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
           className="w-full text-2xl md:text-4xl font-bold bg-transparent outline-none text-[--foreground] placeholder:text-[--muted] mb-2 font-serif"
         />
 
-        {/* Date row */}
-        <div className="flex items-center gap-4 mb-6 text-sm text-[--muted]">
+        {/* Date, Time & Tags row */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-6 text-sm text-[--muted]">
           <input
             type="date"
             value={date}
@@ -741,17 +741,15 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
             {images.length} {images.length === 1 ? "image" : "images"}
             {totalSizeBytes > 0 && ` · ${totalSizeMB} MB`}
           </span>
-        </div>
-
-        {/* Tags */}
-        <div className="mb-6">
-          <TagInput
-            tags={tags}
-            availableTags={availableTags}
-            tagColors={tagColors}
-            onChange={setTags}
-            onTagColorChange={handleTagColorChange}
-          />
+          <div className="flex-1 min-w-[120px]">
+            <TagInput
+              tags={tags}
+              availableTags={availableTags}
+              tagColors={tagColors}
+              onChange={setTags}
+              onTagColorChange={handleTagColorChange}
+            />
+          </div>
         </div>
 
         {/* Image grid or empty state */}

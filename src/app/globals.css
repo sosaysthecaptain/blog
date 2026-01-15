@@ -165,18 +165,55 @@ a:hover {
 
 .prose-html ul {
   list-style-type: disc;
-  list-style-position: inside;
-  margin: 1rem 0;
+  list-style-position: outside;
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
 }
 
 .prose-html ol {
   list-style-type: decimal;
-  list-style-position: inside;
-  margin: 1rem 0;
+  list-style-position: outside;
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
 }
 
 .prose-html li {
-  margin: 0.25rem 0;
+  margin: 0.125rem 0;
+  padding-left: 0.25rem;
+}
+
+/* Nested lists - same spacing as list items */
+.prose-html li > ul,
+.prose-html li > ol {
+  margin: 0;
+}
+
+/* Task lists */
+.prose-html ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+
+.prose-html ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.prose-html ul[data-type="taskList"] li > label {
+  margin-top: 0.125rem;
+}
+
+.prose-html ul[data-type="taskList"] li[data-checked="true"] > div {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+/* Strikethrough */
+.prose-html s,
+.prose-html del {
+  text-decoration: line-through;
+  color: var(--muted);
 }
 
 .prose-html blockquote {

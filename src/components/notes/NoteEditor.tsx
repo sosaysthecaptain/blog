@@ -421,8 +421,8 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
           className="w-full text-2xl md:text-4xl font-bold bg-transparent outline-none text-[--foreground] placeholder:text-[--muted] mb-2 font-serif"
         />
 
-        {/* Date & Time row */}
-        <div className="flex items-center gap-4 mb-6 text-sm text-[--muted]">
+        {/* Date, Time & Tags row */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4 text-sm text-[--muted]">
           <input
             type="date"
             value={date}
@@ -461,11 +461,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
               </button>
             )}
           </div>
-        </div>
-
-        {/* Tags and Publish */}
-        <div className="mb-8 flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-          <div className="flex-1">
+          <div className="flex-1 min-w-[120px]">
             <TagInput
               tags={tags}
               availableTags={availableTags}
@@ -474,37 +470,37 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
               onTagColorChange={handleTagColorChange}
             />
           </div>
-
-          {/* Publish controls */}
-          {canPublish && (
-            <div className="flex flex-wrap items-center gap-2 md:gap-4 shrink-0 text-sm">
-              <div className="flex items-center gap-1.5 text-[--muted]">
-                <span className="hidden md:inline">{publishPath}</span>
-                <input
-                  type="text"
-                  value={slug}
-                  onChange={(e) => handleSlugChange(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))}
-                  placeholder={generateSlug(title)}
-                  className="w-32 md:w-40 px-2 py-1 bg-[--sidebar-bg] border border-[--border] rounded outline-none focus:border-[--accent] text-[--foreground]"
-                />
-              </div>
-              {slugError && (
-                <span className="text-xs text-red-500">{slugError}</span>
-              )}
-              <button
-                type="button"
-                onClick={handlePublishToggle}
-                className={`px-3 py-1 text-xs rounded border ${
-                  published
-                    ? "border-[--success] text-[--success] hover:bg-[--success] hover:text-white"
-                    : "border-[--border] text-[--muted] hover:border-[--accent] hover:text-[--accent]"
-                }`}
-              >
-                {published ? "Published" : "Publish"}
-              </button>
-            </div>
-          )}
         </div>
+
+        {/* Publish controls */}
+        {canPublish && (
+          <div className="flex flex-wrap items-center gap-2 md:gap-4 mb-6 text-sm">
+            <div className="flex items-center gap-1.5 text-[--muted]">
+              <span className="hidden md:inline">{publishPath}</span>
+              <input
+                type="text"
+                value={slug}
+                onChange={(e) => handleSlugChange(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))}
+                placeholder={generateSlug(title)}
+                className="w-32 md:w-40 px-2 py-1 bg-[--sidebar-bg] border border-[--border] rounded outline-none focus:border-[--accent] text-[--foreground]"
+              />
+            </div>
+            {slugError && (
+              <span className="text-xs text-red-500">{slugError}</span>
+            )}
+            <button
+              type="button"
+              onClick={handlePublishToggle}
+              className={`px-3 py-1 text-xs rounded border ${
+                published
+                  ? "border-[--success] text-[--success] hover:bg-[--success] hover:text-white"
+                  : "border-[--border] text-[--muted] hover:border-[--accent] hover:text-[--accent]"
+              }`}
+            >
+              {published ? "Published" : "Publish"}
+            </button>
+          </div>
+        )}
 
         {/* Editor */}
         <TiptapEditor
