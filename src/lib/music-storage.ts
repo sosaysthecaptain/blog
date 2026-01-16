@@ -520,6 +520,7 @@ export async function uploadRecordedAudio(
     year: string;
     genre: string;
     duration: number; // in milliseconds
+    albumArtFile?: File;
   }
 ): Promise<Song> {
   const songId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -530,6 +531,20 @@ export async function uploadRecordedAudio(
   const audioRef = ref(storage, storagePath);
   await uploadBytes(audioRef, blob);
   const storageUrl = await getDownloadURL(audioRef);
+
+  // Upload album art if provided
+  let albumArtUrl: string | null = null;
+  let albumArtThumbUrl: string | null = null;
+
+  if (metadata.albumArtFile) {
+    try {
+      const artUrls = await uploadAlbumArt(metadata.albumArtFile, libraryId, songId);
+      albumArtUrl = artUrls.albumArtUrl;
+      albumArtThumbUrl = artUrls.albumArtThumbUrl;
+    } catch (error) {
+      console.error("Failed to upload album art:", error);
+    }
+  }
 
   // Create song document in Firestore
   const songData: Omit<Song, "id" | "dateAdded" | "createdAt" | "updatedAt"> = {
@@ -544,8 +559,8 @@ export async function uploadRecordedAudio(
     genre: metadata.genre || "",
     duration: metadata.duration / 1000, // Convert to seconds
     fileSize: blob.size,
-    albumArtUrl: null,
-    albumArtThumbUrl: null,
+    albumArtUrl,
+    albumArtThumbUrl,
     storageUrl,
     storagePath,
     fileName: `${metadata.title || "recording"}.${extension}`,

@@ -512,6 +512,7 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
         {showRecorderModal && library.id && (
           <RadioRecorderModal
             libraryId={library.id}
+            existingSongs={songs}
             onClose={() => setShowRecorderModal(false)}
             onSongsAdded={() => {
               // Songs will appear via subscription, just close modal

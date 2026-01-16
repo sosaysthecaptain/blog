@@ -71,7 +71,12 @@ export function useMusicQueue(): MusicQueueState & MusicQueueActions {
       });
 
       audioRef.current.addEventListener("durationchange", () => {
-        setDuration(audioRef.current?.duration || 0);
+        const audioDuration = audioRef.current?.duration;
+        // For webm recordings, duration might be Infinity or NaN
+        // Only use it if it's a valid finite number
+        if (audioDuration && isFinite(audioDuration) && !isNaN(audioDuration)) {
+          setDuration(audioDuration);
+        }
       });
 
       audioRef.current.addEventListener("ended", () => {
@@ -112,6 +117,12 @@ export function useMusicQueue(): MusicQueueState & MusicQueueActions {
       currentSongUrlRef.current = songUrl;
       audioRef.current.src = song.storageUrl;
       audioRef.current.load();
+
+      // Set initial duration from song metadata (for webm files that don't report duration)
+      if (song.duration && isFinite(song.duration) && song.duration > 0) {
+        setDuration(song.duration);
+      }
+
       // Auto-play when a new song is loaded (if we were playing or just started)
       audioRef.current.play().catch(console.error);
     } else if (!songUrl) {
