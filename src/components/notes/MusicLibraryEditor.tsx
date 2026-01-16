@@ -311,15 +311,6 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
                 style={{ fontFamily: "'Lucida Grande', 'Lucida Sans Unicode', sans-serif" }}
               />
             </div>
-            {selectedSongIds.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setShowExportModal(true)}
-                className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-              >
-                Export {selectedSongIds.length} song{selectedSongIds.length !== 1 ? "s" : ""}
-              </button>
-            )}
             {isSaving && (
               <span className="text-xs text-[--muted]">Saving...</span>
             )}
@@ -363,6 +354,7 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
               sortColumn={localLibrary.musicSortColumn || "artist"}
               sortDirection={localLibrary.musicSortDirection || "asc"}
               selectedIds={selectedSongIds}
+              currentPlayingSongId={musicQueue.currentSong?.id}
               onSortChange={handleSortChange}
               onSelectionChange={setSelectedSongIds}
               onDeleteSong={handleDeleteSong}
@@ -370,6 +362,10 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
               onPlaySong={musicQueue.play}
               onQueueSong={musicQueue.addToQueue}
               onExportSelected={() => setShowExportModal(true)}
+              onExportLibrary={() => {
+                setSelectedSongIds(songs.map((s) => s.id || "").filter(Boolean));
+                setShowExportModal(true);
+              }}
               onEditMetadata={setSongsToEdit}
             />
           )}

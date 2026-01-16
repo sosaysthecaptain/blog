@@ -34,6 +34,10 @@ export interface MusicQueueActions {
 export function useMusicQueue(): MusicQueueState & MusicQueueActions {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const currentSongUrlRef = useRef<string | null>(null);
+  const queueRef = useRef<Song[]>([]);
+  const currentIndexRef = useRef(-1);
+  const isPlayingRef = useRef(false);
+
   const [queue, setQueue] = useState<Song[]>([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -41,6 +45,19 @@ export function useMusicQueue(): MusicQueueState & MusicQueueActions {
   const [duration, setDuration] = useState(0);
   const [volume, setVolumeState] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
+
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
 
   // Initialize audio element
   useEffect(() => {
@@ -58,14 +75,17 @@ export function useMusicQueue(): MusicQueueState & MusicQueueActions {
       });
 
       audioRef.current.addEventListener("ended", () => {
-        // Auto-advance to next song
-        setCurrentIndex((prev) => {
-          if (prev < queue.length - 1) {
-            return prev + 1;
-          }
+        // Auto-advance to next song using refs for current values
+        const nextIndex = currentIndexRef.current + 1;
+        if (nextIndex < queueRef.current.length) {
+          setCurrentIndex(nextIndex);
+          // Force play the next song
+          setTimeout(() => {
+            audioRef.current?.play().catch(console.error);
+          }, 50);
+        } else {
           setIsPlaying(false);
-          return prev;
-        });
+        }
       });
 
       audioRef.current.addEventListener("play", () => setIsPlaying(true));
@@ -80,7 +100,7 @@ export function useMusicQueue(): MusicQueueState & MusicQueueActions {
     };
   }, []);
 
-  // Load song when current song changes (not just when queue changes)
+  // Load song when current song changes
   useEffect(() => {
     if (!audioRef.current) return;
 
@@ -88,17 +108,16 @@ export function useMusicQueue(): MusicQueueState & MusicQueueActions {
     const songUrl = song?.storageUrl || null;
 
     // Only reload if the actual song URL changed
-    if (songUrl !== currentSongUrlRef.current) {
+    if (songUrl && songUrl !== currentSongUrlRef.current) {
       currentSongUrlRef.current = songUrl;
-      if (song) {
-        audioRef.current.src = song.storageUrl;
-        audioRef.current.load();
-        if (isPlaying) {
-          audioRef.current.play().catch(console.error);
-        }
-      }
+      audioRef.current.src = song.storageUrl;
+      audioRef.current.load();
+      // Auto-play when a new song is loaded (if we were playing or just started)
+      audioRef.current.play().catch(console.error);
+    } else if (!songUrl) {
+      currentSongUrlRef.current = null;
     }
-  }, [currentIndex, queue, isPlaying]);
+  }, [currentIndex, queue]);
 
   const currentSong = currentIndex >= 0 && currentIndex < queue.length ? queue[currentIndex] : null;
 
@@ -106,18 +125,21 @@ export function useMusicQueue(): MusicQueueState & MusicQueueActions {
     if (!audioRef.current) return;
 
     if (song) {
-      // Find song in queue or add it
-      const existingIndex = queue.findIndex((s) => s.id === song.id);
-      if (existingIndex >= 0) {
-        setCurrentIndex(existingIndex);
-      } else {
-        setQueue((prev) => [...prev, song]);
-        setCurrentIndex(queue.length);
-      }
+      setQueue((prevQueue) => {
+        const existingIndex = prevQueue.findIndex((s) => s.id === song.id);
+        if (existingIndex >= 0) {
+          setCurrentIndex(existingIndex);
+          return prevQueue;
+        } else {
+          const newIndex = prevQueue.length;
+          setCurrentIndex(newIndex);
+          return [...prevQueue, song];
+        }
+      });
+    } else {
+      audioRef.current.play().catch(console.error);
     }
-
-    audioRef.current.play().catch(console.error);
-  }, [queue]);
+  }, []);
 
   const pause = useCallback(() => {
     audioRef.current?.pause();
@@ -126,54 +148,74 @@ export function useMusicQueue(): MusicQueueState & MusicQueueActions {
   const togglePlayPause = useCallback(() => {
     if (!audioRef.current) return;
 
-    if (isPlaying) {
+    if (isPlayingRef.current) {
       audioRef.current.pause();
     } else {
       audioRef.current.play().catch(console.error);
     }
-  }, [isPlaying]);
+  }, []);
 
   const next = useCallback(() => {
-    if (currentIndex < queue.length - 1) {
-      setCurrentIndex((prev) => prev + 1);
-    }
-  }, [currentIndex, queue.length]);
+    setCurrentIndex((prev) => {
+      if (prev < queueRef.current.length - 1) {
+        return prev + 1;
+      }
+      return prev;
+    });
+  }, []);
 
   const previous = useCallback(() => {
     // If more than 3 seconds in, restart current song
     if (audioRef.current && audioRef.current.currentTime > 3) {
       audioRef.current.currentTime = 0;
-    } else if (currentIndex > 0) {
-      setCurrentIndex((prev) => prev - 1);
+    } else {
+      setCurrentIndex((prev) => {
+        if (prev > 0) {
+          return prev - 1;
+        }
+        return prev;
+      });
     }
-  }, [currentIndex]);
+  }, []);
 
   const addToQueue = useCallback((song: Song) => {
-    setQueue((prev) => [...prev, song]);
-    // Start playing if queue was empty
-    if (queue.length === 0) {
-      setCurrentIndex(0);
-    }
-  }, [queue.length]);
+    setQueue((prev) => {
+      const newQueue = [...prev, song];
+      // Start playing if queue was empty
+      if (prev.length === 0) {
+        setCurrentIndex(0);
+      }
+      return newQueue;
+    });
+  }, []);
 
   const addMultipleToQueue = useCallback((songs: Song[]) => {
-    setQueue((prev) => [...prev, ...songs]);
-    if (queue.length === 0 && songs.length > 0) {
-      setCurrentIndex(0);
-    }
-  }, [queue.length]);
+    setQueue((prev) => {
+      const newQueue = [...prev, ...songs];
+      if (prev.length === 0 && songs.length > 0) {
+        setCurrentIndex(0);
+      }
+      return newQueue;
+    });
+  }, []);
 
   const removeFromQueue = useCallback((index: number) => {
     setQueue((prev) => prev.filter((_, i) => i !== index));
-    // Adjust current index if needed
-    if (index < currentIndex) {
-      setCurrentIndex((prev) => prev - 1);
-    } else if (index === currentIndex) {
-      // Current song removed - pause and reset
-      audioRef.current?.pause();
-      setCurrentIndex((prev) => Math.min(prev, queue.length - 2));
-    }
-  }, [currentIndex, queue.length]);
+    setCurrentIndex((prev) => {
+      if (index < prev) {
+        return prev - 1;
+      } else if (index === prev) {
+        // Current song removed - stay at same index (will play next song)
+        // But if we're at the end, go back one
+        if (index >= queueRef.current.length - 1) {
+          audioRef.current?.pause();
+          return Math.max(0, prev - 1);
+        }
+        return prev;
+      }
+      return prev;
+    });
+  }, []);
 
   const reorderQueue = useCallback((fromIndex: number, toIndex: number) => {
     setQueue((prev) => {
@@ -182,29 +224,40 @@ export function useMusicQueue(): MusicQueueState & MusicQueueActions {
       newQueue.splice(toIndex, 0, moved);
       return newQueue;
     });
-    // Update currentIndex if it was affected by the reorder
-    if (fromIndex === currentIndex) {
-      setCurrentIndex(toIndex);
-    } else if (fromIndex < currentIndex && toIndex >= currentIndex) {
-      setCurrentIndex((prev) => prev - 1);
-    } else if (fromIndex > currentIndex && toIndex <= currentIndex) {
-      setCurrentIndex((prev) => prev + 1);
-    }
-  }, [currentIndex]);
+    setCurrentIndex((prev) => {
+      if (fromIndex === prev) {
+        return toIndex;
+      } else if (fromIndex < prev && toIndex >= prev) {
+        return prev - 1;
+      } else if (fromIndex > prev && toIndex <= prev) {
+        return prev + 1;
+      }
+      return prev;
+    });
+  }, []);
 
   const clearQueue = useCallback(() => {
     audioRef.current?.pause();
+    currentSongUrlRef.current = null;
     setQueue([]);
     setCurrentIndex(-1);
     setIsPlaying(false);
   }, []);
 
   const playFromQueue = useCallback((index: number) => {
-    if (index >= 0 && index < queue.length) {
-      setCurrentIndex(index);
-      audioRef.current?.play().catch(console.error);
+    if (index >= 0 && index < queueRef.current.length) {
+      // If clicking on the same song, just toggle play/pause
+      if (index === currentIndexRef.current) {
+        if (isPlayingRef.current) {
+          audioRef.current?.pause();
+        } else {
+          audioRef.current?.play().catch(console.error);
+        }
+      } else {
+        setCurrentIndex(index);
+      }
     }
-  }, [queue.length]);
+  }, []);
 
   const seek = useCallback((time: number) => {
     if (audioRef.current) {
@@ -218,21 +271,19 @@ export function useMusicQueue(): MusicQueueState & MusicQueueActions {
     if (audioRef.current) {
       audioRef.current.volume = clampedVolume;
     }
-    if (clampedVolume > 0 && isMuted) {
+    if (clampedVolume > 0) {
       setIsMuted(false);
     }
-  }, [isMuted]);
+  }, []);
 
   const toggleMute = useCallback(() => {
-    if (audioRef.current) {
-      if (isMuted) {
-        audioRef.current.volume = volume;
-      } else {
-        audioRef.current.volume = 0;
+    setIsMuted((prev) => {
+      if (audioRef.current) {
+        audioRef.current.volume = prev ? volume : 0;
       }
-    }
-    setIsMuted(!isMuted);
-  }, [isMuted, volume]);
+      return !prev;
+    });
+  }, [volume]);
 
   return {
     // State

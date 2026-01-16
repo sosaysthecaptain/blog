@@ -13,6 +13,7 @@ interface SongsDataGridProps {
   sortColumn: SortColumn;
   sortDirection: "asc" | "desc";
   selectedIds: string[];
+  currentPlayingSongId?: string | null;
   onSortChange: (column: SortColumn, direction: "asc" | "desc") => void;
   onSelectionChange: (ids: string[]) => void;
   onDeleteSong: (song: Song) => void;
@@ -20,6 +21,7 @@ interface SongsDataGridProps {
   onPlaySong?: (song: Song) => void;
   onQueueSong?: (song: Song) => void;
   onExportSelected?: () => void;
+  onExportLibrary?: () => void;
   onEditMetadata?: (songs: Song[]) => void;
 }
 
@@ -40,6 +42,7 @@ export default function SongsDataGrid({
   sortColumn,
   sortDirection,
   selectedIds,
+  currentPlayingSongId,
   onSortChange,
   onSelectionChange,
   onDeleteSong,
@@ -47,6 +50,7 @@ export default function SongsDataGrid({
   onPlaySong,
   onQueueSong,
   onExportSelected,
+  onExportLibrary,
   onEditMetadata,
 }: SongsDataGridProps) {
   const [contextMenu, setContextMenu] = useState<{
@@ -54,6 +58,17 @@ export default function SongsDataGrid({
     y: number;
     song: Song;
   } | null>(null);
+  const [headerContextMenu, setHeaderContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [visibleColumns, setVisibleColumns] = useState({
+    playing: true,
+    trackNumber: true,
+    title: true,
+    artist: true,
+    album: true,
+    year: true,
+    duration: true,
+    fileSize: true,
+  });
 
   // Handle selection change
   const handleSelectionChange = (selectionModel: GridRowSelectionModel) => {
@@ -90,6 +105,7 @@ export default function SongsDataGrid({
       fontSize: "11px",
       padding: "0 6px",
       fontFamily: FONT_FAMILY,
+      userSelect: "none",
     },
     "& .MuiDataGrid-columnHeaders": {
       border: "none",
@@ -147,6 +163,9 @@ export default function SongsDataGrid({
     "& .MuiDataGrid-columnSeparator": {
       display: "none",
     },
+    "& .MuiDataGrid-row": {
+      userSelect: "none",
+    },
   };
 
   // Filter and sort songs
@@ -164,55 +183,73 @@ export default function SongsDataGrid({
     return result;
   }, [songs, searchQuery, sortColumn, sortDirection]);
 
-  // Column definitions - no album art, no genre, added size
-  const columns: GridColDef[] = useMemo(
+  // Column definitions
+  const allColumns: GridColDef[] = useMemo(
     () => [
+      {
+        field: "playing",
+        headerName: "",
+        width: 24,
+        sortable: false,
+        disableColumnMenu: true,
+        renderCell: (params: GridRenderCellParams) => {
+          const isPlaying = params.row.id === currentPlayingSongId;
+          return isPlaying ? (
+            <svg className="w-3 h-3 text-blue-500" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          ) : null;
+        },
+      } as GridColDef,
       {
         field: "trackNumber",
         headerName: "#",
         width: 32,
-        type: "number",
-      },
+        renderCell: (params: GridRenderCellParams) => params.value || "",
+      } as GridColDef,
       {
         field: "title",
         headerName: "Title",
         flex: 1.5,
         minWidth: 120,
-      },
+      } as GridColDef,
       {
         field: "artist",
         headerName: "Artist",
         flex: 1,
         minWidth: 80,
-      },
+      } as GridColDef,
       {
         field: "album",
         headerName: "Album",
         flex: 1,
         minWidth: 80,
-      },
+      } as GridColDef,
       {
         field: "year",
         headerName: "Year",
         width: 44,
-        type: "number",
-      },
+        renderCell: (params: GridRenderCellParams) => params.value || "",
+      } as GridColDef,
       {
         field: "duration",
         headerName: "Time",
         width: 48,
-        type: "number",
         renderCell: (params: GridRenderCellParams) => formatDuration(params.value || 0),
-      },
+      } as GridColDef,
       {
         field: "fileSize",
         headerName: "Size",
         width: 50,
-        type: "number",
         renderCell: (params: GridRenderCellParams) => formatFileSize(params.value || 0),
-      },
+      } as GridColDef,
     ],
-    []
+    [currentPlayingSongId]
+  );
+
+  const columns = useMemo(
+    () => allColumns.filter((col) => visibleColumns[col.field as keyof typeof visibleColumns] !== false),
+    [allColumns, visibleColumns]
   );
 
   // Handle sort model change
@@ -230,6 +267,14 @@ export default function SongsDataGrid({
   const handleContextMenu = (event: React.MouseEvent) => {
     event.preventDefault();
     const target = event.target as HTMLElement;
+
+    // Check if right-clicking on header
+    const header = target.closest(".MuiDataGrid-columnHeaders");
+    if (header) {
+      setHeaderContextMenu({ x: event.clientX, y: event.clientY });
+      return;
+    }
+
     const row = target.closest("[data-id]");
     if (row) {
       const songId = row.getAttribute("data-id");
@@ -241,6 +286,11 @@ export default function SongsDataGrid({
   };
 
   const closeContextMenu = () => setContextMenu(null);
+  const closeHeaderContextMenu = () => setHeaderContextMenu(null);
+
+  const toggleColumn = (column: keyof typeof visibleColumns) => {
+    setVisibleColumns((prev) => ({ ...prev, [column]: !prev[column] }));
+  };
 
   // Handle double-click to play
   const handleRowDoubleClick = (params: { row: Song }) => {
@@ -323,7 +373,7 @@ export default function SongsDataGrid({
                     Edit Metadata{count > 1 ? ` (${count})` : ""}
                   </button>
                 )}
-                {onExportSelected && count > 0 && (
+                {onExportSelected && (
                   <button
                     type="button"
                     onClick={() => {
@@ -337,6 +387,18 @@ export default function SongsDataGrid({
                     className="context-menu-item"
                   >
                     Export{count > 1 ? ` (${count})` : ""}
+                  </button>
+                )}
+                {onExportLibrary && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onExportLibrary();
+                      closeContextMenu();
+                    }}
+                    className="context-menu-item"
+                  >
+                    Export Entire Library
                   </button>
                 )}
                 <div className="h-px my-1" style={{ backgroundColor: "var(--border)" }} />
@@ -358,6 +420,49 @@ export default function SongsDataGrid({
             </>
           );
         })()}
+
+        {/* Header Context Menu for Column Visibility */}
+        {headerContextMenu && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={closeHeaderContextMenu} />
+            <div
+              className="fixed z-50 py-1 rounded shadow-lg border border-[--border] min-w-[140px]"
+              style={{
+                left: headerContextMenu.x,
+                top: headerContextMenu.y,
+                backgroundColor: "var(--background)",
+                fontFamily: "'Lucida Grande', 'Lucida Sans Unicode', sans-serif",
+              }}
+            >
+              <div className="px-3 py-1 text-[10px] text-[--muted] font-medium">Show Columns</div>
+              {[
+                { key: "trackNumber", label: "#" },
+                { key: "title", label: "Title" },
+                { key: "artist", label: "Artist" },
+                { key: "album", label: "Album" },
+                { key: "year", label: "Year" },
+                { key: "duration", label: "Time" },
+                { key: "fileSize", label: "Size" },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => toggleColumn(key as keyof typeof visibleColumns)}
+                  className="context-menu-item flex items-center gap-2"
+                >
+                  <span className="w-3">
+                    {visibleColumns[key as keyof typeof visibleColumns] && (
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </span>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </ThemeProvider>
   );

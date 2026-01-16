@@ -196,6 +196,15 @@ function getSearchScore(song: Song, query: string): number {
   return 0;
 }
 
+// Strip "the " from the beginning of a string for sorting
+function stripThe(str: string): string {
+  const lower = str.toLowerCase();
+  if (lower.startsWith("the ")) {
+    return str.slice(4);
+  }
+  return str;
+}
+
 // Sort songs by column with secondary sort
 export function sortSongs(
   songs: Song[],
@@ -211,7 +220,8 @@ export function sortSongs(
         break;
       case "artist":
         // Artist sorts secondarily by album, then track number
-        result = a.artist.localeCompare(b.artist);
+        // Ignore "the" at the beginning of artist names
+        result = stripThe(a.artist).localeCompare(stripThe(b.artist));
         if (result === 0) result = a.album.localeCompare(b.album);
         if (result === 0) result = (a.trackNumber ?? 999) - (b.trackNumber ?? 999);
         break;
