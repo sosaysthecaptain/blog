@@ -78,6 +78,13 @@ export default function SongsDataGrid({
   // Track focused row for keyboard navigation
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
 
+  // Use ref for selectedIds to avoid re-creating getRowClassName callback
+  const selectedIdsRef = useRef<string[]>(selectedIds);
+  selectedIdsRef.current = selectedIds;
+
+  // Track selection as a Set for fast lookup
+  const selectedIdsSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+
   // Clear selection on Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -277,15 +284,27 @@ export default function SongsDataGrid({
     }
   };
 
-  // Get range of row IDs between two indices
+  // Get range of row IDs using the actual grid row order (not our sorted array)
   const getRowRange = useCallback((startId: string, endId: string): string[] => {
-    const startIdx = displayedSongs.findIndex((r) => r.id === startId);
-    const endIdx = displayedSongs.findIndex((r) => r.id === endId);
+    // Use apiRef to get the actual row order as displayed in the grid
+    const allRowIds = apiRef.current?.getAllRowIds?.() || [];
+    if (allRowIds.length === 0) {
+      // Fallback to displayedSongs if apiRef not ready
+      const startIdx = displayedSongs.findIndex((r) => r.id === startId);
+      const endIdx = displayedSongs.findIndex((r) => r.id === endId);
+      if (startIdx === -1 || endIdx === -1) return [endId];
+      const minIdx = Math.min(startIdx, endIdx);
+      const maxIdx = Math.max(startIdx, endIdx);
+      return displayedSongs.slice(minIdx, maxIdx + 1).map((r) => r.id || "").filter(Boolean);
+    }
+
+    const startIdx = allRowIds.findIndex((id) => String(id) === startId);
+    const endIdx = allRowIds.findIndex((id) => String(id) === endId);
     if (startIdx === -1 || endIdx === -1) return [endId];
     const minIdx = Math.min(startIdx, endIdx);
     const maxIdx = Math.max(startIdx, endIdx);
-    return displayedSongs.slice(minIdx, maxIdx + 1).map((r) => r.id || "").filter(Boolean);
-  }, [displayedSongs]);
+    return allRowIds.slice(minIdx, maxIdx + 1).map(String);
+  }, [apiRef, displayedSongs]);
 
   // Handle row click - simple model: click = single select, shift+click = range select
   const handleRowClick = useCallback((params: GridRowParams, event: React.MouseEvent) => {
@@ -398,7 +417,32 @@ export default function SongsDataGrid({
 
   // Custom row class for selection (bypasses MUI's single-select limitation)
   const getRowClassName = useCallback((params: { id: string | number }) => {
-    return selectedIds.includes(String(params.id)) ? "row-selected" : "";
+    return selectedIdsSet.has(String(params.id)) ? "row-selected" : "";
+  }, [selectedIdsSet]);
+
+  // Save scroll position before selection changes cause re-render
+  const scrollPositionRef = useRef<{ top: number; left: number } | null>(null);
+
+  // Capture scroll position before render
+  useEffect(() => {
+    const virtualScroller = containerRef.current?.querySelector(".MuiDataGrid-virtualScroller");
+    if (virtualScroller) {
+      scrollPositionRef.current = {
+        top: virtualScroller.scrollTop,
+        left: virtualScroller.scrollLeft,
+      };
+    }
+  });
+
+  // Restore scroll position after render
+  useEffect(() => {
+    if (scrollPositionRef.current) {
+      const virtualScroller = containerRef.current?.querySelector(".MuiDataGrid-virtualScroller");
+      if (virtualScroller) {
+        virtualScroller.scrollTop = scrollPositionRef.current.top;
+        virtualScroller.scrollLeft = scrollPositionRef.current.left;
+      }
+    }
   }, [selectedIds]);
 
   return (
