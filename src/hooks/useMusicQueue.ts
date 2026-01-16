@@ -23,6 +23,7 @@ export interface MusicQueueActions {
   addToQueue: (song: Song) => void;
   addMultipleToQueue: (songs: Song[]) => void;
   removeFromQueue: (index: number) => void;
+  reorderQueue: (fromIndex: number, toIndex: number) => void;
   clearQueue: () => void;
   playFromQueue: (index: number) => void;
   seek: (time: number) => void;
@@ -32,6 +33,7 @@ export interface MusicQueueActions {
 
 export function useMusicQueue(): MusicQueueState & MusicQueueActions {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const currentSongUrlRef = useRef<string | null>(null);
   const [queue, setQueue] = useState<Song[]>([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -78,19 +80,25 @@ export function useMusicQueue(): MusicQueueState & MusicQueueActions {
     };
   }, []);
 
-  // Load song when current index changes
+  // Load song when current song changes (not just when queue changes)
   useEffect(() => {
     if (!audioRef.current) return;
 
     const song = queue[currentIndex];
-    if (song) {
-      audioRef.current.src = song.storageUrl;
-      audioRef.current.load();
-      if (isPlaying) {
-        audioRef.current.play().catch(console.error);
+    const songUrl = song?.storageUrl || null;
+
+    // Only reload if the actual song URL changed
+    if (songUrl !== currentSongUrlRef.current) {
+      currentSongUrlRef.current = songUrl;
+      if (song) {
+        audioRef.current.src = song.storageUrl;
+        audioRef.current.load();
+        if (isPlaying) {
+          audioRef.current.play().catch(console.error);
+        }
       }
     }
-  }, [currentIndex, queue]);
+  }, [currentIndex, queue, isPlaying]);
 
   const currentSong = currentIndex >= 0 && currentIndex < queue.length ? queue[currentIndex] : null;
 
@@ -167,6 +175,23 @@ export function useMusicQueue(): MusicQueueState & MusicQueueActions {
     }
   }, [currentIndex, queue.length]);
 
+  const reorderQueue = useCallback((fromIndex: number, toIndex: number) => {
+    setQueue((prev) => {
+      const newQueue = [...prev];
+      const [moved] = newQueue.splice(fromIndex, 1);
+      newQueue.splice(toIndex, 0, moved);
+      return newQueue;
+    });
+    // Update currentIndex if it was affected by the reorder
+    if (fromIndex === currentIndex) {
+      setCurrentIndex(toIndex);
+    } else if (fromIndex < currentIndex && toIndex >= currentIndex) {
+      setCurrentIndex((prev) => prev - 1);
+    } else if (fromIndex > currentIndex && toIndex <= currentIndex) {
+      setCurrentIndex((prev) => prev + 1);
+    }
+  }, [currentIndex]);
+
   const clearQueue = useCallback(() => {
     audioRef.current?.pause();
     setQueue([]);
@@ -228,6 +253,7 @@ export function useMusicQueue(): MusicQueueState & MusicQueueActions {
     addToQueue,
     addMultipleToQueue,
     removeFromQueue,
+    reorderQueue,
     clearQueue,
     playFromQueue,
     seek,

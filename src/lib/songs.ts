@@ -36,6 +36,7 @@ export interface Song {
   storagePath: string;         // For deletion
   fileName: string;
   fileType: string;            // mp3, m4a, flac, wav, ogg
+  dateAdded: Timestamp;        // When song was added to library
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -88,11 +89,12 @@ export async function getSongById(id: string): Promise<Song | null> {
 
 // Create a new song
 export async function createSong(
-  song: Omit<Song, "id" | "createdAt" | "updatedAt">
+  song: Omit<Song, "id" | "dateAdded" | "createdAt" | "updatedAt">
 ): Promise<string> {
   const now = Timestamp.now();
   const docRef = await addDoc(collection(db, SONGS_COLLECTION), {
     ...song,
+    dateAdded: now,
     createdAt: now,
     updatedAt: now,
   });
@@ -197,7 +199,7 @@ function getSearchScore(song: Song, query: string): number {
 // Sort songs by column with secondary sort
 export function sortSongs(
   songs: Song[],
-  column: "title" | "artist" | "album" | "year" | "trackNumber" | "duration" | "genre" | "fileSize",
+  column: "title" | "artist" | "album" | "year" | "trackNumber" | "duration" | "genre" | "fileSize" | "dateAdded",
   direction: "asc" | "desc"
 ): Song[] {
   const sorted = [...songs].sort((a, b) => {
@@ -232,6 +234,11 @@ export function sortSongs(
         break;
       case "fileSize":
         result = a.fileSize - b.fileSize;
+        break;
+      case "dateAdded":
+        const aDate = a.dateAdded?.toMillis?.() || 0;
+        const bDate = b.dateAdded?.toMillis?.() || 0;
+        result = aDate - bDate;
         break;
     }
 

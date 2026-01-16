@@ -245,7 +245,7 @@ export async function uploadAudioFile(
   onProgress?.(90);
 
   // Create song document in Firestore
-  const songData: Omit<Song, "id" | "createdAt" | "updatedAt"> = {
+  const songData: Omit<Song, "id" | "dateAdded" | "createdAt" | "updatedAt"> = {
     libraryId,
     title: metadata.title,
     artist: metadata.artist,

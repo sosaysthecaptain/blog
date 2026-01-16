@@ -398,6 +398,7 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
           onToggleMute={musicQueue.toggleMute}
           onPlayFromQueue={musicQueue.playFromQueue}
           onRemoveFromQueue={musicQueue.removeFromQueue}
+          onReorderQueue={musicQueue.reorderQueue}
           onClearQueue={musicQueue.clearQueue}
         />
 

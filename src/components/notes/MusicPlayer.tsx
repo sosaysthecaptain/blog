@@ -20,6 +20,7 @@ interface MusicPlayerProps {
   onToggleMute: () => void;
   onPlayFromQueue: (index: number) => void;
   onRemoveFromQueue: (index: number) => void;
+  onReorderQueue: (fromIndex: number, toIndex: number) => void;
   onClearQueue: () => void;
 }
 
@@ -42,12 +43,14 @@ export default function MusicPlayer({
   onToggleMute,
   onPlayFromQueue,
   onRemoveFromQueue,
+  onReorderQueue,
   onClearQueue,
 }: MusicPlayerProps) {
   const [showQueue, setShowQueue] = useState(false);
   const [showArtModal, setShowArtModal] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
+  const [isDraggingProgress, setIsDraggingProgress] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const progressRef = useRef<HTMLDivElement>(null);
 
   if (!currentSong && queue.length === 0) {
@@ -65,11 +68,27 @@ export default function MusicPlayer({
   };
 
   const handleProgressDrag = (e: React.MouseEvent) => {
-    if (!isDragging || !progressRef.current) return;
+    if (!isDraggingProgress || !progressRef.current) return;
     const rect = progressRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const percent = Math.max(0, Math.min(1, x / rect.width));
     onSeek(percent * duration);
+  };
+
+  // Queue drag and drop handlers
+  const handleQueueDragStart = (index: number) => {
+    setDraggedIndex(index);
+  };
+
+  const handleQueueDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+    onReorderQueue(draggedIndex, index);
+    setDraggedIndex(index);
+  };
+
+  const handleQueueDragEnd = () => {
+    setDraggedIndex(null);
   };
 
   // Collapsed view - just a thin bar
@@ -156,9 +175,13 @@ export default function MusicPlayer({
               {queue.map((song, index) => (
                 <div
                   key={`${song.id}-${index}`}
-                  className={`group flex items-center gap-2 px-3 py-1.5 hover:bg-[--hover] cursor-pointer ${
+                  draggable
+                  onDragStart={() => handleQueueDragStart(index)}
+                  onDragOver={(e) => handleQueueDragOver(e, index)}
+                  onDragEnd={handleQueueDragEnd}
+                  className={`group flex items-center gap-2 px-3 py-1.5 hover:bg-[--hover] cursor-grab active:cursor-grabbing ${
                     index === currentIndex ? "bg-[--hover]" : ""
-                  }`}
+                  } ${draggedIndex === index ? "opacity-50" : ""}`}
                   onClick={() => onPlayFromQueue(index)}
                 >
                   <span className="w-4 text-center text-[--muted] text-[10px]">
@@ -195,9 +218,9 @@ export default function MusicPlayer({
       )}
 
       {/* Main player - compact with full-height album art */}
-      <div className="flex items-stretch h-14">
+      <div className="flex items-stretch h-20">
         {/* Album art - full height, clickable */}
-        <div className="flex-shrink-0 h-14 w-14">
+        <div className="flex-shrink-0 h-20 w-20">
           {currentSong?.albumArtThumbUrl ? (
             <img
               src={currentSong.albumArtThumbUrl}
@@ -327,9 +350,9 @@ export default function MusicPlayer({
               className="flex-1 h-1 rounded-full cursor-pointer group"
               style={{ backgroundColor: 'rgba(128, 128, 128, 0.3)' }}
               onClick={handleProgressClick}
-              onMouseDown={() => setIsDragging(true)}
-              onMouseUp={() => setIsDragging(false)}
-              onMouseLeave={() => setIsDragging(false)}
+              onMouseDown={() => setIsDraggingProgress(true)}
+              onMouseUp={() => setIsDraggingProgress(false)}
+              onMouseLeave={() => setIsDraggingProgress(false)}
               onMouseMove={handleProgressDrag}
             >
               <div
