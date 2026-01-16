@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { DataGrid, GridColDef, GridRenderCellParams, GridSortModel, GridRowSelectionModel } from "@mui/x-data-grid";
+import { DataGrid, GridColDef, GridRenderCellParams, GridSortModel, GridRowParams } from "@mui/x-data-grid";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { Song, sortSongs, searchSongs, formatDuration, formatFileSize } from "@/lib/songs";
 
@@ -69,13 +69,6 @@ export default function SongsDataGrid({
     duration: true,
     fileSize: true,
   });
-
-  // Handle selection change
-  const handleSelectionChange = (selectionModel: GridRowSelectionModel) => {
-    // Extract ids from the selection model (Set<GridRowId>)
-    const ids = Array.from(selectionModel.ids).map(String);
-    onSelectionChange(ids);
-  };
 
   // Create MUI theme based on CSS variables - using Lucida Grande (iTunes 2006 style)
   const theme = useMemo(
@@ -189,13 +182,15 @@ export default function SongsDataGrid({
       {
         field: "playing",
         headerName: "",
-        width: 24,
+        width: 16,
+        minWidth: 16,
+        maxWidth: 16,
         sortable: false,
         disableColumnMenu: true,
         renderCell: (params: GridRenderCellParams) => {
           const isPlaying = params.row.id === currentPlayingSongId;
           return isPlaying ? (
-            <svg className="w-3 h-3 text-blue-500" fill="currentColor" viewBox="0 0 24 24">
+            <svg className="w-2.5 h-2.5 text-blue-500" fill="currentColor" viewBox="0 0 24 24">
               <path d="M8 5v14l11-7z" />
             </svg>
           ) : null;
@@ -263,6 +258,11 @@ export default function SongsDataGrid({
     }
   };
 
+  // Handle row click - single selection only (MUI DataGrid free limitation)
+  const handleRowClick = (params: GridRowParams) => {
+    onSelectionChange([String(params.id)]);
+  };
+
   // Handle context menu
   const handleContextMenu = (event: React.MouseEvent) => {
     event.preventDefault();
@@ -280,6 +280,10 @@ export default function SongsDataGrid({
       const songId = row.getAttribute("data-id");
       const song = songs.find((s) => s.id === songId);
       if (song) {
+        // If right-clicked song is not selected, select it
+        if (!selectedIds.includes(songId || "")) {
+          onSelectionChange([songId || ""]);
+        }
         setContextMenu({ x: event.clientX, y: event.clientY, song });
       }
     }
@@ -306,8 +310,8 @@ export default function SongsDataGrid({
           sortModel={[{ field: sortColumn, sort: sortDirection }]}
           onSortModelChange={handleSortModelChange}
           onRowDoubleClick={handleRowDoubleClick}
-          rowSelectionModel={{ type: "include", ids: new Set(selectedIds) }}
-          onRowSelectionModelChange={handleSelectionChange}
+          onRowClick={handleRowClick}
+          rowSelectionModel={selectedIds.length > 0 ? { type: "include" as const, ids: new Set([selectedIds[0]]) } : undefined}
           disableColumnMenu
           hideFooter
           rowHeight={20}
@@ -317,12 +321,9 @@ export default function SongsDataGrid({
 
         {/* Context Menu */}
         {contextMenu && (() => {
-          // If the right-clicked song is selected, operate on all selected songs
-          const isSelectedSong = selectedIds.includes(contextMenu.song.id || "");
-          const targetSongs = isSelectedSong
-            ? songs.filter((s) => s.id && selectedIds.includes(s.id))
-            : [contextMenu.song];
-          const count = targetSongs.length;
+          // For now, context menu operates on single song (selectedIds[0])
+          const targetSong = contextMenu.song;
+          const count = 1;
 
           return (
             <>
@@ -336,11 +337,11 @@ export default function SongsDataGrid({
                   fontFamily: "'Lucida Grande', 'Lucida Sans Unicode', sans-serif",
                 }}
               >
-                {onPlaySong && count === 1 && (
+                {onPlaySong && (
                   <button
                     type="button"
                     onClick={() => {
-                      onPlaySong(contextMenu.song);
+                      onPlaySong(targetSong);
                       closeContextMenu();
                     }}
                     className="context-menu-item"
@@ -352,12 +353,12 @@ export default function SongsDataGrid({
                   <button
                     type="button"
                     onClick={() => {
-                      targetSongs.forEach((s) => onQueueSong(s));
+                      onQueueSong(targetSong);
                       closeContextMenu();
                     }}
                     className="context-menu-item"
                   >
-                    Add to Queue{count > 1 ? ` (${count})` : ""}
+                    Add to Queue
                   </button>
                 )}
                 <div className="h-px my-1" style={{ backgroundColor: "var(--border)" }} />
@@ -365,28 +366,24 @@ export default function SongsDataGrid({
                   <button
                     type="button"
                     onClick={() => {
-                      onEditMetadata(targetSongs);
+                      onEditMetadata([targetSong]);
                       closeContextMenu();
                     }}
                     className="context-menu-item"
                   >
-                    Edit Metadata{count > 1 ? ` (${count})` : ""}
+                    Edit Metadata
                   </button>
                 )}
                 {onExportSelected && (
                   <button
                     type="button"
                     onClick={() => {
-                      // Select all target songs if not already selected
-                      if (!isSelectedSong) {
-                        onSelectionChange([contextMenu.song.id || ""]);
-                      }
                       onExportSelected();
                       closeContextMenu();
                     }}
                     className="context-menu-item"
                   >
-                    Export{count > 1 ? ` (${count})` : ""}
+                    Export
                   </button>
                 )}
                 {onExportLibrary && (
@@ -405,16 +402,12 @@ export default function SongsDataGrid({
                 <button
                   type="button"
                   onClick={() => {
-                    if (count > 1 && onDeleteSelected) {
-                      onDeleteSelected();
-                    } else {
-                      onDeleteSong(contextMenu.song);
-                    }
+                    onDeleteSong(targetSong);
                     closeContextMenu();
                   }}
                   className="context-menu-item danger"
                 >
-                  Delete{count > 1 ? ` (${count})` : ""}
+                  Delete
                 </button>
               </div>
             </>
