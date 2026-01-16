@@ -36,13 +36,15 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.regenerateMoodboardThumbnails = exports.generateMoodboardThumbnail = void 0;
+exports.identifyAudio = exports.regenerateMoodboardThumbnails = exports.generateMoodboardThumbnail = void 0;
 const storage_1 = require("firebase-functions/v2/storage");
 const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 const sharp_1 = __importDefault(require("sharp"));
 const path = __importStar(require("path"));
 admin.initializeApp();
+// AcoustID API key - get from https://acoustid.org/
+const ACOUSTID_API_KEY = process.env.ACOUSTID_API_KEY || "";
 const THUMBNAIL_WIDTH = 400;
 const THUMBNAIL_SUFFIX = "_thumb";
 /**
@@ -203,5 +205,90 @@ exports.regenerateMoodboardThumbnails = (0, https_1.onCall)({
         }
     }
     return { processed, errors, total: originalFiles.length };
+});
+/**
+ * Identify an audio recording using AcoustID fingerprinting.
+ *
+ * This function:
+ * 1. Downloads the audio file from Storage
+ * 2. Generates an audio fingerprint using Chromaprint
+ * 3. Queries AcoustID API for matches
+ * 4. Returns metadata candidates from MusicBrainz
+ *
+ * Storage path expected: notes/{libraryId}/music/{songId}.webm
+ *
+ * NOTE: Actual fingerprinting requires chromaprint binary.
+ * This is a placeholder that returns unidentified status.
+ * To enable: install fpcalc binary and implement fingerprint generation.
+ */
+exports.identifyAudio = (0, https_1.onCall)({
+    memory: "1GiB",
+    timeoutSeconds: 120,
+}, async (request) => {
+    // Check authentication
+    if (!request.auth) {
+        throw new https_1.HttpsError("unauthenticated", "Must be authenticated to identify audio");
+    }
+    const { storagePath } = request.data;
+    if (!storagePath) {
+        throw new https_1.HttpsError("invalid-argument", "storagePath is required");
+    }
+    console.log("Identifying audio:", storagePath);
+    // Check if AcoustID API key is configured
+    if (!ACOUSTID_API_KEY) {
+        console.warn("ACOUSTID_API_KEY not configured, skipping identification");
+        return {
+            status: "unconfigured",
+            message: "Audio identification not configured. Please set ACOUSTID_API_KEY.",
+            candidates: [],
+        };
+    }
+    try {
+        const bucket = admin.storage().bucket();
+        const file = bucket.file(storagePath);
+        // Check if file exists
+        const [exists] = await file.exists();
+        if (!exists) {
+            throw new https_1.HttpsError("not-found", "Audio file not found");
+        }
+        // Download the audio file
+        const [audioBuffer] = await file.download();
+        console.log("Downloaded audio, size:", audioBuffer.length);
+        // TODO: Generate fingerprint using chromaprint/fpcalc
+        // This requires either:
+        // 1. Bundling fpcalc binary with the function (complex)
+        // 2. Using a WebAssembly port of chromaprint (if available)
+        // 3. Using a third-party fingerprinting service
+        //
+        // For now, return a placeholder response indicating manual entry is needed.
+        // Placeholder response - actual implementation would:
+        // 1. Convert webm to raw PCM using ffmpeg
+        // 2. Run fpcalc to generate fingerprint
+        // 3. Query AcoustID API: https://api.acoustid.org/v2/lookup
+        // 4. Fetch metadata from MusicBrainz for each match
+        return {
+            status: "manual",
+            message: "Automatic identification not yet implemented. Please enter metadata manually.",
+            candidates: [],
+            // Future response format with candidates:
+            // candidates: [
+            //   {
+            //     score: 0.95,
+            //     title: "Song Title",
+            //     artist: "Artist Name",
+            //     album: "Album Name",
+            //     year: "2023",
+            //     musicbrainzId: "...",
+            //   },
+            // ],
+        };
+    }
+    catch (error) {
+        console.error("Error identifying audio:", error);
+        if (error instanceof https_1.HttpsError) {
+            throw error;
+        }
+        throw new https_1.HttpsError("internal", "Failed to identify audio");
+    }
 });
 //# sourceMappingURL=index.js.map
