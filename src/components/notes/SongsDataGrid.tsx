@@ -148,16 +148,16 @@ export default function SongsDataGrid({
     "& .MuiDataGrid-row:hover": {
       backgroundColor: "var(--hover)",
     },
-    // Dark blue selection like Finder/left sidebar
-    "& .MuiDataGrid-row.Mui-selected": {
-      backgroundColor: "#1e6bbd",
+    // Custom selection styling (bypasses MUI's single-select limitation)
+    "& .MuiDataGrid-row.row-selected": {
+      backgroundColor: "#1e6bbd !important",
       color: "#fff",
     },
-    "& .MuiDataGrid-row.Mui-selected:hover": {
-      backgroundColor: "#2277cc",
+    "& .MuiDataGrid-row.row-selected:hover": {
+      backgroundColor: "#2277cc !important",
       color: "#fff",
     },
-    "& .MuiDataGrid-row.Mui-selected .MuiDataGrid-cell": {
+    "& .MuiDataGrid-row.row-selected .MuiDataGrid-cell": {
       color: "#fff",
     },
     "& .MuiDataGrid-cell:focus, & .MuiDataGrid-columnHeader:focus": {
@@ -396,10 +396,9 @@ export default function SongsDataGrid({
     onPlaySong?.(params.row);
   };
 
-  // Build selection model - supports multiple selection
-  const rowSelectionModel = useMemo(() => {
-    if (selectedIds.length === 0) return undefined;
-    return { type: "include" as const, ids: new Set(selectedIds) };
+  // Custom row class for selection (bypasses MUI's single-select limitation)
+  const getRowClassName = useCallback((params: { id: string | number }) => {
+    return selectedIds.includes(String(params.id)) ? "row-selected" : "";
   }, [selectedIds]);
 
   return (
@@ -419,7 +418,7 @@ export default function SongsDataGrid({
           onSortModelChange={handleSortModelChange}
           onRowDoubleClick={handleRowDoubleClick}
           onRowClick={handleRowClick}
-          rowSelectionModel={rowSelectionModel}
+          getRowClassName={getRowClassName}
           disableRowSelectionOnClick
           disableColumnMenu
           hideFooter
