@@ -36,6 +36,70 @@ const fieldToColumn: Record<string, SortColumn> = {
   fileSize: "fileSize",
 };
 
+const FONT_FAMILY = "'Lucida Grande', 'Lucida Sans Unicode', 'Helvetica Neue', Helvetica, Arial, sans-serif";
+
+// Static styles - defined outside component to prevent re-renders
+const dataGridSx = {
+  border: "none",
+  backgroundColor: "var(--background)",
+  color: "var(--foreground)",
+  fontFamily: FONT_FAMILY,
+  "& .MuiDataGrid-cell": {
+    border: "none",
+    fontSize: "11px",
+    padding: "0 6px",
+    fontFamily: FONT_FAMILY,
+    userSelect: "none",
+  },
+  "& .MuiDataGrid-columnHeaders": {
+    border: "none",
+    borderBottom: "1px solid var(--border)",
+    backgroundColor: "var(--background)",
+    minHeight: "24px !important",
+    maxHeight: "24px !important",
+  },
+  "& .MuiDataGrid-columnHeader": {
+    backgroundColor: "var(--background)",
+  },
+  "& .MuiDataGrid-columnHeaderTitle": {
+    fontSize: "10px",
+    fontWeight: 500,
+    color: "var(--muted)",
+    fontFamily: FONT_FAMILY,
+  },
+  "& .MuiDataGrid-footerContainer": {
+    display: "none",
+  },
+  // Alternating row colors
+  "& .MuiDataGrid-row:nth-of-type(odd)": {
+    backgroundColor: "var(--background)",
+  },
+  "& .MuiDataGrid-row:nth-of-type(even)": {
+    backgroundColor: "var(--sidebar-bg)",
+  },
+  "& .MuiDataGrid-row:hover": {
+    backgroundColor: "var(--hover)",
+  },
+  "& .MuiDataGrid-cell:focus, & .MuiDataGrid-columnHeader:focus": {
+    outline: "none",
+  },
+  "& .MuiDataGrid-cell:focus-within, & .MuiDataGrid-columnHeader:focus-within": {
+    outline: "none",
+  },
+  "& .MuiDataGrid-sortIcon": {
+    color: "var(--muted)",
+  },
+  "& .MuiDataGrid-menuIcon": {
+    color: "var(--muted)",
+  },
+  "& .MuiDataGrid-columnSeparator": {
+    display: "none",
+  },
+  "& .MuiDataGrid-row": {
+    userSelect: "none",
+  },
+};
+
 export default function SongsDataGrid({
   songs,
   searchQuery,
@@ -75,16 +139,6 @@ export default function SongsDataGrid({
   const containerRef = useRef<HTMLDivElement>(null);
   const apiRef = useGridApiRef();
 
-  // Track focused row for keyboard navigation
-  const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
-
-  // Use ref for selectedIds to avoid re-creating getRowClassName callback
-  const selectedIdsRef = useRef<string[]>(selectedIds);
-  selectedIdsRef.current = selectedIds;
-
-  // Track selection as a Set for fast lookup
-  const selectedIdsSet = useMemo(() => new Set(selectedIds), [selectedIds]);
-
   // Clear selection on Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -96,98 +150,22 @@ export default function SongsDataGrid({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedIds.length, onSelectionChange]);
 
-  // Create MUI theme based on CSS variables - using Lucida Grande (iTunes 2006 style)
+  // Create MUI theme - memoized with empty deps since it doesn't change
   const theme = useMemo(
     () =>
       createTheme({
         palette: {
-          mode: document.documentElement.classList.contains("dark") ? "dark" : "light",
+          mode: typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light",
         },
         typography: {
-          fontFamily: "'Lucida Grande', 'Lucida Sans Unicode', 'Helvetica Neue', Helvetica, Arial, sans-serif",
+          fontFamily: FONT_FAMILY,
           fontSize: 12,
         },
       }),
     []
   );
 
-  const FONT_FAMILY = "'Lucida Grande', 'Lucida Sans Unicode', 'Helvetica Neue', Helvetica, Arial, sans-serif";
-
-  // DataGrid sx styles - narrow rows, alternating colors, no hard borders
-  const dataGridSx = {
-    border: "none",
-    backgroundColor: "var(--background)",
-    color: "var(--foreground)",
-    fontFamily: FONT_FAMILY,
-    "& .MuiDataGrid-cell": {
-      border: "none",
-      fontSize: "11px",
-      padding: "0 6px",
-      fontFamily: FONT_FAMILY,
-      userSelect: "none",
-    },
-    "& .MuiDataGrid-columnHeaders": {
-      border: "none",
-      borderBottom: "1px solid var(--border)",
-      backgroundColor: "var(--background)",
-      minHeight: "24px !important",
-      maxHeight: "24px !important",
-    },
-    "& .MuiDataGrid-columnHeader": {
-      backgroundColor: "var(--background)",
-    },
-    "& .MuiDataGrid-columnHeaderTitle": {
-      fontSize: "10px",
-      fontWeight: 500,
-      color: "var(--muted)",
-      fontFamily: FONT_FAMILY,
-    },
-    "& .MuiDataGrid-footerContainer": {
-      display: "none",
-    },
-    // Alternating row colors
-    "& .MuiDataGrid-row:nth-of-type(odd)": {
-      backgroundColor: "var(--background)",
-    },
-    "& .MuiDataGrid-row:nth-of-type(even)": {
-      backgroundColor: "var(--sidebar-bg)",
-    },
-    "& .MuiDataGrid-row:hover": {
-      backgroundColor: "var(--hover)",
-    },
-    // Custom selection styling (bypasses MUI's single-select limitation)
-    "& .MuiDataGrid-row.row-selected": {
-      backgroundColor: "#1e6bbd !important",
-      color: "#fff",
-    },
-    "& .MuiDataGrid-row.row-selected:hover": {
-      backgroundColor: "#2277cc !important",
-      color: "#fff",
-    },
-    "& .MuiDataGrid-row.row-selected .MuiDataGrid-cell": {
-      color: "#fff",
-    },
-    "& .MuiDataGrid-cell:focus, & .MuiDataGrid-columnHeader:focus": {
-      outline: "none",
-    },
-    "& .MuiDataGrid-cell:focus-within, & .MuiDataGrid-columnHeader:focus-within": {
-      outline: "none",
-    },
-    "& .MuiDataGrid-sortIcon": {
-      color: "var(--muted)",
-    },
-    "& .MuiDataGrid-menuIcon": {
-      color: "var(--muted)",
-    },
-    "& .MuiDataGrid-columnSeparator": {
-      display: "none",
-    },
-    "& .MuiDataGrid-row": {
-      userSelect: "none",
-    },
-  };
-
-  // Filter and sort songs
+  // Filter and sort songs - this is our source of truth for display order
   const displayedSongs = useMemo(() => {
     let result = songs;
 
@@ -196,15 +174,15 @@ export default function SongsDataGrid({
       result = searchSongs(songs, searchQuery);
     }
 
-    // Apply sorting
+    // Apply sorting - we handle this ourselves, not DataGrid
     result = sortSongs(result, sortColumn, sortDirection);
 
     return result;
   }, [songs, searchQuery, sortColumn, sortDirection]);
 
-  // Column definitions
-  const allColumns: GridColDef[] = useMemo(
-    () => [
+  // Column definitions - memoized to prevent re-renders
+  const columns: GridColDef[] = useMemo(() => {
+    const allCols: GridColDef[] = [
       {
         field: "playing",
         headerName: "",
@@ -221,60 +199,63 @@ export default function SongsDataGrid({
             </svg>
           ) : null;
         },
-      } as GridColDef,
+      },
       {
         field: "trackNumber",
         headerName: "#",
         width: 32,
+        sortable: true,
         renderCell: (params: GridRenderCellParams) => params.value || "",
-      } as GridColDef,
+      },
       {
         field: "title",
         headerName: "Title",
         flex: 1.5,
         minWidth: 120,
-      } as GridColDef,
+        sortable: true,
+      },
       {
         field: "artist",
         headerName: "Artist",
         flex: 1,
         minWidth: 80,
-      } as GridColDef,
+        sortable: true,
+      },
       {
         field: "album",
         headerName: "Album",
         flex: 1,
         minWidth: 80,
-      } as GridColDef,
+        sortable: true,
+      },
       {
         field: "year",
         headerName: "Year",
         width: 44,
+        sortable: true,
         renderCell: (params: GridRenderCellParams) => params.value || "",
-      } as GridColDef,
+      },
       {
         field: "duration",
         headerName: "Time",
         width: 48,
+        sortable: true,
         renderCell: (params: GridRenderCellParams) => formatDuration(params.value || 0),
-      } as GridColDef,
+      },
       {
         field: "fileSize",
         headerName: "Size",
         width: 50,
+        sortable: true,
         renderCell: (params: GridRenderCellParams) => formatFileSize(params.value || 0),
-      } as GridColDef,
-    ],
-    [currentPlayingSongId]
-  );
+      },
+    ];
 
-  const columns = useMemo(
-    () => allColumns.filter((col) => visibleColumns[col.field as keyof typeof visibleColumns] !== false),
-    [allColumns, visibleColumns]
-  );
+    return allCols.filter((col) => visibleColumns[col.field as keyof typeof visibleColumns] !== false);
+  }, [currentPlayingSongId, visibleColumns]);
 
-  // Handle sort model change
-  const handleSortModelChange = (model: GridSortModel) => {
+  // Handle sort model change - user clicked a column header
+  const handleSortModelChange = useCallback((model: GridSortModel) => {
     if (model.length > 0) {
       const { field, sort } = model[0];
       const column = fieldToColumn[field];
@@ -282,31 +263,26 @@ export default function SongsDataGrid({
         onSortChange(column, sort || "asc");
       }
     }
-  };
+  }, [onSortChange]);
 
-  // Get range of row IDs using the actual grid row order (not our sorted array)
+  // Get range of row IDs between anchor and target
   const getRowRange = useCallback((startId: string, endId: string): string[] => {
-    // Use apiRef to get the actual row order as displayed in the grid
-    const allRowIds = apiRef.current?.getAllRowIds?.() || [];
-    if (allRowIds.length === 0) {
-      // Fallback to displayedSongs if apiRef not ready
-      const startIdx = displayedSongs.findIndex((r) => r.id === startId);
-      const endIdx = displayedSongs.findIndex((r) => r.id === endId);
-      if (startIdx === -1 || endIdx === -1) return [endId];
-      const minIdx = Math.min(startIdx, endIdx);
-      const maxIdx = Math.max(startIdx, endIdx);
-      return displayedSongs.slice(minIdx, maxIdx + 1).map((r) => r.id || "").filter(Boolean);
-    }
+    // Use displayedSongs directly - it matches display order since we use sortingMode="server"
+    const startIdx = displayedSongs.findIndex((r) => r.id === startId);
+    const endIdx = displayedSongs.findIndex((r) => r.id === endId);
 
-    const startIdx = allRowIds.findIndex((id) => String(id) === startId);
-    const endIdx = allRowIds.findIndex((id) => String(id) === endId);
     if (startIdx === -1 || endIdx === -1) return [endId];
+
     const minIdx = Math.min(startIdx, endIdx);
     const maxIdx = Math.max(startIdx, endIdx);
-    return allRowIds.slice(minIdx, maxIdx + 1).map(String);
-  }, [apiRef, displayedSongs]);
 
-  // Handle row click - simple model: click = single select, shift+click = range select
+    return displayedSongs
+      .slice(minIdx, maxIdx + 1)
+      .map((r) => r.id || "")
+      .filter(Boolean);
+  }, [displayedSongs]);
+
+  // Handle row click
   const handleRowClick = useCallback((params: GridRowParams, event: React.MouseEvent) => {
     const rowId = String(params.id);
     const isShift = event.shiftKey;
@@ -320,25 +296,22 @@ export default function SongsDataGrid({
       anchorRowRef.current = rowId;
       onSelectionChange([rowId]);
     }
-    setFocusedRowId(rowId);
   }, [onSelectionChange, getRowRange]);
 
   // Handle keyboard navigation with shift+arrow for range selection
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Only handle if container is focused or has focus within
       if (!containerRef.current?.contains(document.activeElement)) return;
 
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
-        const currentId = focusedRowId || selectedIds[selectedIds.length - 1];
+
+        const currentId = selectedIds[selectedIds.length - 1];
         if (!currentId) {
-          // No selection, select first row
           if (displayedSongs.length > 0) {
             const firstId = displayedSongs[0].id || "";
             anchorRowRef.current = firstId;
             onSelectionChange([firstId]);
-            setFocusedRowId(firstId);
           }
           return;
         }
@@ -354,35 +327,31 @@ export default function SongsDataGrid({
         if (!nextId) return;
 
         if (e.shiftKey && anchorRowRef.current) {
-          // Shift+Arrow: extend selection from anchor to new position
           const rangeIds = getRowRange(anchorRowRef.current, nextId);
           onSelectionChange(rangeIds);
         } else {
-          // Arrow without shift: move to next row, set as new anchor
           anchorRowRef.current = nextId;
           onSelectionChange([nextId]);
         }
-        setFocusedRowId(nextId);
 
-        // Scroll the row into view using apiRef
+        // Scroll row into view
         try {
           apiRef.current?.scrollToIndexes({ rowIndex: nextIdx });
         } catch {
-          // Ignore scroll errors
+          // Ignore
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [focusedRowId, selectedIds, displayedSongs, onSelectionChange, getRowRange, apiRef]);
+  }, [selectedIds, displayedSongs, onSelectionChange, getRowRange, apiRef]);
 
   // Handle context menu
-  const handleContextMenu = (event: React.MouseEvent) => {
+  const handleContextMenu = useCallback((event: React.MouseEvent) => {
     event.preventDefault();
     const target = event.target as HTMLElement;
 
-    // Check if right-clicking on header
     const header = target.closest(".MuiDataGrid-columnHeaders");
     if (header) {
       setHeaderContextMenu({ x: event.clientX, y: event.clientY });
@@ -394,14 +363,13 @@ export default function SongsDataGrid({
       const songId = row.getAttribute("data-id");
       const song = songs.find((s) => s.id === songId);
       if (song) {
-        // If right-clicked song is not selected, select it
         if (!selectedIds.includes(songId || "")) {
           onSelectionChange([songId || ""]);
         }
         setContextMenu({ x: event.clientX, y: event.clientY, song });
       }
     }
-  };
+  }, [songs, selectedIds, onSelectionChange]);
 
   const closeContextMenu = () => setContextMenu(null);
   const closeHeaderContextMenu = () => setHeaderContextMenu(null);
@@ -410,59 +378,57 @@ export default function SongsDataGrid({
     setVisibleColumns((prev) => ({ ...prev, [column]: !prev[column] }));
   };
 
-  // Handle double-click to play
-  const handleRowDoubleClick = (params: { row: Song }) => {
+  const handleRowDoubleClick = useCallback((params: { row: Song }) => {
     onPlaySong?.(params.row);
-  };
+  }, [onPlaySong]);
 
-  // Custom row class for selection (bypasses MUI's single-select limitation)
-  const getRowClassName = useCallback((params: { id: string | number }) => {
-    return selectedIdsSet.has(String(params.id)) ? "row-selected" : "";
-  }, [selectedIdsSet]);
+  // Generate dynamic CSS for selection - this avoids re-rendering DataGrid
+  const selectionStyles = useMemo(() => {
+    if (selectedIds.length === 0) return "";
 
-  // Save scroll position before selection changes cause re-render
-  const scrollPositionRef = useRef<{ top: number; left: number } | null>(null);
+    const selectors = selectedIds
+      .map((id) => `.MuiDataGrid-row[data-id="${id}"]`)
+      .join(",\n");
 
-  // Capture scroll position before render
-  useEffect(() => {
-    const virtualScroller = containerRef.current?.querySelector(".MuiDataGrid-virtualScroller");
-    if (virtualScroller) {
-      scrollPositionRef.current = {
-        top: virtualScroller.scrollTop,
-        left: virtualScroller.scrollLeft,
-      };
-    }
-  });
-
-  // Restore scroll position after render
-  useEffect(() => {
-    if (scrollPositionRef.current) {
-      const virtualScroller = containerRef.current?.querySelector(".MuiDataGrid-virtualScroller");
-      if (virtualScroller) {
-        virtualScroller.scrollTop = scrollPositionRef.current.top;
-        virtualScroller.scrollLeft = scrollPositionRef.current.left;
+    return `
+      ${selectors} {
+        background-color: #1e6bbd !important;
+        color: #fff !important;
       }
-    }
+      ${selectors}:hover {
+        background-color: #2277cc !important;
+      }
+      ${selectors} .MuiDataGrid-cell {
+        color: #fff !important;
+      }
+    `;
   }, [selectedIds]);
+
+  // Sort model for display only (we handle actual sorting ourselves)
+  const sortModel = useMemo(() => [{ field: sortColumn, sort: sortDirection }], [sortColumn, sortDirection]);
 
   return (
     <ThemeProvider theme={theme}>
+      {/* Dynamic selection styles - injected as CSS to avoid DataGrid re-renders */}
+      <style>{selectionStyles}</style>
+
       <div ref={containerRef} className="h-full w-full relative" onContextMenu={handleContextMenu} tabIndex={0}>
-        {/* Selection count indicator when multiple selected */}
+        {/* Selection count indicator */}
         {selectedIds.length > 1 && (
           <div className="absolute top-2 right-2 z-10 px-2 py-1 bg-blue-500 text-white text-[10px] rounded shadow">
             {selectedIds.length} selected
           </div>
         )}
+
         <DataGrid
           apiRef={apiRef}
           rows={displayedSongs}
           columns={columns}
-          sortModel={[{ field: sortColumn, sort: sortDirection }]}
+          sortingMode="server"
+          sortModel={sortModel}
           onSortModelChange={handleSortModelChange}
           onRowDoubleClick={handleRowDoubleClick}
           onRowClick={handleRowClick}
-          getRowClassName={getRowClassName}
           disableRowSelectionOnClick
           disableColumnMenu
           hideFooter
@@ -473,7 +439,6 @@ export default function SongsDataGrid({
 
         {/* Context Menu */}
         {contextMenu && (() => {
-          // If clicked song is part of a multi-selection, operate on all selected
           const isSelectedSong = selectedIds.includes(contextMenu.song.id || "");
           const targetSongs = (isSelectedSong && selectedIds.length > 1)
             ? songs.filter((s) => s.id && selectedIds.includes(s.id))
@@ -489,7 +454,7 @@ export default function SongsDataGrid({
                   left: contextMenu.x,
                   top: contextMenu.y,
                   backgroundColor: "var(--background)",
-                  fontFamily: "'Lucida Grande', 'Lucida Sans Unicode', sans-serif",
+                  fontFamily: FONT_FAMILY,
                 }}
               >
                 {onPlaySong && count === 1 && (
@@ -576,7 +541,7 @@ export default function SongsDataGrid({
           );
         })()}
 
-        {/* Header Context Menu for Column Visibility */}
+        {/* Header Context Menu */}
         {headerContextMenu && (
           <>
             <div className="fixed inset-0 z-40" onClick={closeHeaderContextMenu} />
@@ -586,7 +551,7 @@ export default function SongsDataGrid({
                 left: headerContextMenu.x,
                 top: headerContextMenu.y,
                 backgroundColor: "var(--background)",
-                fontFamily: "'Lucida Grande', 'Lucida Sans Unicode', sans-serif",
+                fontFamily: FONT_FAMILY,
               }}
             >
               <div className="px-3 py-1 text-[10px] text-[--muted] font-medium">Show Columns</div>
