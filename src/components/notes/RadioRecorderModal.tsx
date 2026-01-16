@@ -4,11 +4,12 @@ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { DataGrid, GridColDef, GridRenderCellParams, GridRowParams, useGridApiRef } from "@mui/x-data-grid";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { Song, formatDuration } from "@/lib/songs";
-import { uploadRecordedAudio } from "@/lib/music-storage";
+import { uploadRecordedAudio, sliceAudioBlob } from "@/lib/music-storage";
 import { identifyAudio, IdentificationCandidate } from "@/lib/audio-fingerprint";
 import WaveformTimeline from "./WaveformTimeline";
 
 const FONT_FAMILY = "'Lucida Grande', 'Lucida Sans Unicode', 'Helvetica Neue', Helvetica, Arial, sans-serif";
+const MIN_SONG_DURATION = 30; // Minimum 30 seconds for a valid song
 
 // MUI DataGrid styles
 const dataGridSx = {
@@ -75,7 +76,7 @@ interface Split {
 
 interface RecordedSong {
   id: string;
-  segmentIndex: number;
+  trackNumber: number;
   startTime: number;
   endTime: number;
   duration: number;
@@ -126,6 +127,10 @@ export default function RadioRecorderModal({
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [autocompleteField, setAutocompleteField] = useState<"artist" | "album">("artist");
 
+  // Batch edit state
+  const [batchArtist, setBatchArtist] = useState("");
+  const [batchAlbum, setBatchAlbum] = useState("");
+
   // Upload state
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
@@ -140,6 +145,8 @@ export default function RadioRecorderModal({
   const silenceStartRef = useRef<number | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const waveformSampleIntervalRef = useRef<number>(0);
+  const lastSplitTimeRef = useRef<number>(0);
+  const songIdCounterRef = useRef<number>(0);
   const apiRef = useGridApiRef();
 
   // Get unique artists and albums
@@ -168,56 +175,40 @@ export default function RadioRecorderModal({
     typography: { fontFamily: FONT_FAMILY, fontSize: 12 },
   }), []);
 
-  // Compute segments from splits
-  const segments = useMemo(() => {
-    const sortedSplits = [...splits].sort((a, b) => a.time - b.time);
-    const times = [0, ...sortedSplits.map(s => s.time), currentDuration];
-    const result: Array<{ index: number; start: number; end: number; duration: number }> = [];
-
-    for (let i = 0; i < times.length - 1; i++) {
-      const duration = times[i + 1] - times[i];
-      if (duration >= 5) { // Only count segments >= 5 seconds
-        result.push({ index: i, start: times[i], end: times[i + 1], duration });
-      }
-    }
-    return result;
-  }, [splits, currentDuration]);
-
-  // Update recorded songs when segments change (after recording)
-  useEffect(() => {
-    if (isRecording || !recordingBlob) return;
-
-    // Create/update song entries for each segment
-    const newSongs: RecordedSong[] = segments.map((seg, i) => {
-      // Try to keep existing song data if segment matches
-      const existing = recordedSongs.find(s => s.segmentIndex === i && Math.abs(s.startTime - seg.start) < 1);
-      if (existing) {
-        return { ...existing, startTime: seg.start, endTime: seg.end, duration: seg.duration };
-      }
-      return {
-        id: `song-${i}-${Date.now()}`,
-        segmentIndex: i,
-        startTime: seg.start,
-        endTime: seg.end,
-        duration: seg.duration,
-        title: `Track ${i + 1}`,
-        artist: "",
-        album: "",
-        year: "",
-        genre: "",
-        status: "pending",
-      };
-    });
-
-    setRecordedSongs(newSongs);
-  }, [segments, isRecording, recordingBlob]);
-
   // Clean up on unmount
   useEffect(() => {
     return () => {
       stopRecording();
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
+  }, []);
+
+  // When a split occurs during recording, create a track for the previous segment
+  const addTrackFromSplit = useCallback((splitTime: number) => {
+    const startTime = lastSplitTimeRef.current;
+    const duration = splitTime - startTime;
+
+    // Only add if this looks like a real song (>30s)
+    if (duration >= MIN_SONG_DURATION) {
+      songIdCounterRef.current++;
+      const trackNum = songIdCounterRef.current;
+      const newSong: RecordedSong = {
+        id: `song-${trackNum}-${Date.now()}`,
+        trackNumber: trackNum,
+        startTime,
+        endTime: splitTime,
+        duration,
+        title: `Track ${trackNum}`,
+        artist: "",
+        album: "",
+        year: "",
+        genre: "",
+        status: "pending",
+      };
+      setRecordedSongs(prev => [...prev, newSong]);
+    }
+
+    lastSplitTimeRef.current = splitTime;
   }, []);
 
   // Start recording
@@ -229,6 +220,8 @@ export default function RadioRecorderModal({
     setRecordedSongs([]);
     setRecordingBlob(null);
     waveformSampleIntervalRef.current = 0;
+    lastSplitTimeRef.current = 0;
+    songIdCounterRef.current = 0;
 
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
@@ -305,11 +298,11 @@ export default function RadioRecorderModal({
       const elapsed = (Date.now() - recordingStartTimeRef.current) / 1000;
       setCurrentDuration(elapsed);
 
-      // Sample waveform data (about 2 samples per second for smooth display)
+      // Sample waveform data (~4 samples per second)
       waveformSampleIntervalRef.current++;
-      if (waveformSampleIntervalRef.current >= 30) { // ~2x per second at 60fps
+      if (waveformSampleIntervalRef.current >= 15) {
         waveformSampleIntervalRef.current = 0;
-        setLiveWaveformData(prev => [...prev, Math.min(1, rms * 3)]); // Amplify for visibility
+        setLiveWaveformData(prev => [...prev, Math.min(1, rms * 3)]);
       }
 
       // Auto-detect silence for split markers
@@ -324,10 +317,11 @@ export default function RadioRecorderModal({
 
           if (silenceDurationMs >= silenceDurationSetting * 1000) {
             const splitTime = elapsed;
-            // Only add if not too close to last split
-            const lastSplit = splits[splits.length - 1];
-            if (!lastSplit || splitTime - lastSplit.time > 10) {
-              setSplits(prev => [...prev, { id: `split-${Date.now()}`, time: splitTime }]);
+            // Only add if not too close to last split (min 30s apart)
+            if (splitTime - lastSplitTimeRef.current > MIN_SONG_DURATION) {
+              const newSplit = { id: `split-${Date.now()}`, time: splitTime };
+              setSplits(prev => [...prev, newSplit]);
+              addTrackFromSplit(splitTime);
             }
             silenceStartRef.current = null;
             setSilenceProgress(0);
@@ -345,7 +339,7 @@ export default function RadioRecorderModal({
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [isRecording, autoSplit, silenceThreshold, silenceDurationSetting, splits]);
+  }, [isRecording, autoSplit, silenceThreshold, silenceDurationSetting, addTrackFromSplit]);
 
   // Finish recording
   const finishRecording = useCallback(() => {
@@ -353,10 +347,33 @@ export default function RadioRecorderModal({
       mediaRecorderRef.current.stop();
     }
 
+    const finalDuration = (Date.now() - recordingStartTimeRef.current) / 1000;
+
     setTimeout(() => {
       const blob = new Blob(chunksRef.current, { type: "audio/webm" });
       setRecordingBlob(blob);
       setIsRecording(false);
+
+      // Add final track if there's remaining audio
+      const lastStart = lastSplitTimeRef.current;
+      const lastDuration = finalDuration - lastStart;
+      if (lastDuration >= MIN_SONG_DURATION) {
+        songIdCounterRef.current++;
+        const trackNum = songIdCounterRef.current;
+        setRecordedSongs(prev => [...prev, {
+          id: `song-${trackNum}-${Date.now()}`,
+          trackNumber: trackNum,
+          startTime: lastStart,
+          endTime: finalDuration,
+          duration: lastDuration,
+          title: `Track ${trackNum}`,
+          artist: "",
+          album: "",
+          year: "",
+          genre: "",
+          status: "pending",
+        }]);
+      }
 
       // Clean up
       if (mediaStreamRef.current) mediaStreamRef.current.getTracks().forEach(track => track.stop());
@@ -394,11 +411,21 @@ export default function RadioRecorderModal({
   const tryIdentifySong = useCallback(async (songId: string) => {
     if (!recordingBlob) return;
 
+    const song = recordedSongs.find(s => s.id === songId);
+    if (!song) return;
+
     setRecordedSongs(prev => prev.map(s => s.id === songId ? { ...s, status: "identifying" as const } : s));
 
     try {
-      // For now, use the whole blob - in production you'd slice it
-      const result = await identifyAudio(recordingBlob);
+      // Slice the recording to just this song's segment
+      const { blob: segmentBlob } = await sliceAudioBlob(
+        recordingBlob,
+        song.startTime,
+        song.endTime,
+        true // trim silence
+      );
+
+      const result = await identifyAudio(segmentBlob);
 
       if (result.success && result.candidates.length > 0) {
         const best = result.candidates[0];
@@ -408,18 +435,26 @@ export default function RadioRecorderModal({
             : s
         ));
       } else {
-        setRecordedSongs(prev => prev.map(s => s.id === songId ? { ...s, status: "manual" as const } : s));
+        setRecordedSongs(prev => prev.map(s => s.id === songId ? { ...s, status: "failed" as const } : s));
       }
     } catch (error) {
       console.error("Identification failed:", error);
       setRecordedSongs(prev => prev.map(s => s.id === songId ? { ...s, status: "failed" as const } : s));
     }
-  }, [recordingBlob]);
+  }, [recordingBlob, recordedSongs]);
 
   // Update song field
   const updateSongField = useCallback((songId: string, field: keyof RecordedSong, value: string) => {
     setRecordedSongs(prev => prev.map(s => s.id === songId ? { ...s, [field]: value } : s));
   }, []);
+
+  // Batch update selected songs
+  const applyBatchEdit = useCallback((field: "artist" | "album", value: string) => {
+    if (!value.trim() || selectedIds.length === 0) return;
+    setRecordedSongs(prev => prev.map(s =>
+      selectedIds.includes(s.id) ? { ...s, [field]: value } : s
+    ));
+  }, [selectedIds]);
 
   // Delete songs
   const deleteSongs = useCallback((ids: string[]) => {
@@ -478,13 +513,23 @@ export default function RadioRecorderModal({
       setUploadProgress({ current: i, total: recordedSongs.length });
 
       try {
-        const uploaded = await uploadRecordedAudio(recordingBlob, libraryId, {
-          title: song.title,
-          artist: song.artist,
-          album: song.album,
+        // Slice the recording to just this song's segment
+        const { blob: segmentBlob, duration: trimmedDuration } = await sliceAudioBlob(
+          recordingBlob,
+          song.startTime,
+          song.endTime,
+          true // trim silence
+        );
+
+        // Upload the sliced segment
+        const uploaded = await uploadRecordedAudio(segmentBlob, libraryId, {
+          title: song.title || `Track ${song.trackNumber}`,
+          artist: song.artist || "Unknown Artist",
+          album: song.album || "",
           year: song.year,
           genre: song.genre,
-          duration: song.duration * 1000,
+          duration: trimmedDuration,
+          trackNumber: song.trackNumber,
         });
         uploadedSongs.push(uploaded);
       } catch (error) {
@@ -497,8 +542,17 @@ export default function RadioRecorderModal({
     onClose();
   }, [recordedSongs, recordingBlob, libraryId, onSongsAdded, onClose]);
 
+  // Input style (fixed for visibility)
+  const inputClassName = "w-full px-1 py-0.5 text-xs border border-blue-500 rounded outline-none bg-white text-gray-900";
+
   // DataGrid columns
   const columns: GridColDef[] = useMemo(() => [
+    {
+      field: "trackNumber", headerName: "#", width: 32, sortable: false,
+      renderCell: (params: GridRenderCellParams) => (
+        <span className="text-[--muted]">{params.value}</span>
+      ),
+    },
     {
       field: "title", headerName: "Title", flex: 1.5, minWidth: 120,
       renderCell: (params: GridRenderCellParams) => {
@@ -507,7 +561,7 @@ export default function RadioRecorderModal({
           return (
             <input autoFocus value={editValue} onChange={(e) => setEditValue(e.target.value)}
               onBlur={finishEditing} onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") finishEditing(); }}
-              className="w-full px-1 text-xs bg-white border border-blue-500 rounded outline-none" style={{ fontFamily: FONT_FAMILY }}
+              className={inputClassName} style={{ fontFamily: FONT_FAMILY }}
               onClick={(e) => e.stopPropagation()} />
           );
         }
@@ -527,12 +581,12 @@ export default function RadioRecorderModal({
             <div className="relative w-full">
               <input autoFocus value={editValue} onChange={(e) => setEditValue(e.target.value)}
                 onBlur={() => setTimeout(finishEditing, 150)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") finishEditing(); }}
-                className="w-full px-1 text-xs bg-white border border-blue-500 rounded outline-none" style={{ fontFamily: FONT_FAMILY }}
+                className={inputClassName} style={{ fontFamily: FONT_FAMILY }}
                 onClick={(e) => e.stopPropagation()} />
               {showAutocomplete && autocompleteField === "artist" && filteredSuggestions.length > 0 && (
-                <div className="absolute top-full left-0 z-50 mt-1 w-48 max-h-32 overflow-y-auto bg-white border border-[--border] rounded shadow-lg">
+                <div className="absolute top-full left-0 z-50 mt-1 w-48 max-h-32 overflow-y-auto bg-white border border-gray-300 rounded shadow-lg">
                   {filteredSuggestions.map((s) => (
-                    <button key={s} type="button" className="w-full px-2 py-1 text-left text-xs hover:bg-[--hover] truncate"
+                    <button key={s} type="button" className="w-full px-2 py-1 text-left text-xs text-gray-900 hover:bg-gray-100 truncate"
                       onMouseDown={(e) => { e.preventDefault(); setEditValue(s); updateSongField(params.row.id, "artist", s); setShowAutocomplete(false); }}>
                       {s}
                     </button>
@@ -558,12 +612,12 @@ export default function RadioRecorderModal({
             <div className="relative w-full">
               <input autoFocus value={editValue} onChange={(e) => setEditValue(e.target.value)}
                 onBlur={() => setTimeout(finishEditing, 150)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") finishEditing(); }}
-                className="w-full px-1 text-xs bg-white border border-blue-500 rounded outline-none" style={{ fontFamily: FONT_FAMILY }}
+                className={inputClassName} style={{ fontFamily: FONT_FAMILY }}
                 onClick={(e) => e.stopPropagation()} />
               {showAutocomplete && autocompleteField === "album" && filteredSuggestions.length > 0 && (
-                <div className="absolute top-full left-0 z-50 mt-1 w-48 max-h-32 overflow-y-auto bg-white border border-[--border] rounded shadow-lg">
+                <div className="absolute top-full left-0 z-50 mt-1 w-48 max-h-32 overflow-y-auto bg-white border border-gray-300 rounded shadow-lg">
                   {filteredSuggestions.map((s) => (
-                    <button key={s} type="button" className="w-full px-2 py-1 text-left text-xs hover:bg-[--hover] truncate"
+                    <button key={s} type="button" className="w-full px-2 py-1 text-left text-xs text-gray-900 hover:bg-gray-100 truncate"
                       onMouseDown={(e) => { e.preventDefault(); setEditValue(s); updateSongField(params.row.id, "album", s); setShowAutocomplete(false); }}>
                       {s}
                     </button>
@@ -581,25 +635,6 @@ export default function RadioRecorderModal({
       },
     },
     {
-      field: "year", headerName: "Year", width: 50,
-      renderCell: (params: GridRenderCellParams) => {
-        const isEditing = editingCell?.id === params.row.id && editingCell?.field === "year";
-        if (isEditing) {
-          return (
-            <input autoFocus value={editValue} onChange={(e) => setEditValue(e.target.value)}
-              onBlur={finishEditing} onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") finishEditing(); }}
-              className="w-full px-1 text-xs bg-white border border-blue-500 rounded outline-none" style={{ fontFamily: FONT_FAMILY }}
-              onClick={(e) => e.stopPropagation()} />
-          );
-        }
-        return (
-          <span className="cursor-text hover:underline" onClick={(e) => { e.stopPropagation(); startEditing(params.row.id, "year", params.value || ""); }}>
-            {params.value || <span className="text-[--muted]">—</span>}
-          </span>
-        );
-      },
-    },
-    {
       field: "duration", headerName: "Time", width: 50,
       renderCell: (params: GridRenderCellParams) => formatDuration(params.value || 0),
     },
@@ -611,6 +646,9 @@ export default function RadioRecorderModal({
         }
         if (params.value === "identified") {
           return <span className="text-[9px] text-green-600">✓ found</span>;
+        }
+        if (params.value === "failed") {
+          return <span className="text-[9px] text-[--muted]">not found</span>;
         }
         if (params.value === "pending" && recordingBlob) {
           return (
@@ -634,7 +672,7 @@ export default function RadioRecorderModal({
         </button>
       ),
     },
-  ], [editingCell, editValue, finishEditing, startEditing, showAutocomplete, autocompleteField, filteredSuggestions, updateSongField, deleteSongs, recordingBlob, tryIdentifySong]);
+  ], [editingCell, editValue, finishEditing, startEditing, showAutocomplete, autocompleteField, filteredSuggestions, updateSongField, deleteSongs, recordingBlob, tryIdentifySong, inputClassName]);
 
   // Selection styles
   const selectionStyles = useMemo(() => {
@@ -721,7 +759,7 @@ export default function RadioRecorderModal({
               <span className="w-5 tabular-nums">{silenceDurationSetting}s</span>
             </label>
             <span className="ml-auto">
-              {splits.length} split{splits.length !== 1 ? 's' : ''} · {segments.length} track{segments.length !== 1 ? 's' : ''}
+              {recordedSongs.length} track{recordedSongs.length !== 1 ? 's' : ''}
             </span>
           </div>
         )}
@@ -738,6 +776,47 @@ export default function RadioRecorderModal({
           />
         )}
 
+        {/* Batch edit bar - shown when multiple tracks selected */}
+        {selectedIds.length > 1 && !isRecording && (
+          <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 border-b border-blue-200">
+            <span className="text-xs text-blue-700 font-medium">{selectedIds.length} selected</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Set artist..."
+                value={batchArtist}
+                onChange={(e) => setBatchArtist(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { applyBatchEdit("artist", batchArtist); setBatchArtist(""); } }}
+                className="px-2 py-1 text-xs border border-blue-300 rounded bg-white text-gray-900 w-32"
+              />
+              <button type="button" onClick={() => { applyBatchEdit("artist", batchArtist); setBatchArtist(""); }}
+                className="px-2 py-1 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-100 rounded"
+                disabled={!batchArtist.trim()}>
+                Apply
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Set album..."
+                value={batchAlbum}
+                onChange={(e) => setBatchAlbum(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { applyBatchEdit("album", batchAlbum); setBatchAlbum(""); } }}
+                className="px-2 py-1 text-xs border border-blue-300 rounded bg-white text-gray-900 w-32"
+              />
+              <button type="button" onClick={() => { applyBatchEdit("album", batchAlbum); setBatchAlbum(""); }}
+                className="px-2 py-1 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-100 rounded"
+                disabled={!batchAlbum.trim()}>
+                Apply
+              </button>
+            </div>
+            <button type="button" onClick={() => setSelectedIds([])}
+              className="ml-auto text-xs text-blue-600 hover:text-blue-700">
+              Clear selection
+            </button>
+          </div>
+        )}
+
         {/* Content area */}
         <div className="flex-1 min-h-0 flex flex-col">
           {!hasStarted ? (
@@ -747,8 +826,8 @@ export default function RadioRecorderModal({
                   Share a browser tab playing music to start recording.
                 </p>
                 <p className="text-xs text-[--muted]">
-                  Silence between songs will be automatically detected and split.
-                  You can adjust splits during and after recording.
+                  Silence between songs will be automatically detected.
+                  Tracks under 30 seconds will be discarded.
                 </p>
               </div>
             </div>
@@ -768,7 +847,7 @@ export default function RadioRecorderModal({
                     columnHeaderHeight={24}
                     sx={dataGridSx}
                     onRowClick={handleRowClick}
-                    localeText={{ noRowsLabel: isRecording ? "Recording... tracks will appear here" : "No tracks yet" }}
+                    localeText={{ noRowsLabel: isRecording ? "Recording... tracks will appear as songs are detected" : "No tracks yet" }}
                   />
                 </div>
               </ThemeProvider>

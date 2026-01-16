@@ -507,6 +507,116 @@ export function getSongIdFromPath(storagePath: string): string | null {
 }
 
 /**
+ * Slice an audio blob by time range and return a new blob
+ * Decodes the audio, extracts the segment, and encodes to WAV
+ */
+export async function sliceAudioBlob(
+  blob: Blob,
+  startTime: number,
+  endTime: number,
+  trimSilence: boolean = true
+): Promise<{ blob: Blob; duration: number }> {
+  // Decode audio
+  const arrayBuffer = await blob.arrayBuffer();
+  const audioContext = new AudioContext();
+  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+  // Calculate sample positions
+  const sampleRate = audioBuffer.sampleRate;
+  let startSample = Math.floor(startTime * sampleRate);
+  let endSample = Math.floor(endTime * sampleRate);
+
+  // Clamp to valid range
+  startSample = Math.max(0, startSample);
+  endSample = Math.min(audioBuffer.length, endSample);
+
+  // Trim silence if requested
+  if (trimSilence) {
+    const channelData = audioBuffer.getChannelData(0);
+    const silenceThreshold = 0.01;
+
+    // Trim leading silence
+    while (startSample < endSample) {
+      const sample = Math.abs(channelData[startSample]);
+      if (sample > silenceThreshold) break;
+      startSample++;
+    }
+
+    // Trim trailing silence
+    while (endSample > startSample) {
+      const sample = Math.abs(channelData[endSample - 1]);
+      if (sample > silenceThreshold) break;
+      endSample--;
+    }
+  }
+
+  const numSamples = endSample - startSample;
+  const numChannels = audioBuffer.numberOfChannels;
+  const duration = numSamples / sampleRate;
+
+  // Create WAV file
+  const wavBuffer = createWavBuffer(audioBuffer, startSample, numSamples, numChannels, sampleRate);
+  const wavBlob = new Blob([wavBuffer], { type: "audio/wav" });
+
+  audioContext.close();
+
+  return { blob: wavBlob, duration };
+}
+
+/**
+ * Create a WAV buffer from AudioBuffer data
+ */
+function createWavBuffer(
+  audioBuffer: AudioBuffer,
+  startSample: number,
+  numSamples: number,
+  numChannels: number,
+  sampleRate: number
+): ArrayBuffer {
+  const bytesPerSample = 2; // 16-bit audio
+  const dataSize = numSamples * numChannels * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  // WAV header
+  writeString(view, 0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(view, 8, "WAVE");
+  writeString(view, 12, "fmt ");
+  view.setUint32(16, 16, true); // Subchunk1Size
+  view.setUint16(20, 1, true); // AudioFormat (PCM)
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * numChannels * bytesPerSample, true); // ByteRate
+  view.setUint16(32, numChannels * bytesPerSample, true); // BlockAlign
+  view.setUint16(34, bytesPerSample * 8, true); // BitsPerSample
+  writeString(view, 36, "data");
+  view.setUint32(40, dataSize, true);
+
+  // Write audio data
+  let offset = 44;
+  for (let i = 0; i < numSamples; i++) {
+    for (let channel = 0; channel < numChannels; channel++) {
+      const channelData = audioBuffer.getChannelData(channel);
+      const sampleIndex = startSample + i;
+      const sample = sampleIndex < channelData.length ? channelData[sampleIndex] : 0;
+      // Clamp and convert to 16-bit integer
+      const int16 = Math.max(-32768, Math.min(32767, Math.floor(sample * 32767)));
+      view.setInt16(offset, int16, true);
+      offset += 2;
+    }
+  }
+
+  return buffer;
+}
+
+function writeString(view: DataView, offset: number, string: string) {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
+}
+
+/**
  * Upload a recorded audio blob to the library
  * Used by the Radio Recorder feature
  */
@@ -519,12 +629,14 @@ export async function uploadRecordedAudio(
     album: string;
     year: string;
     genre: string;
-    duration: number; // in milliseconds
+    duration: number; // in seconds
+    trackNumber?: number;
     albumArtFile?: File;
   }
 ): Promise<Song> {
   const songId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  const extension = "webm"; // Recordings are in webm format
+  // Determine extension from blob type
+  const extension = blob.type.includes("wav") ? "wav" : "webm";
 
   // Upload audio file
   const storagePath = `notes/${libraryId}/music/${songId}.${extension}`;
@@ -553,11 +665,11 @@ export async function uploadRecordedAudio(
     artist: metadata.artist || "Unknown Artist",
     album: metadata.album || "",
     year: metadata.year ? parseInt(metadata.year, 10) : null,
-    trackNumber: null,
+    trackNumber: metadata.trackNumber ?? null,
     discNumber: null,
-    originalTrackNumber: null,
+    originalTrackNumber: metadata.trackNumber ?? null,
     genre: metadata.genre || "",
-    duration: metadata.duration / 1000, // Convert to seconds
+    duration: metadata.duration, // Already in seconds
     fileSize: blob.size,
     albumArtUrl,
     albumArtThumbUrl,

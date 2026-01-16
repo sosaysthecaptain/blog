@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { formatDuration } from "@/lib/songs";
 
 const FONT_FAMILY = "'Lucida Grande', 'Lucida Sans Unicode', 'Helvetica Neue', Helvetica, Arial, sans-serif";
+const WAVEFORM_COLOR = "#e85d4c"; // Warm coral red
 
 interface Split {
   id: string;
@@ -76,20 +77,22 @@ export default function WaveformTimeline({
         setAudioBuffer(buffer);
         setDuration(buffer.duration);
 
-        // Generate waveform data - use fewer samples for cleaner look
+        // Generate waveform data - smooth continuous samples
         const channelData = buffer.getChannelData(0);
-        const samples = 600; // Reduced for cleaner waveform
+        const samples = Math.min(800, Math.floor(buffer.duration * 4)); // ~4 samples per second
         const blockSize = Math.floor(channelData.length / samples);
         const waveform: number[] = [];
 
         for (let i = 0; i < samples; i++) {
           const start = i * blockSize;
-          let max = 0;
+          let sum = 0;
+          let count = 0;
           for (let j = 0; j < blockSize; j++) {
-            const abs = Math.abs(channelData[start + j] || 0);
-            if (abs > max) max = abs;
+            sum += Math.abs(channelData[start + j] || 0);
+            count++;
           }
-          waveform.push(max);
+          // RMS-like average for smoother waveform
+          waveform.push(Math.min(1, (sum / count) * 2.5));
         }
 
         setStaticWaveformData(waveform);
@@ -123,28 +126,15 @@ export default function WaveformTimeline({
 
     const width = rect.width;
     const height = rect.height;
-    const timeScaleHeight = 18; // Space for time markers at top
-    const waveformTop = timeScaleHeight + 4;
-    const waveformHeight = height - waveformTop - 4;
+    const waveformHeight = height - 2; // Small padding
+    const centerY = height / 2;
 
     // Clear with background
     const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--sidebar-bg').trim() || '#f5f5f5';
     ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, width, height);
 
-    // Draw time scale background
-    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--background').trim() || '#ffffff';
-    ctx.fillRect(0, 0, width, timeScaleHeight);
-
-    // Bottom border for time scale
-    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#e5e7eb';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, timeScaleHeight);
-    ctx.lineTo(width, timeScaleHeight);
-    ctx.stroke();
-
-    if (totalDuration === 0) {
+    if (totalDuration === 0 || waveformData.length === 0) {
       // Empty state
       ctx.fillStyle = '#9ca3af';
       ctx.font = `11px ${FONT_FAMILY}`;
@@ -153,84 +143,93 @@ export default function WaveformTimeline({
       return;
     }
 
-    // Draw time markers
-    ctx.fillStyle = '#6b7280';
-    ctx.font = `9px ${FONT_FAMILY}`;
-    ctx.textAlign = 'center';
+    // Draw smooth filled waveform using bezier curves
+    const pointSpacing = width / waveformData.length;
+    const maxAmplitude = waveformHeight * 0.45;
 
-    const timeInterval = totalDuration > 300 ? 60 : totalDuration > 120 ? 30 : totalDuration > 60 ? 15 : 10;
-    for (let t = 0; t <= totalDuration; t += timeInterval) {
-      const x = (t / totalDuration) * width;
-      ctx.fillText(formatDuration(t), x, 12);
+    // Top half
+    ctx.beginPath();
+    ctx.moveTo(0, centerY);
 
-      // Small tick
-      ctx.strokeStyle = '#d1d5db';
-      ctx.beginPath();
-      ctx.moveTo(x, timeScaleHeight - 3);
-      ctx.lineTo(x, timeScaleHeight);
-      ctx.stroke();
+    for (let i = 0; i < waveformData.length; i++) {
+      const x = i * pointSpacing;
+      const amplitude = waveformData[i] * maxAmplitude;
+      const y = centerY - amplitude;
+
+      if (i === 0) {
+        ctx.lineTo(x, y);
+      } else {
+        // Smooth curve between points
+        const prevX = (i - 1) * pointSpacing;
+        const cpX = (prevX + x) / 2;
+        ctx.quadraticCurveTo(prevX, centerY - waveformData[i - 1] * maxAmplitude, cpX, (centerY - waveformData[i - 1] * maxAmplitude + y) / 2);
+        ctx.quadraticCurveTo(cpX, y, x, y);
+      }
     }
 
-    // Draw waveform
-    if (waveformData.length > 0) {
-      const barWidth = width / waveformData.length;
-      const centerY = waveformTop + waveformHeight / 2;
-      const maxBarHeight = waveformHeight * 0.85; // Leave some padding
+    // Complete top, go to bottom
+    ctx.lineTo(width, centerY);
 
-      ctx.fillStyle = '#94a3b8'; // slate-400 - subtle color
-      waveformData.forEach((value, i) => {
-        const barHeight = Math.max(1, value * maxBarHeight);
-        const x = i * barWidth;
-        ctx.fillRect(x, centerY - barHeight / 2, Math.max(1, barWidth - 0.5), barHeight);
-      });
+    // Bottom half (mirror)
+    for (let i = waveformData.length - 1; i >= 0; i--) {
+      const x = i * pointSpacing;
+      const amplitude = waveformData[i] * maxAmplitude;
+      const y = centerY + amplitude;
+
+      if (i === waveformData.length - 1) {
+        ctx.lineTo(x, y);
+      } else {
+        const nextX = (i + 1) * pointSpacing;
+        const cpX = (nextX + x) / 2;
+        ctx.quadraticCurveTo(nextX, centerY + waveformData[i + 1] * maxAmplitude, cpX, (centerY + waveformData[i + 1] * maxAmplitude + y) / 2);
+        ctx.quadraticCurveTo(cpX, y, x, y);
+      }
     }
+
+    ctx.closePath();
+    ctx.fillStyle = WAVEFORM_COLOR;
+    ctx.fill();
 
     // Draw playback position (only when not recording)
     if (!isRecording && playbackTime > 0 && playbackTime <= totalDuration) {
       const x = (playbackTime / totalDuration) * width;
-      ctx.fillStyle = '#3b82f6';
-      ctx.fillRect(x - 1, waveformTop, 2, waveformHeight);
+      ctx.fillStyle = '#1e40af';
+      ctx.fillRect(x - 1, 0, 2, height);
     }
 
     // Draw split markers
     const sortedSplits = [...splits].sort((a, b) => a.time - b.time);
-    sortedSplits.forEach((split, index) => {
-      if (split.time <= totalDuration) {
+    sortedSplits.forEach((split) => {
+      if (split.time <= totalDuration && split.time > 0) {
         const x = (split.time / totalDuration) * width;
 
         // Draw line
-        ctx.strokeStyle = draggingSplitId === split.id ? '#dc2626' : '#f97316';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = draggingSplitId === split.id ? '#dc2626' : '#000000';
+        ctx.lineWidth = draggingSplitId === split.id ? 3 : 2;
         ctx.beginPath();
-        ctx.moveTo(x, waveformTop);
-        ctx.lineTo(x, height - 4);
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
         ctx.stroke();
 
         // Draw handle triangle at top
-        ctx.fillStyle = draggingSplitId === split.id ? '#dc2626' : '#f97316';
+        ctx.fillStyle = draggingSplitId === split.id ? '#dc2626' : '#000000';
         ctx.beginPath();
-        ctx.moveTo(x - 5, waveformTop);
-        ctx.lineTo(x + 5, waveformTop);
-        ctx.lineTo(x, waveformTop + 8);
+        ctx.moveTo(x - 6, 0);
+        ctx.lineTo(x + 6, 0);
+        ctx.lineTo(x, 10);
         ctx.closePath();
         ctx.fill();
-
-        // Draw segment number below handle
-        ctx.fillStyle = '#374151';
-        ctx.font = `bold 9px ${FONT_FAMILY}`;
-        ctx.textAlign = 'center';
-        ctx.fillText(`${index + 1}`, x, waveformTop + 18);
       }
     });
 
     // Draw hover indicator
     if (hoveredTime !== null && hoveredTime <= totalDuration) {
       const x = (hoveredTime / totalDuration) * width;
-      ctx.strokeStyle = 'rgba(59, 130, 246, 0.4)';
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
       ctx.lineWidth = 1;
-      ctx.setLineDash([3, 3]);
+      ctx.setLineDash([4, 4]);
       ctx.beginPath();
-      ctx.moveTo(x, waveformTop);
+      ctx.moveTo(x, 0);
       ctx.lineTo(x, height);
       ctx.stroke();
       ctx.setLineDash([]);
@@ -267,7 +266,7 @@ export default function WaveformTimeline({
     if (time === null) return;
 
     // Check if clicking near a split
-    const threshold = totalDuration * 0.015; // 1.5% of total width
+    const threshold = totalDuration * 0.015;
     const nearSplit = splits.find(s => Math.abs(s.time - time) < threshold);
     if (nearSplit) {
       setDraggingSplitId(nearSplit.id);
@@ -347,45 +346,12 @@ export default function WaveformTimeline({
     updatePlayback();
   }, [audioBuffer, isPlaying, duration, isRecording]);
 
-  // Play segment
-  const playSegment = useCallback((segmentIndex: number) => {
-    if (isRecording) return;
-    const sortedSplits = [...splits].sort((a, b) => a.time - b.time);
-    const start = segmentIndex === 0 ? 0 : sortedSplits[segmentIndex - 1].time;
-    const end = segmentIndex < sortedSplits.length ? sortedSplits[segmentIndex].time : totalDuration;
-    togglePlayback(start, end);
-  }, [splits, totalDuration, togglePlayback, isRecording]);
-
-  // Delete split
-  const deleteSplit = useCallback((splitId: string) => {
-    onSplitsChange(splits.filter(s => s.id !== splitId));
-  }, [splits, onSplitsChange]);
-
-  // Compute segments for display
-  const segments = useMemo(() => {
-    const sortedSplits = [...splits].sort((a, b) => a.time - b.time);
-    const times = [0, ...sortedSplits.map(s => s.time), totalDuration];
-    const result: Array<{ index: number; start: number; end: number; duration: number; splitId?: string }> = [];
-
-    for (let i = 0; i < times.length - 1; i++) {
-      result.push({
-        index: i,
-        start: times[i],
-        end: times[i + 1],
-        duration: times[i + 1] - times[i],
-        splitId: i < sortedSplits.length ? sortedSplits[i].id : undefined,
-      });
-    }
-
-    return result;
-  }, [splits, totalDuration]);
-
   return (
     <div className="flex flex-col" style={{ fontFamily: FONT_FAMILY }}>
-      {/* Waveform canvas - compact height */}
+      {/* Waveform canvas */}
       <div
         ref={containerRef}
-        className="h-20 cursor-crosshair relative border-b border-[--border]"
+        className="h-16 cursor-crosshair relative"
         onMouseMove={handleMouseMove}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
@@ -396,7 +362,7 @@ export default function WaveformTimeline({
         {/* Time tooltip */}
         {hoveredTime !== null && totalDuration > 0 && (
           <div
-            className="absolute top-0 px-1.5 py-0.5 bg-black/80 text-white text-[9px] rounded pointer-events-none z-10"
+            className="absolute top-1 px-1.5 py-0.5 bg-black/80 text-white text-[9px] rounded pointer-events-none z-10"
             style={{
               left: `${(hoveredTime / totalDuration) * 100}%`,
               transform: 'translateX(-50%)',
@@ -408,48 +374,10 @@ export default function WaveformTimeline({
 
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-[--sidebar-bg]/80">
-            <span className="text-xs text-[--muted]">Loading waveform...</span>
+            <span className="text-xs text-[--muted]">Loading...</span>
           </div>
         )}
       </div>
-
-      {/* Segments list - minimal */}
-      {segments.length > 0 && totalDuration > 0 && (
-        <div className="flex items-center gap-1 px-2 py-1.5 text-[10px] bg-[--background] overflow-x-auto">
-          {segments.map((seg, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-1 px-2 py-0.5 rounded bg-[--sidebar-bg] border border-[--border] whitespace-nowrap"
-            >
-              <span className="text-[--muted]">#{i + 1}</span>
-              <span className="text-[--foreground]">{formatDuration(seg.duration)}</span>
-              {!isRecording && (
-                <button
-                  type="button"
-                  onClick={() => playSegment(i)}
-                  className="text-blue-500 hover:text-blue-600 ml-1"
-                  title="Play segment"
-                >
-                  ▶
-                </button>
-              )}
-              {seg.splitId && (
-                <button
-                  type="button"
-                  onClick={() => deleteSplit(seg.splitId!)}
-                  className="text-[--muted] hover:text-red-500 ml-0.5"
-                  title="Remove split"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          ))}
-          <span className="text-[--muted] ml-2">
-            Double-click to add split
-          </span>
-        </div>
-      )}
     </div>
   );
 }
