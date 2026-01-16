@@ -20,6 +20,7 @@ interface SidebarProps {
   onCreateNote: (parentId: string | null) => void;
   onCreateFolder: (parentId: string | null) => void;
   onCreateMoodboard: (parentId: string | null) => void;
+  onCreateMusicLibrary: (parentId: string | null) => void;
   onDelete: (item: NoteItem) => void;
   onRename: (item: NoteItem) => void;
   onRenameSubmit: (itemId: string, newName: string) => void;
@@ -53,6 +54,7 @@ export default function Sidebar({
   onCreateNote,
   onCreateFolder,
   onCreateMoodboard,
+  onCreateMusicLibrary,
   onDelete,
   onRename,
   onRenameSubmit,
@@ -262,7 +264,7 @@ export default function Sidebar({
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                   </svg>
-                  New Note
+                  + Note
                 </button>
                 <button
                   type="button"
@@ -272,7 +274,7 @@ export default function Sidebar({
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
                   </svg>
-                  New Folder
+                  + Folder
                 </button>
                 <button
                   type="button"
@@ -285,7 +287,17 @@ export default function Sidebar({
                     <rect x="3" y="14" width="7" height="7" rx="1" />
                     <rect x="14" y="14" width="7" height="7" rx="1" />
                   </svg>
-                  New Moodboard
+                  + Moodboard
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { onCreateMusicLibrary(currentFolderId); setShowNewMenu(false); }}
+                  className="context-menu-item flex items-center gap-2"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V4.5l-10.5 3v8.553m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z" />
+                  </svg>
+                  + Music Library
                 </button>
               </div>
             )}
@@ -500,7 +512,7 @@ export default function Sidebar({
             }}
             className="context-menu-item"
           >
-            New Note
+            + Note
           </button>
           <button
             type="button"
@@ -510,7 +522,7 @@ export default function Sidebar({
             }}
             className="context-menu-item"
           >
-            New Folder
+            + Folder
           </button>
           <button
             type="button"
@@ -520,7 +532,17 @@ export default function Sidebar({
             }}
             className="context-menu-item"
           >
-            New Moodboard
+            + Moodboard
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onCreateMusicLibrary(contextMenu.item?.type === "folder" ? contextMenu.item.id! : contextMenu.parentId);
+              closeContextMenu();
+            }}
+            className="context-menu-item"
+          >
+            + Music Library
           </button>
           {contextMenu.item && (
             <>

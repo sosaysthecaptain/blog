@@ -284,7 +284,7 @@ export default function FolderTree({
           );
         }
 
-        // Note or Moodboard item
+        // Note, Moodboard, or Music Library item
         return (
           <div key={item.id} className="relative">
             {/* Drop indicator - before */}
@@ -322,6 +322,8 @@ export default function FolderTree({
               <span className="w-4 h-3 flex-shrink-0" />
               {item.type === "moodboard" ? (
                 <MoodboardIcon className="w-3.5 h-3.5 flex-shrink-0" />
+              ) : item.type === "music" ? (
+                <MusicIcon className="w-3.5 h-3.5 flex-shrink-0" />
               ) : (
                 <NoteIcon className="w-3.5 h-3.5 flex-shrink-0" />
               )}
@@ -383,6 +385,14 @@ function MoodboardIcon({ className }: { className?: string }) {
       <rect x="14" y="3" width="7" height="7" rx="1" />
       <rect x="3" y="14" width="7" height="7" rx="1" />
       <rect x="14" y="14" width="7" height="7" rx="1" />
+    </svg>
+  );
+}
+
+function MusicIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V4.5l-10.5 3v8.553m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z" />
     </svg>
   );
 }

@@ -1,0 +1,458 @@
+"use client";
+
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
+import { NoteItem, subscribeToNote, updateNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap } from "@/lib/notes";
+import { Song, subscribeToSongs, getSongsByLibrary, getLibraryStats, deleteSong } from "@/lib/songs";
+import { uploadAudioFiles, deleteSongFiles, isAudioFile, getSongIdFromPath } from "@/lib/music-storage";
+import { useMusicQueue } from "@/hooks/useMusicQueue";
+import TagInput from "./TagInput";
+import MusicPlayer from "./MusicPlayer";
+import dynamic from "next/dynamic";
+
+// Lazy load the DataGrid component
+const SongsDataGrid = dynamic(() => import("./SongsDataGrid"), {
+  loading: () => (
+    <div className="flex-1 flex items-center justify-center">
+      <p className="text-[--muted] text-sm">Loading...</p>
+    </div>
+  ),
+  ssr: false,
+});
+
+export interface MusicLibraryEditorRef {
+  save: () => Promise<void>;
+}
+
+interface MusicLibraryEditorProps {
+  library: NoteItem;
+  parentFolder: NoteItem | null;
+  onUpdate: (library: NoteItem) => void;
+  onBack: () => void;
+  isFullWidth: boolean;
+  onUnsavedChangesChange?: (hasUnsaved: boolean) => void;
+}
+
+const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorProps>(
+  function MusicLibraryEditor(
+    { library, parentFolder, onUpdate, onBack, isFullWidth, onUnsavedChangesChange },
+    ref
+  ) {
+    // Local state
+    const [localLibrary, setLocalLibrary] = useState<NoteItem>(library);
+    const [songs, setSongs] = useState<Song[]>([]);
+    const [isDirty, setIsDirty] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [availableTags, setAvailableTags] = useState<string[]>([]);
+    const [tagColors, setTagColors] = useState<TagColorsMap>({});
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState<{
+      current: number;
+      total: number;
+      fileName: string;
+    } | null>(null);
+
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    // Music playback
+    const musicQueue = useMusicQueue();
+
+    // Load available tags and tag colors
+    useEffect(() => {
+      getAllNoteTags().then(setAvailableTags);
+      getTagColors().then(setTagColors);
+    }, []);
+
+    // Subscribe to library changes
+    useEffect(() => {
+      if (!library.id) return;
+
+      const unsubscribe = subscribeToNote(library.id, (updated) => {
+        if (updated) {
+          setLocalLibrary(updated);
+          onUpdate(updated);
+        }
+      });
+
+      return () => unsubscribe();
+    }, [library.id, onUpdate]);
+
+    // Subscribe to songs changes
+    useEffect(() => {
+      if (!library.id) return;
+
+      // Initial fetch
+      getSongsByLibrary(library.id).then(setSongs).catch(console.error);
+
+      // Subscribe to real-time updates
+      const unsubscribe = subscribeToSongs(library.id, (updatedSongs) => {
+        setSongs(updatedSongs);
+      });
+
+      return () => unsubscribe();
+    }, [library.id]);
+
+    // Keyboard shortcut for import (Cmd+I)
+    useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === "i") {
+          e.preventDefault();
+          fileInputRef.current?.click();
+        }
+      };
+
+      window.addEventListener("keydown", handleKeyDown);
+      return () => window.removeEventListener("keydown", handleKeyDown);
+    }, []);
+
+    // Notify parent of unsaved changes
+    useEffect(() => {
+      onUnsavedChangesChange?.(isDirty);
+    }, [isDirty, onUnsavedChangesChange]);
+
+    // Autosave
+    const scheduleAutosave = useCallback(() => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      saveTimeoutRef.current = setTimeout(() => {
+        saveLibrary();
+      }, 1000);
+    }, []);
+
+    const saveLibrary = useCallback(async () => {
+      if (!library.id || !isDirty) return;
+
+      setIsSaving(true);
+      try {
+        await updateNote(library.id, {
+          title: localLibrary.title,
+          date: localLibrary.date,
+          tags: localLibrary.tags,
+          musicSortColumn: localLibrary.musicSortColumn,
+          musicSortDirection: localLibrary.musicSortDirection,
+        });
+        setIsDirty(false);
+      } catch (error) {
+        console.error("Failed to save library:", error);
+      } finally {
+        setIsSaving(false);
+      }
+    }, [library.id, localLibrary, isDirty]);
+
+    // Expose save method to parent
+    useImperativeHandle(ref, () => ({
+      save: async () => {
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current);
+        }
+        await saveLibrary();
+      },
+    }));
+
+    // Handle field changes
+    const handleTitleChange = (title: string) => {
+      setLocalLibrary((prev) => ({ ...prev, title }));
+      setIsDirty(true);
+      scheduleAutosave();
+    };
+
+    const handleDateChange = (date: string) => {
+      setLocalLibrary((prev) => ({ ...prev, date }));
+      setIsDirty(true);
+      scheduleAutosave();
+    };
+
+    const handleTagsChange = (tags: string[]) => {
+      setLocalLibrary((prev) => ({ ...prev, tags }));
+      setIsDirty(true);
+      scheduleAutosave();
+    };
+
+    const handleTagColorChange = async (tag: string, colorIndex: number) => {
+      await setTagColor(tag, colorIndex);
+      setTagColors((prev) => ({ ...prev, [tag]: colorIndex }));
+    };
+
+    const handleSortChange = (
+      column: "title" | "artist" | "album" | "year" | "trackNumber" | "duration" | "fileSize",
+      direction: "asc" | "desc"
+    ) => {
+      setLocalLibrary((prev) => ({
+        ...prev,
+        musicSortColumn: column,
+        musicSortDirection: direction,
+      }));
+      setIsDirty(true);
+      scheduleAutosave();
+    };
+
+    // Handle file upload
+    const handleFilesUpload = useCallback(
+      async (files: File[]) => {
+        if (!library.id || files.length === 0 || isUploading) return;
+
+        const audioFiles = files.filter(isAudioFile);
+        if (audioFiles.length === 0) return;
+
+        setIsUploading(true);
+        setUploadProgress({ current: 0, total: audioFiles.length, fileName: audioFiles[0].name });
+
+        try {
+          await uploadAudioFiles(audioFiles, library.id, (current, total, fileName) => {
+            setUploadProgress({ current, total, fileName });
+          });
+          // Manually refresh songs after upload in case subscription didn't trigger
+          const updatedSongs = await getSongsByLibrary(library.id);
+          setSongs(updatedSongs);
+        } catch (error) {
+          console.error("Upload failed:", error);
+        } finally {
+          setIsUploading(false);
+          setUploadProgress(null);
+        }
+      },
+      [library.id, isUploading]
+    );
+
+    // Handle file drop
+    const handleDrop = useCallback(
+      (e: React.DragEvent) => {
+        e.preventDefault();
+        const files = Array.from(e.dataTransfer.files);
+        handleFilesUpload(files);
+      },
+      [handleFilesUpload]
+    );
+
+    const handleDragOver = useCallback((e: React.DragEvent) => {
+      e.preventDefault();
+    }, []);
+
+    // Handle file input
+    const handleFileSelect = useCallback(
+      (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files) return;
+        const files = Array.from(e.target.files);
+        handleFilesUpload(files);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+      },
+      [handleFilesUpload]
+    );
+
+    // Handle song deletion
+    const handleDeleteSong = useCallback(
+      async (song: Song) => {
+        if (!song.id || !library.id) return;
+
+        try {
+          const songId = getSongIdFromPath(song.storagePath);
+          if (songId) {
+            await deleteSongFiles(song.storagePath, library.id, songId);
+          }
+          await deleteSong(song.id);
+        } catch (error) {
+          console.error("Failed to delete song:", error);
+        }
+      },
+      [library.id]
+    );
+
+    // Calculate stats
+    const stats = getLibraryStats(songs);
+
+    return (
+      <div
+        className="flex-1 flex flex-col h-full overflow-hidden"
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-2 border-b border-[--border] bg-[--sidebar-bg]">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onBack}
+              className="p-1 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            {parentFolder && (
+              <span className="text-xs text-[--muted]">{parentFolder.title} /</span>
+            )}
+            <input
+              type="text"
+              value={localLibrary.title}
+              onChange={(e) => handleTitleChange(e.target.value)}
+              placeholder="Untitled"
+              className="text-base font-semibold text-[--foreground] bg-transparent border-none outline-none flex-1 min-w-0"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            {isSaving && (
+              <span className="text-xs text-[--muted]">Saving...</span>
+            )}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="p-1.5 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded"
+              title="Import audio files (Cmd+I)"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Date & Tags row */}
+        <div className={`px-4 py-2 border-b border-[--border] ${isFullWidth ? "" : "max-w-3xl mx-auto w-full"}`}>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[--muted]">
+            <input
+              type="date"
+              value={localLibrary.date || ""}
+              onChange={(e) => handleDateChange(e.target.value)}
+              className="bg-transparent border-none outline-none text-[--foreground] cursor-pointer"
+            />
+            <div className="flex-1 min-w-[120px]">
+              <TagInput
+                tags={localLibrary.tags || []}
+                availableTags={availableTags}
+                tagColors={tagColors}
+                onChange={handleTagsChange}
+                onTagColorChange={handleTagColorChange}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Search bar */}
+        <div className={`px-4 py-2 border-b border-[--border] ${isFullWidth ? "" : "max-w-3xl mx-auto w-full"}`}>
+          <div className="relative">
+            <svg
+              className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[--muted]"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search songs..."
+              className="w-full pl-7 pr-2 py-1 text-xs bg-[--background] border border-[--border] rounded focus:outline-none focus:border-[--accent] text-[--foreground] placeholder:text-[--muted]"
+            />
+          </div>
+        </div>
+
+
+        {/* Songs DataGrid */}
+        <div className={`flex-1 overflow-hidden ${isFullWidth ? "" : "max-w-3xl mx-auto w-full"}`}>
+          {songs.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center h-full text-[--muted]">
+              <svg className="w-12 h-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V4.5l-10.5 3v8.553m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z" />
+              </svg>
+              <p className="text-sm mb-2">No songs yet</p>
+              <p className="text-xs mb-4">Drag and drop audio files here</p>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="px-4 py-2 bg-[--foreground] text-[--background] rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {isUploading ? "Uploading..." : "Import Audio Files"}
+              </button>
+              <p className="text-xs text-[--muted] mt-2">or press Cmd+I</p>
+            </div>
+          ) : (
+            <SongsDataGrid
+              songs={songs}
+              searchQuery={searchQuery}
+              sortColumn={localLibrary.musicSortColumn || "artist"}
+              sortDirection={localLibrary.musicSortDirection || "asc"}
+              onSortChange={handleSortChange}
+              onDeleteSong={handleDeleteSong}
+              onPlaySong={musicQueue.play}
+              onQueueSong={musicQueue.addToQueue}
+            />
+          )}
+        </div>
+
+        {/* Footer with stats */}
+        <div className={`px-4 py-2 border-t border-[--border] text-xs text-[--muted] ${isFullWidth ? "" : "max-w-3xl mx-auto w-full"}`}>
+          {stats.count} songs · {stats.totalDuration} · {stats.totalSize}
+        </div>
+
+        {/* Music Player */}
+        <MusicPlayer
+          currentSong={musicQueue.currentSong}
+          isPlaying={musicQueue.isPlaying}
+          currentTime={musicQueue.currentTime}
+          duration={musicQueue.duration}
+          volume={musicQueue.volume}
+          isMuted={musicQueue.isMuted}
+          queue={musicQueue.queue}
+          currentIndex={musicQueue.currentIndex}
+          onPlayPause={musicQueue.togglePlayPause}
+          onNext={musicQueue.next}
+          onPrevious={musicQueue.previous}
+          onSeek={musicQueue.seek}
+          onVolumeChange={musicQueue.setVolume}
+          onToggleMute={musicQueue.toggleMute}
+          onPlayFromQueue={musicQueue.playFromQueue}
+          onRemoveFromQueue={musicQueue.removeFromQueue}
+          onClearQueue={musicQueue.clearQueue}
+        />
+
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="audio/*"
+          multiple
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+
+        {/* Upload progress overlay */}
+        {isUploading && uploadProgress && (
+          <div className="fixed bottom-4 right-4 bg-[--background] border border-[--border] rounded-lg shadow-lg px-4 py-3 z-50">
+            <div className="flex items-center gap-3">
+              <svg className="w-5 h-5 animate-spin text-[--accent]" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-[--foreground]">
+                  Uploading {uploadProgress.current + 1} of {uploadProgress.total}
+                </p>
+                <p className="text-xs text-[--muted] truncate max-w-[200px]">
+                  {uploadProgress.fileName}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+);
+
+export default MusicLibraryEditor;

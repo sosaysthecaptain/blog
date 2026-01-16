@@ -24,6 +24,7 @@ import { useDarkMode } from "@/hooks/useDarkMode";
 import Sidebar from "@/components/notes/Sidebar";
 import NoteEditor, { NoteEditorRef } from "@/components/notes/NoteEditor";
 import MoodboardEditor, { MoodboardEditorRef } from "@/components/notes/MoodboardEditor";
+import MusicLibraryEditor, { MusicLibraryEditorRef } from "@/components/notes/MusicLibraryEditor";
 import FolderView from "@/components/notes/FolderView";
 import { ConfirmDialog, AlertDialog, ProgressDialog, SaveDiscardDialog } from "@/components/ui/Dialog";
 import JSZip from "jszip";
@@ -66,6 +67,7 @@ export default function NotesPage() {
   // Unsaved changes state
   const noteEditorRef = useRef<NoteEditorRef>(null);
   const moodboardEditorRef = useRef<MoodboardEditorRef>(null);
+  const musicLibraryEditorRef = useRef<MusicLibraryEditorRef>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<{
     item: NoteItem | null;
@@ -226,6 +228,9 @@ export default function NotesPage() {
     if (moodboardEditorRef.current) {
       await moodboardEditorRef.current.save();
     }
+    if (musicLibraryEditorRef.current) {
+      await musicLibraryEditorRef.current.save();
+    }
     setUnsavedDialog(false);
     if (pendingNavigation) {
       performNavigation(pendingNavigation.item, pendingNavigation.action);
@@ -247,8 +252,8 @@ export default function NotesPage() {
   }, []);
 
   const handleSelect = (item: NoteItem) => {
-    // Check if we're leaving a note or moodboard with unsaved changes
-    if ((selectedItem?.type === "note" || selectedItem?.type === "moodboard") && hasUnsavedChanges && item.id !== selectedItem.id) {
+    // Check if we're leaving a note, moodboard, or music library with unsaved changes
+    if ((selectedItem?.type === "note" || selectedItem?.type === "moodboard" || selectedItem?.type === "music") && hasUnsavedChanges && item.id !== selectedItem.id) {
       setPendingNavigation({ item, action: "select" });
       setUnsavedDialog(true);
       return;
@@ -328,6 +333,28 @@ export default function NotesPage() {
     newMoodboard.id = id;
     setItems((prev) => [...prev, newMoodboard]);
     setSelectedItem(newMoodboard);
+    // Auto-enter rename mode with name highlighted
+    setRenamingId(id);
+  };
+
+  const handleCreateMusicLibrary = async (parentId: string | null) => {
+    const now = new Date();
+    const dateStr = now.toISOString().split("T")[0];
+    const timeStr = now.toTimeString().slice(0, 5);
+    const newMusicLibrary: NoteItem = {
+      type: "music",
+      title: `${dateStr} ${timeStr}`,
+      parentId,
+      date: dateStr,
+      musicSortColumn: "artist",
+      musicSortDirection: "asc",
+      createdAt: now as any,
+      updatedAt: now as any,
+    };
+    const id = await createNote(newMusicLibrary);
+    newMusicLibrary.id = id;
+    setItems((prev) => [...prev, newMusicLibrary]);
+    setSelectedItem(newMusicLibrary);
     // Auto-enter rename mode with name highlighted
     setRenamingId(id);
   };
@@ -936,6 +963,7 @@ ${content}`;
           onCreateNote={handleCreateNote}
           onCreateFolder={handleCreateFolder}
           onCreateMoodboard={handleCreateMoodboard}
+          onCreateMusicLibrary={handleCreateMusicLibrary}
           onDelete={handleDelete}
           onRename={handleRename}
           onRenameSubmit={handleRenameSubmit}
@@ -997,6 +1025,16 @@ ${content}`;
           <MoodboardEditor
             ref={moodboardEditorRef}
             moodboard={selectedItem}
+            parentFolder={selectedItem.parentId ? items.find(i => i.id === selectedItem.parentId && i.type === "folder") || null : null}
+            onUpdate={handleNoteUpdate}
+            onBack={handleBackWithUnsavedCheck}
+            isFullWidth={isFullWidth}
+            onUnsavedChangesChange={setHasUnsavedChanges}
+          />
+        ) : selectedItem?.type === "music" ? (
+          <MusicLibraryEditor
+            ref={musicLibraryEditorRef}
+            library={selectedItem}
             parentFolder={selectedItem.parentId ? items.find(i => i.id === selectedItem.parentId && i.type === "folder") || null : null}
             onUpdate={handleNoteUpdate}
             onBack={handleBackWithUnsavedCheck}

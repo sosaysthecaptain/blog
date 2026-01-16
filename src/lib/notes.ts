@@ -30,7 +30,7 @@ export interface MoodboardImage {
 
 export interface NoteItem {
   id?: string;
-  type: "note" | "folder" | "moodboard";
+  type: "note" | "folder" | "moodboard" | "music";
   title: string;
   parentId: string | null;
   createdAt: Timestamp;
@@ -46,6 +46,10 @@ export interface NoteItem {
   images?: MoodboardImage[];
   gridSize?: "small" | "medium" | "large"; // User preference for grid density
   sortMode?: "chronological" | "manual"; // How images are sorted/displayed
+
+  // Music library-specific fields
+  musicSortColumn?: "title" | "artist" | "album" | "year" | "trackNumber" | "duration" | "fileSize";
+  musicSortDirection?: "asc" | "desc";
 
   // Publishing fields (for blog folder)
   published?: boolean;
