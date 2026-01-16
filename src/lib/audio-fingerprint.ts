@@ -61,16 +61,21 @@ export interface IdentificationResult {
 async function generateChromaprint(
   arrayBuffer: ArrayBuffer
 ): Promise<{ fingerprint: string; duration: number }> {
+  console.log("[Chromaprint] Loading module...");
   const chromaprint = await getChromaprintModule();
+  console.log("[Chromaprint] Module loaded, keys:", Object.keys(chromaprint));
 
   // Get duration from audio
+  console.log("[Chromaprint] Decoding audio, buffer size:", arrayBuffer.byteLength);
   const audioContext = new AudioContext();
   const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
   const duration = audioBuffer.duration;
+  console.log("[Chromaprint] Audio decoded, duration:", duration, "sampleRate:", audioBuffer.sampleRate);
   audioContext.close();
 
   // Generate fingerprint using chromaprint WASM
   // processAudioFile returns an async generator, we just need the first result
+  console.log("[Chromaprint] Generating fingerprint...");
   const generator = chromaprint.processAudioFile(arrayBuffer, {
     maxDuration: 120,
     chunkDuration: 0,
@@ -80,10 +85,12 @@ async function generateChromaprint(
   });
 
   const result = await generator.next();
+  console.log("[Chromaprint] Generator result:", result);
   if (result.done || !result.value) {
     throw new Error("Failed to generate fingerprint");
   }
 
+  console.log("[Chromaprint] Fingerprint generated, length:", result.value.length);
   return { fingerprint: result.value, duration };
 }
 
@@ -92,6 +99,8 @@ async function generateChromaprint(
  * Note: This requires a valid client ID from https://acoustid.org/
  */
 async function queryAcoustID(fingerprint: string, duration: number): Promise<AcoustIDResult> {
+  console.log("[AcoustID API] Client ID configured:", !!ACOUSTID_CLIENT_ID, "ID:", ACOUSTID_CLIENT_ID?.substring(0, 4) + "...");
+
   if (!ACOUSTID_CLIENT_ID) {
     return {
       status: "error",
@@ -106,13 +115,22 @@ async function queryAcoustID(fingerprint: string, duration: number): Promise<Aco
     meta: "recordings+releasegroups+compress",
   });
 
+  const url = `${ACOUSTID_API_URL}?${params}`;
+  console.log("[AcoustID API] Request URL length:", url.length, "duration:", Math.round(duration));
+
   try {
-    const response = await fetch(`${ACOUSTID_API_URL}?${params}`);
+    const response = await fetch(url);
+    console.log("[AcoustID API] Response status:", response.status);
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      const text = await response.text();
+      console.log("[AcoustID API] Error response:", text);
+      throw new Error(`HTTP ${response.status}: ${text}`);
     }
-    return await response.json();
+    const json = await response.json();
+    console.log("[AcoustID API] Response:", JSON.stringify(json).substring(0, 500));
+    return json;
   } catch (error) {
+    console.error("[AcoustID API] Fetch error:", error);
     return {
       status: "error",
       error: { message: error instanceof Error ? error.message : "Network error" },
@@ -125,9 +143,13 @@ async function queryAcoustID(fingerprint: string, duration: number): Promise<Aco
  * Returns candidates sorted by confidence score
  */
 export async function identifyAudio(blob: Blob): Promise<IdentificationResult> {
+  console.log("[identifyAudio] Starting, blob size:", blob.size, "type:", blob.type);
+
   try {
     // Check if we have API key configured
+    console.log("[identifyAudio] Checking API key...");
     if (!ACOUSTID_CLIENT_ID) {
+      console.log("[identifyAudio] No API key configured!");
       return {
         success: false,
         candidates: [],
@@ -136,7 +158,9 @@ export async function identifyAudio(blob: Blob): Promise<IdentificationResult> {
     }
 
     // Convert blob to ArrayBuffer
+    console.log("[identifyAudio] Converting blob to ArrayBuffer...");
     const arrayBuffer = await blob.arrayBuffer();
+    console.log("[identifyAudio] ArrayBuffer size:", arrayBuffer.byteLength);
 
     // Generate real Chromaprint fingerprint using WASM
     const { fingerprint, duration } = await generateChromaprint(arrayBuffer);

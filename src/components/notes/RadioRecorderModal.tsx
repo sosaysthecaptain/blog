@@ -1,8 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { DataGrid, GridColDef, GridRenderCellParams, GridRowParams, useGridApiRef } from "@mui/x-data-grid";
-import { ThemeProvider, createTheme } from "@mui/material/styles";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Song, formatDuration } from "@/lib/songs";
 import { uploadRecordedAudio, sliceAudioBlob } from "@/lib/music-storage";
 import { identifyAudio, IdentificationCandidate } from "@/lib/audio-fingerprint";
@@ -10,64 +8,6 @@ import WaveformTimeline from "./WaveformTimeline";
 
 const FONT_FAMILY = "'Lucida Grande', 'Lucida Sans Unicode', 'Helvetica Neue', Helvetica, Arial, sans-serif";
 const MIN_SONG_DURATION = 30; // Minimum 30 seconds for a valid song
-
-// MUI DataGrid styles
-const dataGridSx = {
-  border: "none",
-  backgroundColor: "var(--background)",
-  color: "var(--foreground)",
-  fontFamily: FONT_FAMILY,
-  "& .MuiDataGrid-cell": {
-    border: "none",
-    fontSize: "11px",
-    padding: "0 6px",
-    fontFamily: FONT_FAMILY,
-    userSelect: "none",
-  },
-  "& .MuiDataGrid-columnHeaders": {
-    border: "none",
-    borderBottom: "1px solid var(--border)",
-    backgroundColor: "var(--background)",
-    minHeight: "24px !important",
-    maxHeight: "24px !important",
-  },
-  "& .MuiDataGrid-columnHeader": {
-    backgroundColor: "var(--background)",
-  },
-  "& .MuiDataGrid-columnHeaderTitle": {
-    fontSize: "10px",
-    fontWeight: 500,
-    color: "var(--muted)",
-    fontFamily: FONT_FAMILY,
-  },
-  "& .MuiDataGrid-footerContainer": {
-    display: "none",
-  },
-  "& .MuiDataGrid-row:nth-of-type(odd)": {
-    backgroundColor: "var(--background)",
-  },
-  "& .MuiDataGrid-row:nth-of-type(even)": {
-    backgroundColor: "var(--sidebar-bg)",
-  },
-  "& .MuiDataGrid-row:hover": {
-    backgroundColor: "var(--hover)",
-  },
-  "& .MuiDataGrid-cell:focus, & .MuiDataGrid-columnHeader:focus": {
-    outline: "none",
-  },
-  "& .MuiDataGrid-cell:focus-within, & .MuiDataGrid-columnHeader:focus-within": {
-    outline: "none",
-  },
-  "& .MuiDataGrid-sortIcon": {
-    color: "var(--muted)",
-  },
-  "& .MuiDataGrid-columnSeparator": {
-    display: "none",
-  },
-  "& .MuiDataGrid-row": {
-    userSelect: "none",
-  },
-};
 
 interface Split {
   id: string;
@@ -98,7 +38,6 @@ interface RadioRecorderModalProps {
 
 export default function RadioRecorderModal({
   libraryId,
-  existingSongs = [],
   onClose,
   onSongsAdded,
 }: RadioRecorderModalProps) {
@@ -122,10 +61,6 @@ export default function RadioRecorderModal({
   // Metadata state
   const [recordedSongs, setRecordedSongs] = useState<RecordedSong[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [editingCell, setEditingCell] = useState<{ id: string; field: string } | null>(null);
-  const [editValue, setEditValue] = useState("");
-  const [showAutocomplete, setShowAutocomplete] = useState(false);
-  const [autocompleteField, setAutocompleteField] = useState<"artist" | "album">("artist");
 
   // Batch edit state
   const [batchArtist, setBatchArtist] = useState("");
@@ -147,33 +82,6 @@ export default function RadioRecorderModal({
   const waveformSampleIntervalRef = useRef<number>(0);
   const lastSplitTimeRef = useRef<number>(0);
   const songIdCounterRef = useRef<number>(0);
-  const apiRef = useGridApiRef();
-
-  // Get unique artists and albums
-  const uniqueArtists = useMemo(() => {
-    const artists = new Set<string>();
-    existingSongs.forEach(s => { if (s.artist && s.artist !== "Unknown Artist") artists.add(s.artist); });
-    return Array.from(artists).sort();
-  }, [existingSongs]);
-
-  const uniqueAlbums = useMemo(() => {
-    const albums = new Set<string>();
-    existingSongs.forEach(s => { if (s.album && s.album !== "Unknown Album") albums.add(s.album); });
-    return Array.from(albums).sort();
-  }, [existingSongs]);
-
-  const filteredSuggestions = useMemo(() => {
-    const suggestions = autocompleteField === "artist" ? uniqueArtists : uniqueAlbums;
-    if (!editValue.trim()) return suggestions.slice(0, 8);
-    const lower = editValue.toLowerCase();
-    return suggestions.filter(s => s.toLowerCase().includes(lower)).slice(0, 8);
-  }, [autocompleteField, uniqueArtists, uniqueAlbums, editValue]);
-
-  // MUI theme
-  const theme = useMemo(() => createTheme({
-    palette: { mode: typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light" },
-    typography: { fontFamily: FONT_FAMILY, fontSize: 12 },
-  }), []);
 
   // Clean up on unmount
   useEffect(() => {
@@ -414,18 +322,24 @@ export default function RadioRecorderModal({
     const song = recordedSongs.find(s => s.id === songId);
     if (!song) return;
 
+    console.log("[AcoustID] Starting identification for:", song.title, "range:", song.startTime, "-", song.endTime);
+
     setRecordedSongs(prev => prev.map(s => s.id === songId ? { ...s, status: "identifying" as const } : s));
 
     try {
       // Slice the recording to just this song's segment
-      const { blob: segmentBlob } = await sliceAudioBlob(
+      console.log("[AcoustID] Slicing audio...");
+      const { blob: segmentBlob, duration } = await sliceAudioBlob(
         recordingBlob,
         song.startTime,
         song.endTime,
         true // trim silence
       );
+      console.log("[AcoustID] Sliced blob size:", segmentBlob.size, "duration:", duration);
 
+      console.log("[AcoustID] Calling identifyAudio...");
       const result = await identifyAudio(segmentBlob);
+      console.log("[AcoustID] Result:", result);
 
       if (result.success && result.candidates.length > 0) {
         const best = result.candidates[0];
@@ -435,15 +349,16 @@ export default function RadioRecorderModal({
             : s
         ));
       } else {
+        console.log("[AcoustID] No matches found:", result.error);
         setRecordedSongs(prev => prev.map(s => s.id === songId ? { ...s, status: "failed" as const } : s));
       }
     } catch (error) {
-      console.error("Identification failed:", error);
+      console.error("[AcoustID] Identification failed:", error);
       setRecordedSongs(prev => prev.map(s => s.id === songId ? { ...s, status: "failed" as const } : s));
     }
   }, [recordingBlob, recordedSongs]);
 
-  // Update song field
+  // Update song field directly
   const updateSongField = useCallback((songId: string, field: keyof RecordedSong, value: string) => {
     setRecordedSongs(prev => prev.map(s => s.id === songId ? { ...s, [field]: value } : s));
   }, []);
@@ -457,45 +372,23 @@ export default function RadioRecorderModal({
   }, [selectedIds]);
 
   // Delete songs
-  const deleteSongs = useCallback((ids: string[]) => {
-    setRecordedSongs(prev => prev.filter(s => !ids.includes(s.id)));
-    setSelectedIds([]);
+  const deleteSong = useCallback((id: string) => {
+    setRecordedSongs(prev => prev.filter(s => s.id !== id));
+    setSelectedIds(prev => prev.filter(i => i !== id));
   }, []);
 
-  // Editing helpers
-  const startEditing = useCallback((id: string, field: string, currentValue: string) => {
-    setEditingCell({ id, field });
-    setEditValue(currentValue);
-    if (field === "artist" || field === "album") {
-      setAutocompleteField(field);
-      setShowAutocomplete(true);
-    } else {
-      setShowAutocomplete(false);
-    }
-  }, []);
-
-  const finishEditing = useCallback(() => {
-    if (editingCell) {
-      updateSongField(editingCell.id, editingCell.field as keyof RecordedSong, editValue);
-    }
-    setEditingCell(null);
-    setEditValue("");
-    setShowAutocomplete(false);
-  }, [editingCell, editValue, updateSongField]);
-
-  // Row click
-  const handleRowClick = useCallback((params: GridRowParams, event: React.MouseEvent) => {
-    const rowId = String(params.id);
+  // Toggle selection
+  const toggleSelect = useCallback((id: string, event: React.MouseEvent) => {
     if (event.shiftKey && selectedIds.length > 0) {
       const allIds = recordedSongs.map(s => s.id);
       const lastIdx = allIds.indexOf(selectedIds[selectedIds.length - 1]);
-      const currIdx = allIds.indexOf(rowId);
+      const currIdx = allIds.indexOf(id);
       const [start, end] = lastIdx < currIdx ? [lastIdx, currIdx] : [currIdx, lastIdx];
       setSelectedIds(allIds.slice(start, end + 1));
     } else if (event.metaKey || event.ctrlKey) {
-      setSelectedIds(prev => prev.includes(rowId) ? prev.filter(id => id !== rowId) : [...prev, rowId]);
+      setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
     } else {
-      setSelectedIds([rowId]);
+      setSelectedIds(prev => prev.includes(id) && prev.length === 1 ? [] : [id]);
     }
   }, [selectedIds, recordedSongs]);
 
@@ -541,147 +434,6 @@ export default function RadioRecorderModal({
     if (uploadedSongs.length > 0) onSongsAdded(uploadedSongs);
     onClose();
   }, [recordedSongs, recordingBlob, libraryId, onSongsAdded, onClose]);
-
-  // Input style (fixed for visibility)
-  const inputClassName = "w-full px-1 py-0.5 text-xs border border-blue-500 rounded outline-none bg-white text-gray-900";
-
-  // DataGrid columns
-  const columns: GridColDef[] = useMemo(() => [
-    {
-      field: "trackNumber", headerName: "#", width: 32, sortable: false,
-      renderCell: (params: GridRenderCellParams) => (
-        <span className="text-[--muted]">{params.value}</span>
-      ),
-    },
-    {
-      field: "title", headerName: "Title", flex: 1.5, minWidth: 120,
-      renderCell: (params: GridRenderCellParams) => {
-        const isEditing = editingCell?.id === params.row.id && editingCell?.field === "title";
-        if (isEditing) {
-          return (
-            <input autoFocus value={editValue} onChange={(e) => setEditValue(e.target.value)}
-              onBlur={finishEditing} onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") finishEditing(); }}
-              className={inputClassName} style={{ fontFamily: FONT_FAMILY }}
-              onClick={(e) => e.stopPropagation()} />
-          );
-        }
-        return (
-          <span className="truncate cursor-text hover:underline" onClick={(e) => { e.stopPropagation(); startEditing(params.row.id, "title", params.value || ""); }}>
-            {params.value || <span className="text-[--muted] italic">Untitled</span>}
-          </span>
-        );
-      },
-    },
-    {
-      field: "artist", headerName: "Artist", flex: 1, minWidth: 80,
-      renderCell: (params: GridRenderCellParams) => {
-        const isEditing = editingCell?.id === params.row.id && editingCell?.field === "artist";
-        if (isEditing) {
-          return (
-            <div className="relative w-full">
-              <input autoFocus value={editValue} onChange={(e) => setEditValue(e.target.value)}
-                onBlur={() => setTimeout(finishEditing, 150)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") finishEditing(); }}
-                className={inputClassName} style={{ fontFamily: FONT_FAMILY }}
-                onClick={(e) => e.stopPropagation()} />
-              {showAutocomplete && autocompleteField === "artist" && filteredSuggestions.length > 0 && (
-                <div className="absolute top-full left-0 z-50 mt-1 w-48 max-h-32 overflow-y-auto bg-white border border-gray-300 rounded shadow-lg">
-                  {filteredSuggestions.map((s) => (
-                    <button key={s} type="button" className="w-full px-2 py-1 text-left text-xs text-gray-900 hover:bg-gray-100 truncate"
-                      onMouseDown={(e) => { e.preventDefault(); setEditValue(s); updateSongField(params.row.id, "artist", s); setShowAutocomplete(false); }}>
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        }
-        return (
-          <span className="truncate cursor-text hover:underline" onClick={(e) => { e.stopPropagation(); startEditing(params.row.id, "artist", params.value || ""); }}>
-            {params.value || <span className="text-[--muted] italic">—</span>}
-          </span>
-        );
-      },
-    },
-    {
-      field: "album", headerName: "Album", flex: 1, minWidth: 80,
-      renderCell: (params: GridRenderCellParams) => {
-        const isEditing = editingCell?.id === params.row.id && editingCell?.field === "album";
-        if (isEditing) {
-          return (
-            <div className="relative w-full">
-              <input autoFocus value={editValue} onChange={(e) => setEditValue(e.target.value)}
-                onBlur={() => setTimeout(finishEditing, 150)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") finishEditing(); }}
-                className={inputClassName} style={{ fontFamily: FONT_FAMILY }}
-                onClick={(e) => e.stopPropagation()} />
-              {showAutocomplete && autocompleteField === "album" && filteredSuggestions.length > 0 && (
-                <div className="absolute top-full left-0 z-50 mt-1 w-48 max-h-32 overflow-y-auto bg-white border border-gray-300 rounded shadow-lg">
-                  {filteredSuggestions.map((s) => (
-                    <button key={s} type="button" className="w-full px-2 py-1 text-left text-xs text-gray-900 hover:bg-gray-100 truncate"
-                      onMouseDown={(e) => { e.preventDefault(); setEditValue(s); updateSongField(params.row.id, "album", s); setShowAutocomplete(false); }}>
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        }
-        return (
-          <span className="truncate cursor-text hover:underline" onClick={(e) => { e.stopPropagation(); startEditing(params.row.id, "album", params.value || ""); }}>
-            {params.value || <span className="text-[--muted] italic">—</span>}
-          </span>
-        );
-      },
-    },
-    {
-      field: "duration", headerName: "Time", width: 50,
-      renderCell: (params: GridRenderCellParams) => formatDuration(params.value || 0),
-    },
-    {
-      field: "status", headerName: "", width: 60, sortable: false,
-      renderCell: (params: GridRenderCellParams) => {
-        if (params.value === "identifying") {
-          return <span className="text-[9px] text-blue-500">identifying...</span>;
-        }
-        if (params.value === "identified") {
-          return <span className="text-[9px] text-green-600">✓ found</span>;
-        }
-        if (params.value === "failed") {
-          return <span className="text-[9px] text-[--muted]">not found</span>;
-        }
-        if (params.value === "pending" && recordingBlob) {
-          return (
-            <button type="button" onClick={(e) => { e.stopPropagation(); tryIdentifySong(params.row.id); }}
-              className="text-[9px] text-blue-500 hover:underline">
-              identify
-            </button>
-          );
-        }
-        return null;
-      },
-    },
-    {
-      field: "actions", headerName: "", width: 28, sortable: false,
-      renderCell: (params: GridRenderCellParams) => (
-        <button type="button" onClick={(e) => { e.stopPropagation(); deleteSongs([params.row.id]); }}
-          className="p-1 text-[--muted] hover:text-red-500 rounded" title="Delete">
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      ),
-    },
-  ], [editingCell, editValue, finishEditing, startEditing, showAutocomplete, autocompleteField, filteredSuggestions, updateSongField, deleteSongs, recordingBlob, tryIdentifySong, inputClassName]);
-
-  // Selection styles
-  const selectionStyles = useMemo(() => {
-    if (selectedIds.length === 0) return "";
-    const selectors = selectedIds.map(id => `.MuiDataGrid-row[data-id="${id}"]`).join(",\n");
-    return `${selectors} { background-color: #1e6bbd !important; color: #fff !important; }
-      ${selectors}:hover { background-color: #2277cc !important; }
-      ${selectors} .MuiDataGrid-cell { color: #fff !important; }`;
-  }, [selectedIds]);
 
   const hasStarted = isRecording || recordingBlob;
 
@@ -817,10 +569,10 @@ export default function RadioRecorderModal({
           </div>
         )}
 
-        {/* Content area */}
-        <div className="flex-1 min-h-0 flex flex-col">
+        {/* Content area - Simple HTML table */}
+        <div className="flex-1 min-h-0 overflow-auto">
           {!hasStarted ? (
-            <div className="flex-1 flex items-center justify-center">
+            <div className="h-full flex items-center justify-center">
               <div className="text-center max-w-md">
                 <p className="text-sm text-[--muted] mb-2">
                   Share a browser tab playing music to start recording.
@@ -831,27 +583,117 @@ export default function RadioRecorderModal({
                 </p>
               </div>
             </div>
-          ) : (
-            <div className="flex-1 min-h-0">
-              <ThemeProvider theme={theme}>
-                <style>{selectionStyles}</style>
-                <div className="h-full">
-                  <DataGrid
-                    apiRef={apiRef}
-                    rows={recordedSongs}
-                    columns={columns}
-                    disableRowSelectionOnClick
-                    disableColumnMenu
-                    hideFooter
-                    rowHeight={28}
-                    columnHeaderHeight={24}
-                    sx={dataGridSx}
-                    onRowClick={handleRowClick}
-                    localeText={{ noRowsLabel: isRecording ? "Recording... tracks will appear as songs are detected" : "No tracks yet" }}
-                  />
-                </div>
-              </ThemeProvider>
+          ) : recordedSongs.length === 0 ? (
+            <div className="h-full flex items-center justify-center">
+              <p className="text-sm text-[--muted]">
+                {isRecording ? "Recording... tracks will appear as songs are detected" : "No tracks yet"}
+              </p>
             </div>
+          ) : (
+            <table className="w-full text-xs" style={{ fontFamily: FONT_FAMILY }}>
+              <thead className="sticky top-0 bg-[--background] border-b border-[--border]">
+                <tr className="text-left text-[10px] text-[--muted]">
+                  <th className="w-6 p-1.5"></th>
+                  <th className="w-8 p-1.5">#</th>
+                  <th className="p-1.5">Title</th>
+                  <th className="p-1.5">Artist</th>
+                  <th className="p-1.5">Album</th>
+                  <th className="w-12 p-1.5">Time</th>
+                  <th className="w-16 p-1.5"></th>
+                  <th className="w-6 p-1.5"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {recordedSongs.map((song, idx) => {
+                  const isSelected = selectedIds.includes(song.id);
+                  return (
+                    <tr
+                      key={song.id}
+                      onClick={(e) => toggleSelect(song.id, e)}
+                      className={`border-b border-[--border] cursor-pointer ${
+                        isSelected
+                          ? 'bg-blue-600 text-white'
+                          : idx % 2 === 0 ? 'bg-[--background]' : 'bg-[--sidebar-bg]'
+                      } hover:bg-blue-500 hover:text-white`}
+                    >
+                      <td className="p-1.5">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {}}
+                          className="w-3 h-3"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </td>
+                      <td className="p-1.5 text-[--muted]">{song.trackNumber}</td>
+                      <td className="p-1.5">
+                        <input
+                          type="text"
+                          value={song.title}
+                          onChange={(e) => updateSongField(song.id, "title", e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-full px-1.5 py-0.5 bg-white text-gray-900 border border-gray-300 rounded text-xs focus:border-blue-500 focus:outline-none"
+                          placeholder="Title"
+                        />
+                      </td>
+                      <td className="p-1.5">
+                        <input
+                          type="text"
+                          value={song.artist}
+                          onChange={(e) => updateSongField(song.id, "artist", e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-full px-1.5 py-0.5 bg-white text-gray-900 border border-gray-300 rounded text-xs focus:border-blue-500 focus:outline-none"
+                          placeholder="Artist"
+                        />
+                      </td>
+                      <td className="p-1.5">
+                        <input
+                          type="text"
+                          value={song.album}
+                          onChange={(e) => updateSongField(song.id, "album", e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-full px-1.5 py-0.5 bg-white text-gray-900 border border-gray-300 rounded text-xs focus:border-blue-500 focus:outline-none"
+                          placeholder="Album"
+                        />
+                      </td>
+                      <td className="p-1.5 tabular-nums">{formatDuration(song.duration)}</td>
+                      <td className="p-1.5">
+                        {song.status === "identifying" && (
+                          <span className="text-[9px] text-blue-500">identifying...</span>
+                        )}
+                        {song.status === "identified" && (
+                          <span className="text-[9px] text-green-600">✓ found</span>
+                        )}
+                        {song.status === "failed" && (
+                          <span className="text-[9px] text-gray-400">not found</span>
+                        )}
+                        {song.status === "pending" && recordingBlob && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); tryIdentifySong(song.id); }}
+                            className="text-[9px] text-blue-500 hover:underline"
+                          >
+                            identify
+                          </button>
+                        )}
+                      </td>
+                      <td className="p-1.5">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); deleteSong(song.id); }}
+                          className="p-0.5 text-gray-400 hover:text-red-500"
+                          title="Delete"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
         </div>
 
@@ -860,7 +702,7 @@ export default function RadioRecorderModal({
           <div className="flex items-center justify-between px-4 py-2 border-t border-[--border] bg-[--sidebar-bg]">
             <div className="flex items-center gap-2">
               {selectedIds.length > 0 && (
-                <button type="button" onClick={() => deleteSongs(selectedIds)}
+                <button type="button" onClick={() => { selectedIds.forEach(deleteSong); }}
                   className="px-2 py-1 text-xs text-red-500 hover:text-red-600 hover:bg-red-50 rounded">
                   Delete {selectedIds.length > 1 ? `(${selectedIds.length})` : ""}
                 </button>
