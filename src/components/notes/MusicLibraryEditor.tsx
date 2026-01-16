@@ -14,6 +14,7 @@ import { uploadAudioFiles, deleteSongFiles, isAudioFile, getSongIdFromPath } fro
 import { useMusicQueue } from "@/hooks/useMusicQueue";
 import MusicPlayer from "./MusicPlayer";
 import ExportSongsModal from "./ExportSongsModal";
+import EditMetadataModal from "./EditMetadataModal";
 import dynamic from "next/dynamic";
 
 // Lazy load the DataGrid component
@@ -58,6 +59,7 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
     } | null>(null);
     const [selectedSongIds, setSelectedSongIds] = useState<string[]>([]);
     const [showExportModal, setShowExportModal] = useState(false);
+    const [songsToEdit, setSongsToEdit] = useState<Song[]>([]);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -244,6 +246,17 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
       [library.id]
     );
 
+    // Handle deleting selected songs
+    const handleDeleteSelected = useCallback(async () => {
+      if (!library.id || selectedSongIds.length === 0) return;
+
+      const selectedSongs = songs.filter((s) => s.id && selectedSongIds.includes(s.id));
+      for (const song of selectedSongs) {
+        await handleDeleteSong(song);
+      }
+      setSelectedSongIds([]);
+    }, [library.id, selectedSongIds, songs, handleDeleteSong]);
+
     // Calculate stats
     const stats = getLibraryStats(songs);
 
@@ -353,9 +366,11 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
               onSortChange={handleSortChange}
               onSelectionChange={setSelectedSongIds}
               onDeleteSong={handleDeleteSong}
+              onDeleteSelected={handleDeleteSelected}
               onPlaySong={musicQueue.play}
               onQueueSong={musicQueue.addToQueue}
               onExportSelected={() => setShowExportModal(true)}
+              onEditMetadata={setSongsToEdit}
             />
           )}
         </div>
@@ -424,6 +439,15 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
               setShowExportModal(false);
               setSelectedSongIds([]);
             }}
+          />
+        )}
+
+        {/* Edit Metadata Modal */}
+        {songsToEdit.length > 0 && (
+          <EditMetadataModal
+            songs={songsToEdit}
+            onClose={() => setSongsToEdit([])}
+            onSaved={() => setSelectedSongIds([])}
           />
         )}
       </div>

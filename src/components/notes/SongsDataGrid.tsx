@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { DataGrid, GridColDef, GridRenderCellParams, GridSortModel, GridRowSelectionModel } from "@mui/x-data-grid";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
-import { Song, sortSongs, searchSongs, formatDuration, formatFileSize, updateSong } from "@/lib/songs";
+import { Song, sortSongs, searchSongs, formatDuration, formatFileSize } from "@/lib/songs";
 
 type SortColumn = "title" | "artist" | "album" | "year" | "trackNumber" | "duration" | "fileSize";
 
@@ -16,9 +16,11 @@ interface SongsDataGridProps {
   onSortChange: (column: SortColumn, direction: "asc" | "desc") => void;
   onSelectionChange: (ids: string[]) => void;
   onDeleteSong: (song: Song) => void;
+  onDeleteSelected?: () => void;
   onPlaySong?: (song: Song) => void;
   onQueueSong?: (song: Song) => void;
   onExportSelected?: () => void;
+  onEditMetadata?: (songs: Song[]) => void;
 }
 
 // Map column field names to our sort column types
@@ -41,9 +43,11 @@ export default function SongsDataGrid({
   onSortChange,
   onSelectionChange,
   onDeleteSong,
+  onDeleteSelected,
   onPlaySong,
   onQueueSong,
   onExportSelected,
+  onEditMetadata,
 }: SongsDataGridProps) {
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -73,31 +77,35 @@ export default function SongsDataGrid({
     []
   );
 
+  const FONT_FAMILY = "'Lucida Grande', 'Lucida Sans Unicode', 'Helvetica Neue', Helvetica, Arial, sans-serif";
+
   // DataGrid sx styles - narrow rows, alternating colors, no hard borders
   const dataGridSx = {
     border: "none",
     backgroundColor: "var(--background)",
     color: "var(--foreground)",
-    fontFamily: "var(--font-serif), Georgia, serif",
+    fontFamily: FONT_FAMILY,
     "& .MuiDataGrid-cell": {
       border: "none",
-      fontSize: "0.8125rem",
-      padding: "0 8px",
+      fontSize: "11px",
+      padding: "0 6px",
+      fontFamily: FONT_FAMILY,
     },
     "& .MuiDataGrid-columnHeaders": {
       border: "none",
       borderBottom: "1px solid var(--border)",
       backgroundColor: "var(--background)",
-      minHeight: "32px !important",
-      maxHeight: "32px !important",
+      minHeight: "24px !important",
+      maxHeight: "24px !important",
     },
     "& .MuiDataGrid-columnHeader": {
       backgroundColor: "var(--background)",
     },
     "& .MuiDataGrid-columnHeaderTitle": {
-      fontSize: "0.75rem",
+      fontSize: "10px",
       fontWeight: 500,
       color: "var(--muted)",
+      fontFamily: FONT_FAMILY,
     },
     "& .MuiDataGrid-footerContainer": {
       display: "none",
@@ -112,17 +120,17 @@ export default function SongsDataGrid({
     "& .MuiDataGrid-row:hover": {
       backgroundColor: "var(--hover)",
     },
+    // Dark blue selection like Finder/left sidebar
     "& .MuiDataGrid-row.Mui-selected": {
-      backgroundColor: "rgba(59, 130, 246, 0.15)",
+      backgroundColor: "#1e6bbd",
+      color: "#fff",
     },
     "& .MuiDataGrid-row.Mui-selected:hover": {
-      backgroundColor: "rgba(59, 130, 246, 0.25)",
+      backgroundColor: "#2277cc",
+      color: "#fff",
     },
-    "& .MuiCheckboxRoot": {
-      color: "var(--muted)",
-    },
-    "& .Mui-checked": {
-      color: "#3b82f6",
+    "& .MuiDataGrid-row.Mui-selected .MuiDataGrid-cell": {
+      color: "#fff",
     },
     "& .MuiDataGrid-cell:focus, & .MuiDataGrid-columnHeader:focus": {
       outline: "none",
@@ -162,65 +170,46 @@ export default function SongsDataGrid({
       {
         field: "trackNumber",
         headerName: "#",
-        width: 40,
+        width: 32,
         type: "number",
-        editable: true,
-        renderCell: (params: GridRenderCellParams) => (
-          <span className="text-[--muted] text-xs">{params.value || "—"}</span>
-        ),
       },
       {
         field: "title",
         headerName: "Title",
         flex: 1.5,
-        minWidth: 150,
-        editable: true,
+        minWidth: 120,
       },
       {
         field: "artist",
         headerName: "Artist",
         flex: 1,
-        minWidth: 100,
-        editable: true,
+        minWidth: 80,
       },
       {
         field: "album",
         headerName: "Album",
         flex: 1,
-        minWidth: 100,
-        editable: true,
+        minWidth: 80,
       },
       {
         field: "year",
         headerName: "Year",
-        width: 50,
+        width: 44,
         type: "number",
-        editable: true,
-        renderCell: (params: GridRenderCellParams) => (
-          <span className="text-[--muted] text-xs">{params.value || "—"}</span>
-        ),
       },
       {
         field: "duration",
         headerName: "Time",
-        width: 55,
+        width: 48,
         type: "number",
-        renderCell: (params: GridRenderCellParams) => (
-          <span className="tabular-nums text-[--muted] text-xs">
-            {formatDuration(params.value || 0)}
-          </span>
-        ),
+        renderCell: (params: GridRenderCellParams) => formatDuration(params.value || 0),
       },
       {
         field: "fileSize",
         headerName: "Size",
-        width: 60,
+        width: 50,
         type: "number",
-        renderCell: (params: GridRenderCellParams) => (
-          <span className="tabular-nums text-[--muted] text-xs">
-            {formatFileSize(params.value || 0)}
-          </span>
-        ),
+        renderCell: (params: GridRenderCellParams) => formatFileSize(params.value || 0),
       },
     ],
     []
@@ -235,25 +224,6 @@ export default function SongsDataGrid({
         onSortChange(column, sort || "asc");
       }
     }
-  };
-
-  // Handle cell edit
-  const processRowUpdate = async (newRow: Song, oldRow: Song) => {
-    if (!newRow.id) return oldRow;
-
-    const updates: Partial<Song> = {};
-
-    if (newRow.title !== oldRow.title) updates.title = newRow.title;
-    if (newRow.artist !== oldRow.artist) updates.artist = newRow.artist;
-    if (newRow.album !== oldRow.album) updates.album = newRow.album;
-    if (newRow.year !== oldRow.year) updates.year = newRow.year;
-    if (newRow.trackNumber !== oldRow.trackNumber) updates.trackNumber = newRow.trackNumber;
-
-    if (Object.keys(updates).length > 0) {
-      await updateSong(newRow.id, updates);
-    }
-
-    return newRow;
   };
 
   // Handle context menu
@@ -285,78 +255,109 @@ export default function SongsDataGrid({
           columns={columns}
           sortModel={[{ field: sortColumn, sort: sortDirection }]}
           onSortModelChange={handleSortModelChange}
-          processRowUpdate={processRowUpdate}
           onRowDoubleClick={handleRowDoubleClick}
-          checkboxSelection
           rowSelectionModel={{ type: "include", ids: new Set(selectedIds) }}
           onRowSelectionModelChange={handleSelectionChange}
           disableColumnMenu
           hideFooter
-          rowHeight={28}
-          columnHeaderHeight={32}
+          rowHeight={20}
+          columnHeaderHeight={24}
           sx={dataGridSx}
         />
 
         {/* Context Menu */}
-        {contextMenu && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={closeContextMenu} />
-            <div
-              className="fixed z-50 py-1 rounded shadow-lg border border-[--border] min-w-[140px]"
-              style={{
-                left: contextMenu.x,
-                top: contextMenu.y,
-                backgroundColor: "var(--background)",
-              }}
-            >
-              {onPlaySong && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onPlaySong(contextMenu.song);
-                    closeContextMenu();
-                  }}
-                  className="context-menu-item"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Play
-                </button>
-              )}
-              {onQueueSong && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onQueueSong(contextMenu.song);
-                    closeContextMenu();
-                  }}
-                  className="context-menu-item"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                  </svg>
-                  Add to Queue
-                </button>
-              )}
-              <div className="h-px my-1" style={{ backgroundColor: "var(--border)" }} />
-              <button
-                type="button"
-                onClick={() => {
-                  onDeleteSong(contextMenu.song);
-                  closeContextMenu();
+        {contextMenu && (() => {
+          // If the right-clicked song is selected, operate on all selected songs
+          const isSelectedSong = selectedIds.includes(contextMenu.song.id || "");
+          const targetSongs = isSelectedSong
+            ? songs.filter((s) => s.id && selectedIds.includes(s.id))
+            : [contextMenu.song];
+          const count = targetSongs.length;
+
+          return (
+            <>
+              <div className="fixed inset-0 z-40" onClick={closeContextMenu} />
+              <div
+                className="fixed z-50 py-1 rounded shadow-lg border border-[--border] min-w-[160px]"
+                style={{
+                  left: contextMenu.x,
+                  top: contextMenu.y,
+                  backgroundColor: "var(--background)",
+                  fontFamily: "'Lucida Grande', 'Lucida Sans Unicode', sans-serif",
                 }}
-                className="context-menu-item danger"
               >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                Delete
-              </button>
-            </div>
-          </>
-        )}
+                {onPlaySong && count === 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onPlaySong(contextMenu.song);
+                      closeContextMenu();
+                    }}
+                    className="context-menu-item"
+                  >
+                    Play
+                  </button>
+                )}
+                {onQueueSong && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      targetSongs.forEach((s) => onQueueSong(s));
+                      closeContextMenu();
+                    }}
+                    className="context-menu-item"
+                  >
+                    Add to Queue{count > 1 ? ` (${count})` : ""}
+                  </button>
+                )}
+                <div className="h-px my-1" style={{ backgroundColor: "var(--border)" }} />
+                {onEditMetadata && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onEditMetadata(targetSongs);
+                      closeContextMenu();
+                    }}
+                    className="context-menu-item"
+                  >
+                    Edit Metadata{count > 1 ? ` (${count})` : ""}
+                  </button>
+                )}
+                {onExportSelected && count > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Select all target songs if not already selected
+                      if (!isSelectedSong) {
+                        onSelectionChange([contextMenu.song.id || ""]);
+                      }
+                      onExportSelected();
+                      closeContextMenu();
+                    }}
+                    className="context-menu-item"
+                  >
+                    Export{count > 1 ? ` (${count})` : ""}
+                  </button>
+                )}
+                <div className="h-px my-1" style={{ backgroundColor: "var(--border)" }} />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (count > 1 && onDeleteSelected) {
+                      onDeleteSelected();
+                    } else {
+                      onDeleteSong(contextMenu.song);
+                    }
+                    closeContextMenu();
+                  }}
+                  className="context-menu-item danger"
+                >
+                  Delete{count > 1 ? ` (${count})` : ""}
+                </button>
+              </div>
+            </>
+          );
+        })()}
       </div>
     </ThemeProvider>
   );
