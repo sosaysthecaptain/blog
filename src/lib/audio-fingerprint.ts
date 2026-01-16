@@ -1,13 +1,23 @@
 /**
  * Audio fingerprinting and identification using AcoustID
  *
- * This module provides client-side audio fingerprinting using the Web Audio API
- * and queries the AcoustID database for song identification.
+ * This module uses the @unimusic/chromaprint WASM library to generate
+ * real Chromaprint fingerprints compatible with AcoustID.
  */
 
 // AcoustID API configuration
 const ACOUSTID_API_URL = "https://api.acoustid.org/v2/lookup";
 const ACOUSTID_CLIENT_ID = process.env.NEXT_PUBLIC_ACOUSTID_CLIENT_ID || "";
+
+// Lazy-loaded chromaprint module
+let chromaprintModule: typeof import("@unimusic/chromaprint") | null = null;
+
+async function getChromaprintModule() {
+  if (!chromaprintModule) {
+    chromaprintModule = await import("@unimusic/chromaprint");
+  }
+  return chromaprintModule;
+}
 
 interface AcoustIDResult {
   status: "ok" | "error";
@@ -46,77 +56,35 @@ export interface IdentificationResult {
 }
 
 /**
- * Generate a simple audio fingerprint using spectral analysis
- * This is a simplified version that creates a hash from audio features
+ * Generate a real Chromaprint fingerprint using WASM
  */
-async function generateSimpleFingerprint(audioBuffer: AudioBuffer): Promise<string> {
-  const channelData = audioBuffer.getChannelData(0);
-  const sampleRate = audioBuffer.sampleRate;
+async function generateChromaprint(
+  arrayBuffer: ArrayBuffer
+): Promise<{ fingerprint: string; duration: number }> {
+  const chromaprint = await getChromaprintModule();
 
-  // Create an offline context for analysis
-  const offlineContext = new OfflineAudioContext(1, channelData.length, sampleRate);
-  const source = offlineContext.createBufferSource();
-  const analyser = offlineContext.createAnalyser();
-
-  source.buffer = audioBuffer;
-  analyser.fftSize = 2048;
-
-  source.connect(analyser);
-  analyser.connect(offlineContext.destination);
-  source.start();
-
-  // We can't easily get frame-by-frame FFT in offline context
-  // Instead, compute a simple hash from the raw audio data
-
-  // Sample at regular intervals and create a feature vector
-  const numSamples = 32;
-  const interval = Math.floor(channelData.length / numSamples);
-  const features: number[] = [];
-
-  for (let i = 0; i < numSamples; i++) {
-    const start = i * interval;
-    const end = Math.min(start + interval, channelData.length);
-
-    // Calculate RMS energy for this segment
-    let sum = 0;
-    for (let j = start; j < end; j++) {
-      sum += channelData[j] * channelData[j];
-    }
-    const rms = Math.sqrt(sum / (end - start));
-    features.push(Math.round(rms * 1000));
-  }
-
-  // Convert to base64 string as "fingerprint"
-  return btoa(features.join(","));
-}
-
-/**
- * Decode audio blob to AudioBuffer
- */
-async function decodeAudioBlob(blob: Blob): Promise<AudioBuffer> {
-  const arrayBuffer = await blob.arrayBuffer();
+  // Get duration from audio
   const audioContext = new AudioContext();
-
-  try {
-    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-    audioContext.close();
-    return audioBuffer;
-  } catch (error) {
-    audioContext.close();
-    throw new Error("Failed to decode audio: " + (error instanceof Error ? error.message : "Unknown error"));
-  }
-}
-
-/**
- * Generate chromaprint-compatible fingerprint
- * This is a simplified implementation that generates a hash of audio features
- * For production, you'd want to use actual chromaprint via WASM or server-side
- */
-async function generateChromaprintLike(audioBuffer: AudioBuffer): Promise<{ fingerprint: string; duration: number }> {
+  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
   const duration = audioBuffer.duration;
-  const fingerprint = await generateSimpleFingerprint(audioBuffer);
+  audioContext.close();
 
-  return { fingerprint, duration };
+  // Generate fingerprint using chromaprint WASM
+  // processAudioFile returns an async generator, we just need the first result
+  const generator = chromaprint.processAudioFile(arrayBuffer, {
+    maxDuration: 120,
+    chunkDuration: 0,
+    algorithm: chromaprint.ChromaprintAlgorithm.Default,
+    rawOutput: false,
+    overlap: false,
+  });
+
+  const result = await generator.next();
+  if (result.done || !result.value) {
+    throw new Error("Failed to generate fingerprint");
+  }
+
+  return { fingerprint: result.value, duration };
 }
 
 /**
@@ -167,11 +135,11 @@ export async function identifyAudio(blob: Blob): Promise<IdentificationResult> {
       };
     }
 
-    // Decode audio
-    const audioBuffer = await decodeAudioBlob(blob);
+    // Convert blob to ArrayBuffer
+    const arrayBuffer = await blob.arrayBuffer();
 
-    // Generate fingerprint
-    const { fingerprint, duration } = await generateChromaprintLike(audioBuffer);
+    // Generate real Chromaprint fingerprint using WASM
+    const { fingerprint, duration } = await generateChromaprint(arrayBuffer);
 
     // Query AcoustID
     const result = await queryAcoustID(fingerprint, duration);
