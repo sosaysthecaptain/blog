@@ -67,8 +67,8 @@ export default function EditMetadataModal({ songs, onClose, onSaved }: EditMetad
     <>
       <div className="fixed inset-0 bg-black/50 z-50" onClick={onClose} />
       <div
-        className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-96 bg-[--background] border border-[--border] rounded-lg shadow-xl"
-        style={{ fontFamily: FONT_FAMILY }}
+        className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-96 border border-[--border] rounded-lg shadow-xl"
+        style={{ fontFamily: FONT_FAMILY, backgroundColor: "var(--background)" }}
       >
         <div className="px-5 py-4 border-b border-[--border]">
           <h2 className="text-sm font-semibold text-[--foreground]">

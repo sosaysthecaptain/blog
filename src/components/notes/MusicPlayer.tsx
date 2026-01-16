@@ -138,7 +138,10 @@ export default function MusicPlayer({
       {showQueue && queue.length > 0 && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setShowQueue(false)} />
-          <div className="absolute bottom-full right-4 mb-2 w-72 max-h-80 bg-[--background] border border-[--border] rounded-lg shadow-xl z-50 overflow-hidden">
+          <div
+            className="absolute bottom-full right-4 mb-2 w-72 max-h-80 border border-[--border] rounded-lg shadow-xl z-50 overflow-hidden"
+            style={{ backgroundColor: "var(--background)" }}
+          >
             <div className="flex items-center justify-between px-3 py-2 border-b border-[--border]">
               <span className="text-xs font-medium text-[--foreground]">Queue ({queue.length})</span>
               <button
