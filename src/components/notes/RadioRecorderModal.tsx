@@ -75,7 +75,7 @@ interface Split {
 
 interface RecordedSong {
   id: string;
-  blob: Blob;
+  segmentIndex: number;
   startTime: number;
   endTime: number;
   duration: number;
@@ -95,34 +95,30 @@ interface RadioRecorderModalProps {
   onSongsAdded: (songs: Song[]) => void;
 }
 
-type Phase = "idle" | "requesting" | "recording" | "editing" | "metadata";
-
 export default function RadioRecorderModal({
   libraryId,
   existingSongs = [],
   onClose,
   onSongsAdded,
 }: RadioRecorderModalProps) {
-  // Phase state
-  const [phase, setPhase] = useState<Phase>("idle");
-
   // Recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [isRequesting, setIsRequesting] = useState(false);
   const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null);
-  const [currentRecordingDuration, setCurrentRecordingDuration] = useState(0);
-  const [audioLevel, setAudioLevel] = useState(0);
-  const [waveformData, setWaveformData] = useState<number[]>(new Array(64).fill(0));
+  const [currentDuration, setCurrentDuration] = useState(0);
+  const [liveWaveformData, setLiveWaveformData] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Auto-split state (for live detection)
+  // Auto-split settings
   const [silenceThreshold, setSilenceThreshold] = useState(0.02);
   const [silenceDurationSetting, setSilenceDurationSetting] = useState(1);
   const [autoSplit, setAutoSplit] = useState(true);
   const [silenceProgress, setSilenceProgress] = useState(0);
 
-  // Editing state (waveform splits)
+  // Splits state
   const [splits, setSplits] = useState<Split[]>([]);
 
-  // Metadata state (song list)
+  // Metadata state
   const [recordedSongs, setRecordedSongs] = useState<RecordedSong[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [editingCell, setEditingCell] = useState<{ id: string; field: string } | null>(null);
@@ -143,23 +139,19 @@ export default function RadioRecorderModal({
   const recordingStartTimeRef = useRef<number>(0);
   const silenceStartRef = useRef<number | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-  const detectedSplitsRef = useRef<number[]>([]);
+  const waveformSampleIntervalRef = useRef<number>(0);
   const apiRef = useGridApiRef();
 
-  // Get unique artists and albums from existing songs
+  // Get unique artists and albums
   const uniqueArtists = useMemo(() => {
     const artists = new Set<string>();
-    existingSongs.forEach(s => {
-      if (s.artist && s.artist !== "Unknown Artist") artists.add(s.artist);
-    });
+    existingSongs.forEach(s => { if (s.artist && s.artist !== "Unknown Artist") artists.add(s.artist); });
     return Array.from(artists).sort();
   }, [existingSongs]);
 
   const uniqueAlbums = useMemo(() => {
     const albums = new Set<string>();
-    existingSongs.forEach(s => {
-      if (s.album && s.album !== "Unknown Album") albums.add(s.album);
-    });
+    existingSongs.forEach(s => { if (s.album && s.album !== "Unknown Album") albums.add(s.album); });
     return Array.from(albums).sort();
   }, [existingSongs]);
 
@@ -176,6 +168,50 @@ export default function RadioRecorderModal({
     typography: { fontFamily: FONT_FAMILY, fontSize: 12 },
   }), []);
 
+  // Compute segments from splits
+  const segments = useMemo(() => {
+    const sortedSplits = [...splits].sort((a, b) => a.time - b.time);
+    const times = [0, ...sortedSplits.map(s => s.time), currentDuration];
+    const result: Array<{ index: number; start: number; end: number; duration: number }> = [];
+
+    for (let i = 0; i < times.length - 1; i++) {
+      const duration = times[i + 1] - times[i];
+      if (duration >= 5) { // Only count segments >= 5 seconds
+        result.push({ index: i, start: times[i], end: times[i + 1], duration });
+      }
+    }
+    return result;
+  }, [splits, currentDuration]);
+
+  // Update recorded songs when segments change (after recording)
+  useEffect(() => {
+    if (isRecording || !recordingBlob) return;
+
+    // Create/update song entries for each segment
+    const newSongs: RecordedSong[] = segments.map((seg, i) => {
+      // Try to keep existing song data if segment matches
+      const existing = recordedSongs.find(s => s.segmentIndex === i && Math.abs(s.startTime - seg.start) < 1);
+      if (existing) {
+        return { ...existing, startTime: seg.start, endTime: seg.end, duration: seg.duration };
+      }
+      return {
+        id: `song-${i}-${Date.now()}`,
+        segmentIndex: i,
+        startTime: seg.start,
+        endTime: seg.end,
+        duration: seg.duration,
+        title: `Track ${i + 1}`,
+        artist: "",
+        album: "",
+        year: "",
+        genre: "",
+        status: "pending",
+      };
+    });
+
+    setRecordedSongs(newSongs);
+  }, [segments, isRecording, recordingBlob]);
+
   // Clean up on unmount
   useEffect(() => {
     return () => {
@@ -186,9 +222,13 @@ export default function RadioRecorderModal({
 
   // Start recording
   const startRecording = useCallback(async () => {
-    setPhase("requesting");
+    setIsRequesting(true);
     setError(null);
-    detectedSplitsRef.current = [];
+    setLiveWaveformData([]);
+    setSplits([]);
+    setRecordedSongs([]);
+    setRecordingBlob(null);
+    waveformSampleIntervalRef.current = 0;
 
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
@@ -229,46 +269,47 @@ export default function RadioRecorderModal({
       recordingStartTimeRef.current = Date.now();
 
       mediaRecorder.start(500);
-      setPhase("recording");
-      monitorAudioLevel();
+      setIsRecording(true);
+      setIsRequesting(false);
 
-      stream.getAudioTracks()[0].onended = () => {
-        finishRecording();
-      };
+      stream.getAudioTracks()[0].onended = () => finishRecording();
     } catch (err) {
       console.error("Failed to start recording:", err);
       setError(err instanceof Error ? err.message : "Failed to start recording");
-      setPhase("idle");
+      setIsRequesting(false);
     }
   }, []);
 
-  // Monitor audio levels
-  const monitorAudioLevel = useCallback(() => {
-    if (!analyserRef.current) return;
+  // Monitor audio levels and build waveform
+  useEffect(() => {
+    if (!isRecording || !analyserRef.current) return;
 
     const analyser = analyserRef.current;
     const bufferLength = analyser.fftSize;
     const dataArray = new Uint8Array(bufferLength);
-    const frequencyData = new Uint8Array(analyser.frequencyBinCount);
 
     const checkLevel = () => {
-      if (phase !== "recording") return;
+      if (!isRecording) return;
 
       analyser.getByteTimeDomainData(dataArray);
 
+      // Calculate RMS
       let sum = 0;
       for (let i = 0; i < bufferLength; i++) {
         const amplitude = (dataArray[i] - 128) / 128;
         sum += amplitude * amplitude;
       }
       const rms = Math.sqrt(sum / bufferLength);
-      setAudioLevel(rms);
 
-      analyser.getByteFrequencyData(frequencyData);
-      setWaveformData(Array.from(frequencyData.slice(0, 64)).map(v => v / 255));
+      // Update duration
+      const elapsed = (Date.now() - recordingStartTimeRef.current) / 1000;
+      setCurrentDuration(elapsed);
 
-      if (recordingStartTimeRef.current > 0) {
-        setCurrentRecordingDuration((Date.now() - recordingStartTimeRef.current) / 1000);
+      // Sample waveform data (about 2 samples per second for smooth display)
+      waveformSampleIntervalRef.current++;
+      if (waveformSampleIntervalRef.current >= 30) { // ~2x per second at 60fps
+        waveformSampleIntervalRef.current = 0;
+        setLiveWaveformData(prev => [...prev, Math.min(1, rms * 3)]); // Amplify for visibility
       }
 
       // Auto-detect silence for split markers
@@ -282,11 +323,11 @@ export default function RadioRecorderModal({
           setSilenceProgress(Math.min(1, silenceDurationMs / (silenceDurationSetting * 1000)));
 
           if (silenceDurationMs >= silenceDurationSetting * 1000) {
-            const splitTime = (Date.now() - recordingStartTimeRef.current) / 1000;
+            const splitTime = elapsed;
             // Only add if not too close to last split
-            const lastSplit = detectedSplitsRef.current[detectedSplitsRef.current.length - 1] || 0;
-            if (splitTime - lastSplit > 10) {
-              detectedSplitsRef.current.push(splitTime);
+            const lastSplit = splits[splits.length - 1];
+            if (!lastSplit || splitTime - lastSplit.time > 10) {
+              setSplits(prev => [...prev, { id: `split-${Date.now()}`, time: splitTime }]);
             }
             silenceStartRef.current = null;
             setSilenceProgress(0);
@@ -300,48 +341,31 @@ export default function RadioRecorderModal({
       animationFrameRef.current = requestAnimationFrame(checkLevel);
     };
 
-    checkLevel();
-  }, [phase, autoSplit, silenceThreshold, silenceDurationSetting]);
+    animationFrameRef.current = requestAnimationFrame(checkLevel);
+    return () => {
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    };
+  }, [isRecording, autoSplit, silenceThreshold, silenceDurationSetting, splits]);
 
-  useEffect(() => {
-    if (phase === "recording") monitorAudioLevel();
-  }, [phase, monitorAudioLevel]);
-
-  // Finish recording and move to editing phase
+  // Finish recording
   const finishRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
     }
 
-    // Wait a bit for final chunks
     setTimeout(() => {
       const blob = new Blob(chunksRef.current, { type: "audio/webm" });
       setRecordingBlob(blob);
+      setIsRecording(false);
 
-      // Convert detected splits to Split objects
-      const initialSplits: Split[] = detectedSplitsRef.current.map((time, i) => ({
-        id: `split-${i}-${Date.now()}`,
-        time,
-      }));
-      setSplits(initialSplits);
-
-      // Clean up recording resources
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach(track => track.stop());
-      }
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-      }
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+      // Clean up
+      if (mediaStreamRef.current) mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      if (audioContextRef.current) audioContextRef.current.close();
 
       mediaRecorderRef.current = null;
       mediaStreamRef.current = null;
       audioContextRef.current = null;
       analyserRef.current = null;
-
-      setPhase("editing");
     }, 100);
   }, []);
 
@@ -350,79 +374,31 @@ export default function RadioRecorderModal({
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
     }
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(track => track.stop());
-    }
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-    }
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-    }
+    if (mediaStreamRef.current) mediaStreamRef.current.getTracks().forEach(track => track.stop());
+    if (audioContextRef.current) audioContextRef.current.close();
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
 
     mediaRecorderRef.current = null;
     mediaStreamRef.current = null;
     audioContextRef.current = null;
     analyserRef.current = null;
     chunksRef.current = [];
-    recordingStartTimeRef.current = 0;
 
-    setPhase("idle");
-    setCurrentRecordingDuration(0);
-    setAudioLevel(0);
+    setIsRecording(false);
+    setCurrentDuration(0);
     setSilenceProgress(0);
-    setWaveformData(new Array(64).fill(0));
+    setLiveWaveformData([]);
   }, []);
-
-  // Handle splits confirmed - create song segments
-  const handleSplitsConfirmed = useCallback(async () => {
-    if (!recordingBlob) return;
-
-    const sortedSplits = [...splits].sort((a, b) => a.time - b.time);
-    const totalDuration = currentRecordingDuration;
-    const times = [0, ...sortedSplits.map(s => s.time), totalDuration];
-
-    const songs: RecordedSong[] = [];
-    for (let i = 0; i < times.length - 1; i++) {
-      const start = times[i];
-      const end = times[i + 1];
-      const duration = end - start;
-
-      if (duration < 5) continue; // Skip very short segments
-
-      songs.push({
-        id: `song-${i}-${Date.now()}`,
-        blob: recordingBlob, // We'll slice this on upload
-        startTime: start,
-        endTime: end,
-        duration,
-        title: `Track ${i + 1}`,
-        artist: "",
-        album: "",
-        year: "",
-        genre: "",
-        status: "pending",
-      });
-    }
-
-    setRecordedSongs(songs);
-    setPhase("metadata");
-
-    // Try to identify each song
-    for (const song of songs) {
-      tryIdentifySong(song.id);
-    }
-  }, [recordingBlob, splits, currentRecordingDuration]);
 
   // Try to identify a song
   const tryIdentifySong = useCallback(async (songId: string) => {
+    if (!recordingBlob) return;
+
     setRecordedSongs(prev => prev.map(s => s.id === songId ? { ...s, status: "identifying" as const } : s));
 
     try {
-      const song = recordedSongs.find(s => s.id === songId);
-      if (!song) return;
-
-      const result = await identifyAudio(song.blob);
+      // For now, use the whole blob - in production you'd slice it
+      const result = await identifyAudio(recordingBlob);
 
       if (result.success && result.candidates.length > 0) {
         const best = result.candidates[0];
@@ -438,7 +414,7 @@ export default function RadioRecorderModal({
       console.error("Identification failed:", error);
       setRecordedSongs(prev => prev.map(s => s.id === songId ? { ...s, status: "failed" as const } : s));
     }
-  }, [recordedSongs]);
+  }, [recordingBlob]);
 
   // Update song field
   const updateSongField = useCallback((songId: string, field: keyof RecordedSong, value: string) => {
@@ -451,7 +427,7 @@ export default function RadioRecorderModal({
     setSelectedIds([]);
   }, []);
 
-  // Start editing
+  // Editing helpers
   const startEditing = useCallback((id: string, field: string, currentValue: string) => {
     setEditingCell({ id, field });
     setEditValue(currentValue);
@@ -463,7 +439,6 @@ export default function RadioRecorderModal({
     }
   }, []);
 
-  // Finish editing
   const finishEditing = useCallback(() => {
     if (editingCell) {
       updateSongField(editingCell.id, editingCell.field as keyof RecordedSong, editValue);
@@ -491,7 +466,7 @@ export default function RadioRecorderModal({
 
   // Upload songs
   const handleAddToLibrary = useCallback(async () => {
-    if (recordedSongs.length === 0) return;
+    if (recordedSongs.length === 0 || !recordingBlob) return;
 
     setIsUploading(true);
     setUploadProgress({ current: 0, total: recordedSongs.length });
@@ -503,7 +478,7 @@ export default function RadioRecorderModal({
       setUploadProgress({ current: i, total: recordedSongs.length });
 
       try {
-        const uploaded = await uploadRecordedAudio(song.blob, libraryId, {
+        const uploaded = await uploadRecordedAudio(recordingBlob, libraryId, {
           title: song.title,
           artist: song.artist,
           album: song.album,
@@ -520,29 +495,20 @@ export default function RadioRecorderModal({
     setIsUploading(false);
     if (uploadedSongs.length > 0) onSongsAdded(uploadedSongs);
     onClose();
-  }, [recordedSongs, libraryId, onSongsAdded, onClose]);
+  }, [recordedSongs, recordingBlob, libraryId, onSongsAdded, onClose]);
 
   // DataGrid columns
   const columns: GridColDef[] = useMemo(() => [
     {
-      field: "title",
-      headerName: "Title",
-      flex: 1.5,
-      minWidth: 120,
+      field: "title", headerName: "Title", flex: 1.5, minWidth: 120,
       renderCell: (params: GridRenderCellParams) => {
         const isEditing = editingCell?.id === params.row.id && editingCell?.field === "title";
         if (isEditing) {
           return (
-            <input
-              autoFocus
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              onBlur={finishEditing}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") finishEditing(); }}
-              className="w-full px-1 text-xs bg-white border border-blue-500 rounded outline-none"
-              style={{ fontFamily: FONT_FAMILY }}
-              onClick={(e) => e.stopPropagation()}
-            />
+            <input autoFocus value={editValue} onChange={(e) => setEditValue(e.target.value)}
+              onBlur={finishEditing} onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") finishEditing(); }}
+              className="w-full px-1 text-xs bg-white border border-blue-500 rounded outline-none" style={{ fontFamily: FONT_FAMILY }}
+              onClick={(e) => e.stopPropagation()} />
           );
         }
         return (
@@ -553,25 +519,16 @@ export default function RadioRecorderModal({
       },
     },
     {
-      field: "artist",
-      headerName: "Artist",
-      flex: 1,
-      minWidth: 80,
+      field: "artist", headerName: "Artist", flex: 1, minWidth: 80,
       renderCell: (params: GridRenderCellParams) => {
         const isEditing = editingCell?.id === params.row.id && editingCell?.field === "artist";
         if (isEditing) {
           return (
             <div className="relative w-full">
-              <input
-                autoFocus
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                onBlur={() => setTimeout(finishEditing, 150)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") finishEditing(); }}
-                className="w-full px-1 text-xs bg-white border border-blue-500 rounded outline-none"
-                style={{ fontFamily: FONT_FAMILY }}
-                onClick={(e) => e.stopPropagation()}
-              />
+              <input autoFocus value={editValue} onChange={(e) => setEditValue(e.target.value)}
+                onBlur={() => setTimeout(finishEditing, 150)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") finishEditing(); }}
+                className="w-full px-1 text-xs bg-white border border-blue-500 rounded outline-none" style={{ fontFamily: FONT_FAMILY }}
+                onClick={(e) => e.stopPropagation()} />
               {showAutocomplete && autocompleteField === "artist" && filteredSuggestions.length > 0 && (
                 <div className="absolute top-full left-0 z-50 mt-1 w-48 max-h-32 overflow-y-auto bg-white border border-[--border] rounded shadow-lg">
                   {filteredSuggestions.map((s) => (
@@ -593,25 +550,16 @@ export default function RadioRecorderModal({
       },
     },
     {
-      field: "album",
-      headerName: "Album",
-      flex: 1,
-      minWidth: 80,
+      field: "album", headerName: "Album", flex: 1, minWidth: 80,
       renderCell: (params: GridRenderCellParams) => {
         const isEditing = editingCell?.id === params.row.id && editingCell?.field === "album";
         if (isEditing) {
           return (
             <div className="relative w-full">
-              <input
-                autoFocus
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                onBlur={() => setTimeout(finishEditing, 150)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") finishEditing(); }}
-                className="w-full px-1 text-xs bg-white border border-blue-500 rounded outline-none"
-                style={{ fontFamily: FONT_FAMILY }}
-                onClick={(e) => e.stopPropagation()}
-              />
+              <input autoFocus value={editValue} onChange={(e) => setEditValue(e.target.value)}
+                onBlur={() => setTimeout(finishEditing, 150)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") finishEditing(); }}
+                className="w-full px-1 text-xs bg-white border border-blue-500 rounded outline-none" style={{ fontFamily: FONT_FAMILY }}
+                onClick={(e) => e.stopPropagation()} />
               {showAutocomplete && autocompleteField === "album" && filteredSuggestions.length > 0 && (
                 <div className="absolute top-full left-0 z-50 mt-1 w-48 max-h-32 overflow-y-auto bg-white border border-[--border] rounded shadow-lg">
                   {filteredSuggestions.map((s) => (
@@ -633,23 +581,15 @@ export default function RadioRecorderModal({
       },
     },
     {
-      field: "year",
-      headerName: "Year",
-      width: 50,
+      field: "year", headerName: "Year", width: 50,
       renderCell: (params: GridRenderCellParams) => {
         const isEditing = editingCell?.id === params.row.id && editingCell?.field === "year";
         if (isEditing) {
           return (
-            <input
-              autoFocus
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              onBlur={finishEditing}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") finishEditing(); }}
-              className="w-full px-1 text-xs bg-white border border-blue-500 rounded outline-none"
-              style={{ fontFamily: FONT_FAMILY }}
-              onClick={(e) => e.stopPropagation()}
-            />
+            <input autoFocus value={editValue} onChange={(e) => setEditValue(e.target.value)}
+              onBlur={finishEditing} onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") finishEditing(); }}
+              className="w-full px-1 text-xs bg-white border border-blue-500 rounded outline-none" style={{ fontFamily: FONT_FAMILY }}
+              onClick={(e) => e.stopPropagation()} />
           );
         }
         return (
@@ -660,31 +600,31 @@ export default function RadioRecorderModal({
       },
     },
     {
-      field: "duration",
-      headerName: "Time",
-      width: 50,
+      field: "duration", headerName: "Time", width: 50,
       renderCell: (params: GridRenderCellParams) => formatDuration(params.value || 0),
     },
     {
-      field: "status",
-      headerName: "",
-      width: 40,
-      sortable: false,
+      field: "status", headerName: "", width: 60, sortable: false,
       renderCell: (params: GridRenderCellParams) => {
         if (params.value === "identifying") {
-          return <svg className="w-3 h-3 animate-spin text-blue-500" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>;
+          return <span className="text-[9px] text-blue-500">identifying...</span>;
         }
         if (params.value === "identified") {
-          return <span className="text-[9px] text-green-600" title="Identified">✓</span>;
+          return <span className="text-[9px] text-green-600">✓ found</span>;
+        }
+        if (params.value === "pending" && recordingBlob) {
+          return (
+            <button type="button" onClick={(e) => { e.stopPropagation(); tryIdentifySong(params.row.id); }}
+              className="text-[9px] text-blue-500 hover:underline">
+              identify
+            </button>
+          );
         }
         return null;
       },
     },
     {
-      field: "actions",
-      headerName: "",
-      width: 32,
-      sortable: false,
+      field: "actions", headerName: "", width: 28, sortable: false,
       renderCell: (params: GridRenderCellParams) => (
         <button type="button" onClick={(e) => { e.stopPropagation(); deleteSongs([params.row.id]); }}
           className="p-1 text-[--muted] hover:text-red-500 rounded" title="Delete">
@@ -694,7 +634,7 @@ export default function RadioRecorderModal({
         </button>
       ),
     },
-  ], [editingCell, editValue, finishEditing, startEditing, showAutocomplete, autocompleteField, filteredSuggestions, updateSongField, deleteSongs]);
+  ], [editingCell, editValue, finishEditing, startEditing, showAutocomplete, autocompleteField, filteredSuggestions, updateSongField, deleteSongs, recordingBlob, tryIdentifySong]);
 
   // Selection styles
   const selectionStyles = useMemo(() => {
@@ -705,140 +645,114 @@ export default function RadioRecorderModal({
       ${selectors} .MuiDataGrid-cell { color: #fff !important; }`;
   }, [selectedIds]);
 
+  const hasStarted = isRecording || recordingBlob;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-6xl h-[90vh] flex flex-col rounded-lg shadow-xl border border-[--border] overflow-hidden"
+      <div className="w-full max-w-5xl h-[85vh] flex flex-col rounded-lg shadow-xl border border-[--border] overflow-hidden"
         style={{ backgroundColor: "var(--background)", fontFamily: FONT_FAMILY }}>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-[--border]">
-          <h2 className="text-sm font-semibold">
-            {phase === "idle" && "Record from Tab"}
-            {phase === "requesting" && "Select Tab..."}
-            {phase === "recording" && "Recording..."}
-            {phase === "editing" && "Edit Splits"}
-            {phase === "metadata" && "Edit Metadata"}
-          </h2>
-          <button type="button" onClick={onClose} className="p-1 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 min-h-0 flex flex-col">
-          {/* Idle / Requesting */}
-          {(phase === "idle" || phase === "requesting") && (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <p className="text-sm text-[--muted] mb-4">
-                  Share a browser tab playing music to start recording.<br />
-                  Silence between songs will be automatically detected.
-                </p>
-                <button type="button" onClick={startRecording} disabled={phase === "requesting"}
-                  className="px-6 py-2 bg-red-500 text-white rounded-full text-sm font-medium hover:bg-red-600 disabled:opacity-50 flex items-center gap-2 mx-auto">
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" /></svg>
-                  {phase === "requesting" ? "Select a tab..." : "Start Recording"}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Recording */}
-          {phase === "recording" && (
-            <div className="flex-1 flex flex-col">
-              <div className="px-4 py-3 border-b border-[--border] bg-[--sidebar-bg]">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                    <span className="text-xs font-medium">REC</span>
-                    <span className="text-xs text-[--muted] tabular-nums w-14">{formatDuration(currentRecordingDuration)}</span>
-                  </div>
-
-                  {/* Live waveform */}
-                  <div className="flex-1 flex items-center gap-px h-8">
-                    {waveformData.map((value, i) => (
-                      <div key={i} className="flex-1 max-w-1 rounded-sm transition-all duration-75"
-                        style={{ height: `${Math.max(2, value * 28)}px`, backgroundColor: value > 0.8 ? "#ef4444" : value > 0.4 ? "#22c55e" : "#94a3b8" }} />
-                    ))}
-                  </div>
-
-                  {silenceProgress > 0 && (
-                    <div className="flex items-center gap-1">
-                      <div className="w-16 h-1.5 bg-[--border] rounded-full overflow-hidden">
-                        <div className="h-full bg-yellow-500 transition-all" style={{ width: `${silenceProgress * 100}%` }} />
-                      </div>
-                      <span className="text-[10px] text-yellow-600">silence</span>
+        <div className="flex items-center justify-between px-4 py-2 border-b border-[--border] bg-[--sidebar-bg]">
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-semibold">Record from Tab</h2>
+            {isRecording && (
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-xs font-medium tabular-nums">{formatDuration(currentDuration)}</span>
+                {silenceProgress > 0 && (
+                  <div className="flex items-center gap-1 ml-2">
+                    <div className="w-12 h-1 bg-[--border] rounded-full overflow-hidden">
+                      <div className="h-full bg-yellow-500 transition-all" style={{ width: `${silenceProgress * 100}%` }} />
                     </div>
-                  )}
-
-                  <button type="button" onClick={finishRecording} className="px-4 py-1.5 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600">
-                    Done Recording
-                  </button>
-                  <button type="button" onClick={stopRecording} className="px-3 py-1.5 text-[--muted] hover:text-[--foreground] text-xs">
-                    Cancel
-                  </button>
-                </div>
-
-                {/* Settings */}
-                <div className="flex items-center gap-6 text-[10px] text-[--muted]">
-                  <label className="flex items-center gap-1.5">
-                    <input type="checkbox" checked={autoSplit} onChange={(e) => setAutoSplit(e.target.checked)} className="w-3 h-3" />
-                    Auto-detect silence
-                  </label>
-                  <label className="flex items-center gap-2">
-                    Threshold:
-                    <input type="range" min="0.005" max="0.1" step="0.005" value={silenceThreshold}
-                      onChange={(e) => setSilenceThreshold(parseFloat(e.target.value))} className="w-32 h-1" />
-                    <span className="w-6">{(silenceThreshold * 100).toFixed(0)}%</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    Duration:
-                    <input type="range" min="0.5" max="8" step="0.5" value={silenceDurationSetting}
-                      onChange={(e) => setSilenceDurationSetting(parseFloat(e.target.value))} className="w-32 h-1" />
-                    <span className="w-6">{silenceDurationSetting}s</span>
-                  </label>
-                </div>
-
-                {detectedSplitsRef.current.length > 0 && (
-                  <div className="mt-2 text-[10px] text-[--muted]">
-                    {detectedSplitsRef.current.length} split{detectedSplitsRef.current.length !== 1 ? 's' : ''} detected
+                    <span className="text-[9px] text-yellow-600">silence</span>
                   </div>
                 )}
               </div>
-
-              <div className="flex-1 flex items-center justify-center text-sm text-[--muted]">
-                Recording in progress... Click "Done Recording" when finished.
-              </div>
-            </div>
-          )}
-
-          {/* Editing (Waveform) */}
-          {phase === "editing" && recordingBlob && (
-            <div className="flex-1 flex flex-col min-h-0">
-              <WaveformTimeline
-                audioBlob={recordingBlob}
-                splits={splits}
-                onSplitsChange={setSplits}
-                onExportSegments={() => {}}
-              />
-
-              <div className="px-4 py-3 border-t border-[--border] bg-[--sidebar-bg] flex items-center justify-between">
-                <button type="button" onClick={() => { setPhase("idle"); setRecordingBlob(null); setSplits([]); }}
-                  className="px-3 py-1.5 text-xs text-[--muted] hover:text-[--foreground]">
-                  Start Over
-                </button>
-                <button type="button" onClick={handleSplitsConfirmed}
+            )}
+            {!isRecording && recordingBlob && (
+              <span className="text-xs text-[--muted]">{formatDuration(currentDuration)} recorded</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {!hasStarted && (
+              <button type="button" onClick={startRecording} disabled={isRequesting}
+                className="px-4 py-1.5 bg-red-500 text-white rounded text-xs font-medium hover:bg-red-600 disabled:opacity-50 flex items-center gap-1.5">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" /></svg>
+                {isRequesting ? "Select tab..." : "Start Recording"}
+              </button>
+            )}
+            {isRecording && (
+              <>
+                <button type="button" onClick={finishRecording}
                   className="px-4 py-1.5 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600">
-                  Confirm Splits ({splits.length + 1} segment{splits.length !== 0 ? 's' : ''})
+                  Done
                 </button>
+                <button type="button" onClick={stopRecording} className="px-3 py-1.5 text-[--muted] hover:text-[--foreground] text-xs">
+                  Cancel
+                </button>
+              </>
+            )}
+            <button type="button" onClick={onClose} className="p-1 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded ml-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Settings bar */}
+        {hasStarted && (
+          <div className="flex items-center gap-4 px-4 py-1.5 text-[10px] text-[--muted] border-b border-[--border]">
+            <label className="flex items-center gap-1.5">
+              <input type="checkbox" checked={autoSplit} onChange={(e) => setAutoSplit(e.target.checked)} className="w-3 h-3" />
+              Auto-split on silence
+            </label>
+            <label className="flex items-center gap-2">
+              Threshold:
+              <input type="range" min="0.005" max="0.1" step="0.005" value={silenceThreshold}
+                onChange={(e) => setSilenceThreshold(parseFloat(e.target.value))} className="w-20 h-1" />
+              <span className="w-5 tabular-nums">{(silenceThreshold * 100).toFixed(0)}%</span>
+            </label>
+            <label className="flex items-center gap-2">
+              Duration:
+              <input type="range" min="0.5" max="8" step="0.5" value={silenceDurationSetting}
+                onChange={(e) => setSilenceDurationSetting(parseFloat(e.target.value))} className="w-20 h-1" />
+              <span className="w-5 tabular-nums">{silenceDurationSetting}s</span>
+            </label>
+            <span className="ml-auto">
+              {splits.length} split{splits.length !== 1 ? 's' : ''} · {segments.length} track{segments.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+        )}
+
+        {/* Waveform */}
+        {hasStarted && (
+          <WaveformTimeline
+            isRecording={isRecording}
+            liveWaveformData={liveWaveformData}
+            liveDuration={currentDuration}
+            audioBlob={recordingBlob}
+            splits={splits}
+            onSplitsChange={setSplits}
+          />
+        )}
+
+        {/* Content area */}
+        <div className="flex-1 min-h-0 flex flex-col">
+          {!hasStarted ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center max-w-md">
+                <p className="text-sm text-[--muted] mb-2">
+                  Share a browser tab playing music to start recording.
+                </p>
+                <p className="text-xs text-[--muted]">
+                  Silence between songs will be automatically detected and split.
+                  You can adjust splits during and after recording.
+                </p>
               </div>
             </div>
-          )}
-
-          {/* Metadata */}
-          {phase === "metadata" && (
+          ) : (
             <div className="flex-1 min-h-0">
               <ThemeProvider theme={theme}>
                 <style>{selectionStyles}</style>
@@ -854,6 +768,7 @@ export default function RadioRecorderModal({
                     columnHeaderHeight={24}
                     sx={dataGridSx}
                     onRowClick={handleRowClick}
+                    localeText={{ noRowsLabel: isRecording ? "Recording... tracks will appear here" : "No tracks yet" }}
                   />
                 </div>
               </ThemeProvider>
@@ -862,7 +777,7 @@ export default function RadioRecorderModal({
         </div>
 
         {/* Footer */}
-        {phase === "metadata" && (
+        {hasStarted && !isRecording && recordedSongs.length > 0 && (
           <div className="flex items-center justify-between px-4 py-2 border-t border-[--border] bg-[--sidebar-bg]">
             <div className="flex items-center gap-2">
               {selectedIds.length > 0 && (
@@ -875,23 +790,18 @@ export default function RadioRecorderModal({
                 {recordedSongs.length} song{recordedSongs.length !== 1 ? 's' : ''} · {formatDuration(recordedSongs.reduce((sum, s) => sum + s.duration, 0))}
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={() => setPhase("editing")} className="px-3 py-1.5 text-xs text-[--muted] hover:text-[--foreground]">
-                Back to Splits
-              </button>
-              <button type="button" onClick={handleAddToLibrary} disabled={isUploading || recordedSongs.length === 0}
-                className="px-4 py-1.5 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 disabled:opacity-50 flex items-center gap-2">
-                {isUploading ? (
-                  <>
-                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    {(uploadProgress?.current ?? 0) + 1} / {uploadProgress?.total ?? 0}
-                  </>
-                ) : "Add to Library"}
-              </button>
-            </div>
+            <button type="button" onClick={handleAddToLibrary} disabled={isUploading}
+              className="px-4 py-1.5 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 disabled:opacity-50 flex items-center gap-2">
+              {isUploading ? (
+                <>
+                  <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  {(uploadProgress?.current ?? 0) + 1} / {uploadProgress?.total ?? 0}
+                </>
+              ) : "Add to Library"}
+            </button>
           </div>
         )}
 
