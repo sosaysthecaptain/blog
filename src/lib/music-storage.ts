@@ -505,3 +505,57 @@ export function getSongIdFromPath(storagePath: string): string | null {
   const match = storagePath.match(/\/music\/([^.]+)\./);
   return match ? match[1] : null;
 }
+
+/**
+ * Upload a recorded audio blob to the library
+ * Used by the Radio Recorder feature
+ */
+export async function uploadRecordedAudio(
+  blob: Blob,
+  libraryId: string,
+  metadata: {
+    title: string;
+    artist: string;
+    album: string;
+    year: string;
+    genre: string;
+    duration: number; // in milliseconds
+  }
+): Promise<Song> {
+  const songId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const extension = "webm"; // Recordings are in webm format
+
+  // Upload audio file
+  const storagePath = `notes/${libraryId}/music/${songId}.${extension}`;
+  const audioRef = ref(storage, storagePath);
+  await uploadBytes(audioRef, blob);
+  const storageUrl = await getDownloadURL(audioRef);
+
+  // Create song document in Firestore
+  const songData: Omit<Song, "id" | "dateAdded" | "createdAt" | "updatedAt"> = {
+    libraryId,
+    title: metadata.title || "Untitled Recording",
+    artist: metadata.artist || "Unknown Artist",
+    album: metadata.album || "",
+    year: metadata.year ? parseInt(metadata.year, 10) : null,
+    trackNumber: null,
+    discNumber: null,
+    originalTrackNumber: null,
+    genre: metadata.genre || "",
+    duration: metadata.duration / 1000, // Convert to seconds
+    fileSize: blob.size,
+    albumArtUrl: null,
+    albumArtThumbUrl: null,
+    storageUrl,
+    storagePath,
+    fileName: `${metadata.title || "recording"}.${extension}`,
+    fileType: extension,
+  };
+
+  const id = await createSong(songData);
+
+  return {
+    id,
+    ...songData,
+  } as Song;
+}

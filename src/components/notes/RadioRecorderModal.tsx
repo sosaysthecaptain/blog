@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Song } from "@/lib/songs";
+import { uploadRecordedAudio } from "@/lib/music-storage";
 
 interface RecordedSong {
   id: string;
@@ -326,12 +327,46 @@ export default function RadioRecorderModal({
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Add songs to library (placeholder - will implement with upload)
+  // Upload state
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
+
+  // Add songs to library
   const handleAddToLibrary = useCallback(async () => {
-    // TODO: Upload songs to Firebase Storage and create song documents
-    console.log("Adding songs to library:", recordedSongs);
+    if (recordedSongs.length === 0) return;
+
+    setIsUploading(true);
+    setUploadProgress({ current: 0, total: recordedSongs.length });
+
+    const uploadedSongs: Song[] = [];
+
+    for (let i = 0; i < recordedSongs.length; i++) {
+      const song = recordedSongs[i];
+      setUploadProgress({ current: i, total: recordedSongs.length });
+
+      try {
+        const uploadedSong = await uploadRecordedAudio(song.blob, libraryId, {
+          title: song.title,
+          artist: song.artist,
+          album: song.album,
+          year: song.year,
+          genre: song.genre,
+          duration: song.duration,
+        });
+        uploadedSongs.push(uploadedSong);
+      } catch (error) {
+        console.error(`Failed to upload ${song.title}:`, error);
+      }
+    }
+
+    setUploadProgress({ current: recordedSongs.length, total: recordedSongs.length });
+    setIsUploading(false);
+
+    if (uploadedSongs.length > 0) {
+      onSongsAdded(uploadedSongs);
+    }
     onClose();
-  }, [recordedSongs, onClose]);
+  }, [recordedSongs, libraryId, onSongsAdded, onClose]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -568,7 +603,8 @@ export default function RadioRecorderModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm text-[--muted] hover:text-[--foreground]"
+            disabled={isUploading}
+            className="px-4 py-2 text-sm text-[--muted] hover:text-[--foreground] disabled:opacity-50"
           >
             {recordedSongs.length > 0 ? "Discard All" : "Cancel"}
           </button>
@@ -576,9 +612,20 @@ export default function RadioRecorderModal({
             <button
               type="button"
               onClick={handleAddToLibrary}
-              className="px-4 py-2 bg-blue-500 text-white rounded font-medium text-sm hover:bg-blue-600"
+              disabled={isUploading}
+              className="px-4 py-2 bg-blue-500 text-white rounded font-medium text-sm hover:bg-blue-600 disabled:opacity-50 flex items-center gap-2"
             >
-              Add {recordedSongs.length} Song{recordedSongs.length !== 1 ? "s" : ""} to Library
+              {isUploading ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Uploading {uploadProgress?.current ?? 0 + 1} of {uploadProgress?.total ?? 0}...
+                </>
+              ) : (
+                `Add ${recordedSongs.length} Song${recordedSongs.length !== 1 ? "s" : ""} to Library`
+              )}
             </button>
           )}
         </div>
