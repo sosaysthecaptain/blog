@@ -110,7 +110,7 @@ export default function RadioRecorderModal({
 
   // Settings
   const [silenceThreshold, setSilenceThreshold] = useState(0.02); // Linear amplitude threshold
-  const [silenceDurationSetting, setSilenceDurationSetting] = useState(3); // seconds of silence before split
+  const [silenceDurationSetting, setSilenceDurationSetting] = useState(1); // seconds of silence before split
   const [autoSplit, setAutoSplit] = useState(true);
 
   // Selection state
@@ -613,31 +613,6 @@ export default function RadioRecorderModal({
   // DataGrid columns
   const columns: GridColDef[] = useMemo(() => [
     {
-      field: "albumArt",
-      headerName: "",
-      width: 32,
-      sortable: false,
-      renderCell: (params: GridRenderCellParams) => (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setAlbumArtTargetId(params.row.id);
-            albumArtInputRef.current?.click();
-          }}
-          className="w-6 h-6 rounded border border-[--border] bg-[--sidebar-bg] flex items-center justify-center overflow-hidden hover:border-blue-500"
-        >
-          {params.row.albumArtPreview ? (
-            <img src={params.row.albumArtPreview} alt="" className="w-full h-full object-cover" />
-          ) : (
-            <svg className="w-3 h-3 text-[--muted]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-            </svg>
-          )}
-        </button>
-      ),
-    },
-    {
       field: "title",
       headerName: "Title",
       flex: 1.5,
@@ -850,7 +825,28 @@ export default function RadioRecorderModal({
         return null;
       },
     },
-  ], [editingCell, editValue, finishEditing, startEditing, showAutocomplete, autocompleteField, filteredSuggestions, updateSongField, tryIdentifySong]);
+    {
+      field: "actions",
+      headerName: "",
+      width: 32,
+      sortable: false,
+      renderCell: (params: GridRenderCellParams) => (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            deleteSongs([params.row.id]);
+          }}
+          className="p-1 text-[--muted] hover:text-red-500 rounded"
+          title="Delete"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      ),
+    },
+  ], [editingCell, editValue, finishEditing, startEditing, showAutocomplete, autocompleteField, filteredSuggestions, updateSongField, tryIdentifySong, deleteSongs]);
 
   // Selection styles
   const selectionStyles = useMemo(() => {
@@ -873,7 +869,7 @@ export default function RadioRecorderModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div
-        className="w-full max-w-4xl max-h-[85vh] flex flex-col rounded-lg shadow-xl border border-[--border] overflow-hidden"
+        className="w-full max-w-6xl max-h-[90vh] flex flex-col rounded-lg shadow-xl border border-[--border] overflow-hidden"
         style={{ backgroundColor: "var(--background)", fontFamily: FONT_FAMILY }}
       >
         <input
@@ -974,7 +970,7 @@ export default function RadioRecorderModal({
               </div>
 
               {/* Settings */}
-              <div className="flex items-center gap-4 text-[10px] text-[--muted]">
+              <div className="flex items-center gap-6 text-[10px] text-[--muted]">
                 <label className="flex items-center gap-1.5">
                   <input
                     type="checkbox"
@@ -984,7 +980,7 @@ export default function RadioRecorderModal({
                   />
                   Auto-split on silence
                 </label>
-                <label className="flex items-center gap-1">
+                <label className="flex items-center gap-2">
                   Threshold:
                   <input
                     type="range"
@@ -993,20 +989,20 @@ export default function RadioRecorderModal({
                     step="0.005"
                     value={silenceThreshold}
                     onChange={(e) => setSilenceThreshold(parseFloat(e.target.value))}
-                    className="w-16 h-1"
+                    className="w-32 h-1"
                   />
                   <span className="w-6">{(silenceThreshold * 100).toFixed(0)}%</span>
                 </label>
-                <label className="flex items-center gap-1">
+                <label className="flex items-center gap-2">
                   Duration:
                   <input
                     type="range"
-                    min="1"
+                    min="0.5"
                     max="8"
                     step="0.5"
                     value={silenceDurationSetting}
                     onChange={(e) => setSilenceDurationSetting(parseFloat(e.target.value))}
-                    className="w-16 h-1"
+                    className="w-32 h-1"
                   />
                   <span className="w-6">{silenceDurationSetting}s</span>
                 </label>
