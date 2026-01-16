@@ -15,6 +15,7 @@ import { useMusicQueue } from "@/hooks/useMusicQueue";
 import MusicPlayer from "./MusicPlayer";
 import ExportSongsModal from "./ExportSongsModal";
 import EditMetadataModal from "./EditMetadataModal";
+import RadioRecorderModal from "./RadioRecorderModal";
 import dynamic from "next/dynamic";
 
 // Lazy load the DataGrid component
@@ -60,6 +61,7 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
     const [selectedSongIds, setSelectedSongIds] = useState<string[]>([]);
     const [showExportModal, setShowExportModal] = useState(false);
     const [songsToEdit, setSongsToEdit] = useState<Song[]>([]);
+    const [showRecorderModal, setShowRecorderModal] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -333,6 +335,17 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
             />
           </div>
           <div className="flex items-center gap-3">
+            {/* Record button */}
+            <button
+              type="button"
+              onClick={() => setShowRecorderModal(true)}
+              className="p-1.5 text-[--muted] hover:text-red-500 hover:bg-[--hover] rounded"
+              title="Record from browser tab"
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="8" />
+              </svg>
+            </button>
             {/* Search box - compact, on the right */}
             <div className="relative">
               <svg
@@ -492,6 +505,18 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
             songs={songsToEdit}
             onClose={() => setSongsToEdit([])}
             onSaved={() => setSelectedSongIds([])}
+          />
+        )}
+
+        {/* Radio Recorder Modal */}
+        {showRecorderModal && library.id && (
+          <RadioRecorderModal
+            libraryId={library.id}
+            onClose={() => setShowRecorderModal(false)}
+            onSongsAdded={() => {
+              // Songs will appear via subscription, just close modal
+              setShowRecorderModal(false);
+            }}
           />
         )}
       </div>
