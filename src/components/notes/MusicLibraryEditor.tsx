@@ -8,12 +8,12 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { NoteItem, subscribeToNote, updateNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap } from "@/lib/notes";
+import { NoteItem, subscribeToNote, updateNote } from "@/lib/notes";
 import { Song, subscribeToSongs, getSongsByLibrary, getLibraryStats, deleteSong } from "@/lib/songs";
 import { uploadAudioFiles, deleteSongFiles, isAudioFile, getSongIdFromPath } from "@/lib/music-storage";
 import { useMusicQueue } from "@/hooks/useMusicQueue";
-import TagInput from "./TagInput";
 import MusicPlayer from "./MusicPlayer";
+import ExportSongsModal from "./ExportSongsModal";
 import dynamic from "next/dynamic";
 
 // Lazy load the DataGrid component
@@ -50,14 +50,14 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
     const [isDirty, setIsDirty] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
-    const [availableTags, setAvailableTags] = useState<string[]>([]);
-    const [tagColors, setTagColors] = useState<TagColorsMap>({});
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState<{
       current: number;
       total: number;
       fileName: string;
     } | null>(null);
+    const [selectedSongIds, setSelectedSongIds] = useState<string[]>([]);
+    const [showExportModal, setShowExportModal] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -65,12 +65,6 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
 
     // Music playback
     const musicQueue = useMusicQueue();
-
-    // Load available tags and tag colors
-    useEffect(() => {
-      getAllNoteTags().then(setAvailableTags);
-      getTagColors().then(setTagColors);
-    }, []);
 
     // Subscribe to library changes
     useEffect(() => {
@@ -136,8 +130,6 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
       try {
         await updateNote(library.id, {
           title: localLibrary.title,
-          date: localLibrary.date,
-          tags: localLibrary.tags,
           musicSortColumn: localLibrary.musicSortColumn,
           musicSortDirection: localLibrary.musicSortDirection,
         });
@@ -164,23 +156,6 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
       setLocalLibrary((prev) => ({ ...prev, title }));
       setIsDirty(true);
       scheduleAutosave();
-    };
-
-    const handleDateChange = (date: string) => {
-      setLocalLibrary((prev) => ({ ...prev, date }));
-      setIsDirty(true);
-      scheduleAutosave();
-    };
-
-    const handleTagsChange = (tags: string[]) => {
-      setLocalLibrary((prev) => ({ ...prev, tags }));
-      setIsDirty(true);
-      scheduleAutosave();
-    };
-
-    const handleTagColorChange = async (tag: string, colorIndex: number) => {
-      await setTagColor(tag, colorIndex);
-      setTagColors((prev) => ({ ...prev, [tag]: colorIndex }));
     };
 
     const handleSortChange = (
@@ -278,9 +253,9 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
         onDrop={handleDrop}
         onDragOver={handleDragOver}
       >
-        {/* Header */}
+        {/* Header with search */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-[--border] bg-[--sidebar-bg]">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
             <button
               type="button"
               onClick={onBack}
@@ -299,9 +274,39 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
               onChange={(e) => handleTitleChange(e.target.value)}
               placeholder="Untitled"
               className="text-base font-semibold text-[--foreground] bg-transparent border-none outline-none flex-1 min-w-0"
+              style={{ fontFamily: "'Lucida Grande', 'Lucida Sans Unicode', sans-serif" }}
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            {/* Search box - compact, on the right */}
+            <div className="relative">
+              <svg
+                className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[--muted]"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search"
+                className="w-40 pl-6 pr-2 py-1 text-xs bg-[--background] border border-[--border] rounded focus:outline-none focus:border-[--accent] text-[--foreground] placeholder:text-[--muted]"
+                style={{ fontFamily: "'Lucida Grande', 'Lucida Sans Unicode', sans-serif" }}
+              />
+            </div>
+            {selectedSongIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowExportModal(true)}
+                className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+              >
+                Export {selectedSongIds.length} song{selectedSongIds.length !== 1 ? "s" : ""}
+              </button>
+            )}
             {isSaving && (
               <span className="text-xs text-[--muted]">Saving...</span>
             )}
@@ -315,49 +320,6 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
               </svg>
             </button>
-          </div>
-        </div>
-
-        {/* Date & Tags row */}
-        <div className={`px-4 py-2 border-b border-[--border] ${isFullWidth ? "" : "max-w-3xl mx-auto w-full"}`}>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[--muted]">
-            <input
-              type="date"
-              value={localLibrary.date || ""}
-              onChange={(e) => handleDateChange(e.target.value)}
-              className="bg-transparent border-none outline-none text-[--foreground] cursor-pointer"
-            />
-            <div className="flex-1 min-w-[120px]">
-              <TagInput
-                tags={localLibrary.tags || []}
-                availableTags={availableTags}
-                tagColors={tagColors}
-                onChange={handleTagsChange}
-                onTagColorChange={handleTagColorChange}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Search bar */}
-        <div className={`px-4 py-2 border-b border-[--border] ${isFullWidth ? "" : "max-w-3xl mx-auto w-full"}`}>
-          <div className="relative">
-            <svg
-              className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[--muted]"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search songs..."
-              className="w-full pl-7 pr-2 py-1 text-xs bg-[--background] border border-[--border] rounded focus:outline-none focus:border-[--accent] text-[--foreground] placeholder:text-[--muted]"
-            />
           </div>
         </div>
 
@@ -387,10 +349,13 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
               searchQuery={searchQuery}
               sortColumn={localLibrary.musicSortColumn || "artist"}
               sortDirection={localLibrary.musicSortDirection || "asc"}
+              selectedIds={selectedSongIds}
               onSortChange={handleSortChange}
+              onSelectionChange={setSelectedSongIds}
               onDeleteSong={handleDeleteSong}
               onPlaySong={musicQueue.play}
               onQueueSong={musicQueue.addToQueue}
+              onExportSelected={() => setShowExportModal(true)}
             />
           )}
         </div>
@@ -449,6 +414,17 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
               </div>
             </div>
           </div>
+        )}
+
+        {/* Export Modal */}
+        {showExportModal && (
+          <ExportSongsModal
+            songs={songs.filter((s) => s.id && selectedSongIds.includes(s.id))}
+            onClose={() => {
+              setShowExportModal(false);
+              setSelectedSongIds([]);
+            }}
+          />
         )}
       </div>
     );

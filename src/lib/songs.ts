@@ -12,7 +12,8 @@ import {
   onSnapshot,
   writeBatch,
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { ref, getDownloadURL } from "firebase/storage";
+import { db, storage } from "./firebase";
 
 const SONGS_COLLECTION = "songs";
 
@@ -291,4 +292,15 @@ export function getLibraryStats(songs: Song[]): {
     totalDuration: formatTotalDuration(totalSeconds),
     totalSize: formatFileSize(totalBytes),
   };
+}
+
+// Get download URL for a song's audio file
+export async function getSongAudioUrl(storagePath: string): Promise<string | null> {
+  try {
+    const storageRef = ref(storage, storagePath);
+    return await getDownloadURL(storageRef);
+  } catch (error) {
+    console.error("Failed to get audio URL:", error);
+    return null;
+  }
 }

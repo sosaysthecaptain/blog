@@ -40,7 +40,7 @@ export default function NotesPage() {
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [isFullWidth, setIsFullWidth] = useState(true);
   const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [sortOption, setSortOption] = useState<"date-desc" | "date-asc" | "title-asc" | "title-desc" | "updated-desc">("date-desc");
+  const [sortOption, setSortOption] = useState<"manual" | "date-desc" | "date-asc" | "title-asc" | "title-desc" | "updated-desc">("manual");
   const { isDark, toggle: toggleDarkMode, mounted } = useDarkMode();
 
   // Dialog state

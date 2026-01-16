@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { DataGrid, GridColDef, GridRenderCellParams, GridSortModel } from "@mui/x-data-grid";
+import { DataGrid, GridColDef, GridRenderCellParams, GridSortModel, GridRowSelectionModel } from "@mui/x-data-grid";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { Song, sortSongs, searchSongs, formatDuration, formatFileSize, updateSong } from "@/lib/songs";
 
@@ -12,10 +12,13 @@ interface SongsDataGridProps {
   searchQuery: string;
   sortColumn: SortColumn;
   sortDirection: "asc" | "desc";
+  selectedIds: string[];
   onSortChange: (column: SortColumn, direction: "asc" | "desc") => void;
+  onSelectionChange: (ids: string[]) => void;
   onDeleteSong: (song: Song) => void;
   onPlaySong?: (song: Song) => void;
   onQueueSong?: (song: Song) => void;
+  onExportSelected?: () => void;
 }
 
 // Map column field names to our sort column types
@@ -34,10 +37,13 @@ export default function SongsDataGrid({
   searchQuery,
   sortColumn,
   sortDirection,
+  selectedIds,
   onSortChange,
+  onSelectionChange,
   onDeleteSong,
   onPlaySong,
   onQueueSong,
+  onExportSelected,
 }: SongsDataGridProps) {
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -45,7 +51,14 @@ export default function SongsDataGrid({
     song: Song;
   } | null>(null);
 
-  // Create MUI theme based on CSS variables
+  // Handle selection change
+  const handleSelectionChange = (selectionModel: GridRowSelectionModel) => {
+    // Extract ids from the selection model (Set<GridRowId>)
+    const ids = Array.from(selectionModel.ids).map(String);
+    onSelectionChange(ids);
+  };
+
+  // Create MUI theme based on CSS variables - using Lucida Grande (iTunes 2006 style)
   const theme = useMemo(
     () =>
       createTheme({
@@ -53,8 +66,8 @@ export default function SongsDataGrid({
           mode: document.documentElement.classList.contains("dark") ? "dark" : "light",
         },
         typography: {
-          fontFamily: "var(--font-serif), Georgia, serif",
-          fontSize: 13,
+          fontFamily: "'Lucida Grande', 'Lucida Sans Unicode', 'Helvetica Neue', Helvetica, Arial, sans-serif",
+          fontSize: 12,
         },
       }),
     []
@@ -98,6 +111,18 @@ export default function SongsDataGrid({
     },
     "& .MuiDataGrid-row:hover": {
       backgroundColor: "var(--hover)",
+    },
+    "& .MuiDataGrid-row.Mui-selected": {
+      backgroundColor: "rgba(59, 130, 246, 0.15)",
+    },
+    "& .MuiDataGrid-row.Mui-selected:hover": {
+      backgroundColor: "rgba(59, 130, 246, 0.25)",
+    },
+    "& .MuiCheckboxRoot": {
+      color: "var(--muted)",
+    },
+    "& .Mui-checked": {
+      color: "#3b82f6",
     },
     "& .MuiDataGrid-cell:focus, & .MuiDataGrid-columnHeader:focus": {
       outline: "none",
@@ -262,7 +287,9 @@ export default function SongsDataGrid({
           onSortModelChange={handleSortModelChange}
           processRowUpdate={processRowUpdate}
           onRowDoubleClick={handleRowDoubleClick}
-          disableRowSelectionOnClick
+          checkboxSelection
+          rowSelectionModel={{ type: "include", ids: new Set(selectedIds) }}
+          onRowSelectionModelChange={handleSelectionChange}
           disableColumnMenu
           hideFooter
           rowHeight={28}

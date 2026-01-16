@@ -23,6 +23,8 @@ interface MusicPlayerProps {
   onClearQueue: () => void;
 }
 
+const FONT_FAMILY = "'Lucida Grande', 'Lucida Sans Unicode', 'Helvetica Neue', Helvetica, Arial, sans-serif";
+
 export default function MusicPlayer({
   currentSong,
   isPlaying,
@@ -43,6 +45,7 @@ export default function MusicPlayer({
   onClearQueue,
 }: MusicPlayerProps) {
   const [showQueue, setShowQueue] = useState(false);
+  const [showArtModal, setShowArtModal] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const progressRef = useRef<HTMLDivElement>(null);
 
@@ -69,16 +72,31 @@ export default function MusicPlayer({
   };
 
   return (
-    <div className="border-t border-[--border] bg-[--sidebar-bg] relative">
+    <div className="border-t border-[--border] bg-[--sidebar-bg] relative" style={{ fontFamily: FONT_FAMILY }}>
+      {/* Album art modal */}
+      {showArtModal && currentSong?.albumArtUrl && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center cursor-pointer"
+            onClick={() => setShowArtModal(false)}
+          >
+            <img
+              src={currentSong.albumArtUrl}
+              alt={`${currentSong.album} album art`}
+              className="max-w-[80vw] max-h-[80vh] rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </>
+      )}
+
       {/* Queue popup panel */}
       {showQueue && queue.length > 0 && (
         <>
-          {/* Backdrop */}
           <div
             className="fixed inset-0 z-40"
             onClick={() => setShowQueue(false)}
           />
-          {/* Panel */}
           <div
             className="absolute bottom-full right-4 mb-2 w-80 max-h-96 bg-[--background] border border-[--border] rounded-lg shadow-xl z-50 overflow-hidden"
           >
@@ -138,18 +156,19 @@ export default function MusicPlayer({
       )}
 
       {/* Main player */}
-      <div className="flex items-center gap-6 px-6 py-4">
-        {/* Album art - larger */}
+      <div className="flex items-center gap-6 px-6 py-5">
+        {/* Album art - larger, clickable */}
         <div className="flex-shrink-0">
           {currentSong?.albumArtThumbUrl ? (
             <img
               src={currentSong.albumArtThumbUrl}
               alt=""
-              className="w-20 h-20 rounded-lg shadow-md"
+              className="w-24 h-24 rounded-lg shadow-md cursor-pointer hover:opacity-90 transition-opacity"
+              onClick={() => setShowArtModal(true)}
             />
           ) : (
-            <div className="w-20 h-20 rounded-lg bg-[--border] flex items-center justify-center">
-              <svg className="w-8 h-8 text-[--muted]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1}>
+            <div className="w-24 h-24 rounded-lg bg-[--muted]/20 flex items-center justify-center">
+              <svg className="w-10 h-10 text-[--muted]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V4.5l-10.5 3v8.553m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z" />
               </svg>
             </div>
@@ -160,7 +179,7 @@ export default function MusicPlayer({
         <div className="flex-1 min-w-0">
           {/* Song title and artist */}
           <div className="mb-3">
-            <p className="text-base font-medium text-[--foreground] truncate" style={{ fontFamily: "var(--font-serif), Georgia, serif" }}>
+            <p className="text-base font-medium text-[--foreground] truncate">
               {currentSong?.title || "No song"}
             </p>
             <p className="text-sm text-[--muted] truncate">
@@ -168,11 +187,12 @@ export default function MusicPlayer({
             </p>
           </div>
 
-          {/* Big progress bar */}
+          {/* Big progress bar - using explicit colors for visibility */}
           <div className="mb-3">
             <div
               ref={progressRef}
-              className="h-2 bg-[--border] rounded-full cursor-pointer relative group"
+              className="h-2 rounded-full cursor-pointer relative group"
+              style={{ backgroundColor: 'rgba(128, 128, 128, 0.3)' }}
               onClick={handleProgressClick}
               onMouseDown={() => setIsDragging(true)}
               onMouseUp={() => setIsDragging(false)}
@@ -180,15 +200,18 @@ export default function MusicPlayer({
               onMouseMove={handleProgressDrag}
             >
               <div
-                className="h-full bg-[--accent] rounded-full transition-all duration-100 relative"
-                style={{ width: `${progress}%` }}
+                className="h-full rounded-full transition-all duration-100 relative"
+                style={{ width: `${progress}%`, backgroundColor: '#3b82f6' }}
               >
                 {/* Thumb */}
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-[--foreground] rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow" />
+                <div
+                  className="absolute right-0 top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                  style={{ backgroundColor: '#fff', border: '2px solid #3b82f6' }}
+                />
               </div>
             </div>
             {/* Time display */}
-            <div className="flex justify-between mt-1 text-xs text-[--muted] tabular-nums">
+            <div className="flex justify-between mt-1.5 text-xs text-[--muted] tabular-nums">
               <span>{formatDuration(currentTime)}</span>
               <span>{formatDuration(duration)}</span>
             </div>
@@ -268,7 +291,7 @@ export default function MusicPlayer({
                   step="0.05"
                   value={isMuted ? 0 : volume}
                   onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-                  className="w-20 h-1 accent-[--accent] cursor-pointer"
+                  className="w-20 h-1 cursor-pointer accent-blue-500"
                 />
               </div>
 
@@ -276,7 +299,7 @@ export default function MusicPlayer({
               <button
                 type="button"
                 onClick={() => setShowQueue(!showQueue)}
-                className={`p-2 rounded-lg transition-colors ${showQueue ? "bg-[--accent] text-white" : "text-[--muted] hover:text-[--foreground] hover:bg-[--hover]"}`}
+                className={`p-2 rounded-lg transition-colors ${showQueue ? "bg-blue-500 text-white" : "text-[--muted] hover:text-[--foreground] hover:bg-[--hover]"}`}
                 title="Queue"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>

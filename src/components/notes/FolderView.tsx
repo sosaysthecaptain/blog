@@ -4,9 +4,10 @@ import { useState, useMemo } from "react";
 import { NoteItem, searchNotes } from "@/lib/notes";
 import { getTagColor } from "./TagInput";
 
-export type SortOption = "date-desc" | "date-asc" | "title-asc" | "title-desc" | "updated-desc";
+export type SortOption = "manual" | "date-desc" | "date-asc" | "title-asc" | "title-desc" | "updated-desc";
 
 export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: "manual", label: "Manual order" },
   { value: "date-desc", label: "Date (newest)" },
   { value: "date-asc", label: "Date (oldest)" },
   { value: "title-asc", label: "Title (A-Z)" },
@@ -17,6 +18,16 @@ export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 export function sortItems(items: NoteItem[], sortOption: SortOption): NoteItem[] {
   return [...items].sort((a, b) => {
     switch (sortOption) {
+      case "manual":
+        // Sort by sortOrder (lower = earlier), then by createdAt for items without sortOrder
+        if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+          return a.sortOrder - b.sortOrder;
+        }
+        if (a.sortOrder !== undefined) return -1;
+        if (b.sortOrder !== undefined) return 1;
+        const aCreated = a.createdAt?.toMillis?.() || 0;
+        const bCreated = b.createdAt?.toMillis?.() || 0;
+        return aCreated - bCreated;
       case "date-desc":
         return (b.date || "").localeCompare(a.date || "");
       case "date-asc":
