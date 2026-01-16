@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
-import { DataGrid, GridColDef, GridRenderCellParams, GridSortModel, GridRowParams, GridRowSelectionModel } from "@mui/x-data-grid";
+import { DataGrid, GridColDef, GridRenderCellParams, GridSortModel, GridRowParams, useGridApiRef } from "@mui/x-data-grid";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { Song, sortSongs, searchSongs, formatDuration, formatFileSize } from "@/lib/songs";
 
@@ -70,29 +70,24 @@ export default function SongsDataGrid({
     fileSize: true,
   });
 
-  // Google Photos-style selection mode
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  // Selection anchor for shift+click range selection
   const anchorRowRef = useRef<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const apiRef = useGridApiRef();
 
-  // Exit selection mode on Escape
+  // Track focused row for keyboard navigation
+  const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
+
+  // Clear selection on Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isSelectionMode) {
-        setIsSelectionMode(false);
+      if (e.key === "Escape" && selectedIds.length > 0) {
         onSelectionChange([]);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isSelectionMode, onSelectionChange]);
-
-  // Exit selection mode when selection becomes empty
-  useEffect(() => {
-    if (isSelectionMode && selectedIds.length === 0) {
-      setIsSelectionMode(false);
-    }
-  }, [isSelectionMode, selectedIds.length]);
+  }, [selectedIds.length, onSelectionChange]);
 
   // Create MUI theme based on CSS variables - using Lucida Grande (iTunes 2006 style)
   const theme = useMemo(
@@ -182,24 +177,6 @@ export default function SongsDataGrid({
     },
     "& .MuiDataGrid-row": {
       userSelect: "none",
-    },
-    // Checkbox column styling for selection mode
-    "& .MuiDataGrid-columnHeaderCheckbox, & .MuiDataGrid-cellCheckbox": {
-      minWidth: "32px !important",
-      maxWidth: "32px !important",
-    },
-    "& .MuiCheckbox-root": {
-      padding: "2px",
-      color: "var(--muted)",
-    },
-    "& .MuiCheckbox-root.Mui-checked": {
-      color: "#3b82f6",
-    },
-    "& .Mui-selected .MuiCheckbox-root": {
-      color: "#fff",
-    },
-    "& .Mui-selected .MuiCheckbox-root.Mui-checked": {
-      color: "#fff",
     },
   };
 
@@ -310,56 +287,76 @@ export default function SongsDataGrid({
     return displayedSongs.slice(minIdx, maxIdx + 1).map((r) => r.id || "").filter(Boolean);
   }, [displayedSongs]);
 
-  // Handle row click - supports selection mode
+  // Handle row click - simple model: click = single select, shift+click = range select
   const handleRowClick = useCallback((params: GridRowParams, event: React.MouseEvent) => {
     const rowId = String(params.id);
-    const isCmd = event.metaKey || event.ctrlKey;
     const isShift = event.shiftKey;
 
-    if (isSelectionMode) {
-      // In selection mode
-      if (isShift && anchorRowRef.current) {
-        // Shift+click: range selection
-        const rangeIds = getRowRange(anchorRowRef.current, rowId);
-        onSelectionChange(rangeIds);
-      } else if (isCmd) {
-        // Cmd+click: toggle in selection
-        const newSelection = selectedIds.includes(rowId)
-          ? selectedIds.filter((id) => id !== rowId)
-          : [...selectedIds, rowId];
-        onSelectionChange(newSelection);
-        if (!selectedIds.includes(rowId)) {
-          anchorRowRef.current = rowId;
-        }
-      } else {
-        // Regular click in selection mode: toggle this item
-        const newSelection = selectedIds.includes(rowId)
-          ? selectedIds.filter((id) => id !== rowId)
-          : [...selectedIds, rowId];
-        onSelectionChange(newSelection);
-        anchorRowRef.current = rowId;
-      }
+    if (isShift && anchorRowRef.current) {
+      // Shift+click: range selection from anchor to clicked row
+      const rangeIds = getRowRange(anchorRowRef.current, rowId);
+      onSelectionChange(rangeIds);
     } else {
-      // Not in selection mode
-      if (isCmd) {
-        // Cmd+click: enter selection mode with this item selected
-        setIsSelectionMode(true);
-        anchorRowRef.current = rowId;
-        onSelectionChange([rowId]);
-      } else {
-        // Regular click: just highlight this row (single selection)
-        anchorRowRef.current = rowId;
-        onSelectionChange([rowId]);
-      }
+      // Regular click: single selection, set new anchor
+      anchorRowRef.current = rowId;
+      onSelectionChange([rowId]);
     }
-  }, [isSelectionMode, selectedIds, onSelectionChange, getRowRange]);
+    setFocusedRowId(rowId);
+  }, [onSelectionChange, getRowRange]);
 
-  // Handle checkbox selection changes from MUI DataGrid
-  const handleSelectionModelChange = useCallback((selectionModel: GridRowSelectionModel) => {
-    if (!isSelectionMode) return; // Only handle in selection mode
-    const ids = Array.from(selectionModel.ids).map(String);
-    onSelectionChange(ids);
-  }, [isSelectionMode, onSelectionChange]);
+  // Handle keyboard navigation with shift+arrow for range selection
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle if container is focused or has focus within
+      if (!containerRef.current?.contains(document.activeElement)) return;
+
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const currentId = focusedRowId || selectedIds[selectedIds.length - 1];
+        if (!currentId) {
+          // No selection, select first row
+          if (displayedSongs.length > 0) {
+            const firstId = displayedSongs[0].id || "";
+            anchorRowRef.current = firstId;
+            onSelectionChange([firstId]);
+            setFocusedRowId(firstId);
+          }
+          return;
+        }
+
+        const currentIdx = displayedSongs.findIndex((s) => s.id === currentId);
+        if (currentIdx === -1) return;
+
+        const nextIdx = e.key === "ArrowDown"
+          ? Math.min(currentIdx + 1, displayedSongs.length - 1)
+          : Math.max(currentIdx - 1, 0);
+
+        const nextId = displayedSongs[nextIdx].id || "";
+        if (!nextId) return;
+
+        if (e.shiftKey && anchorRowRef.current) {
+          // Shift+Arrow: extend selection from anchor to new position
+          const rangeIds = getRowRange(anchorRowRef.current, nextId);
+          onSelectionChange(rangeIds);
+        } else {
+          // Arrow without shift: move to next row, set as new anchor
+          anchorRowRef.current = nextId;
+          onSelectionChange([nextId]);
+        }
+        setFocusedRowId(nextId);
+
+        // Scroll the row into view using apiRef
+        try {
+          apiRef.current?.scrollToIndexes({ rowIndex: nextIdx });
+        } catch {
+          // Ignore scroll errors
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [focusedRowId, selectedIds, displayedSongs, onSelectionChange, getRowRange, apiRef]);
 
   // Handle context menu
   const handleContextMenu = (event: React.MouseEvent) => {
@@ -399,25 +396,23 @@ export default function SongsDataGrid({
     onPlaySong?.(params.row);
   };
 
-  // Build selection model based on mode
+  // Build selection model - supports multiple selection
   const rowSelectionModel = useMemo(() => {
     if (selectedIds.length === 0) return undefined;
-    if (isSelectionMode) {
-      return { type: "include" as const, ids: new Set(selectedIds) };
-    }
-    return { type: "include" as const, ids: new Set([selectedIds[0]]) };
-  }, [selectedIds, isSelectionMode]);
+    return { type: "include" as const, ids: new Set(selectedIds) };
+  }, [selectedIds]);
 
   return (
     <ThemeProvider theme={theme}>
-      <div ref={containerRef} className="h-full w-full" onContextMenu={handleContextMenu}>
-        {/* Selection mode indicator */}
-        {isSelectionMode && (
+      <div ref={containerRef} className="h-full w-full relative" onContextMenu={handleContextMenu} tabIndex={0}>
+        {/* Selection count indicator when multiple selected */}
+        {selectedIds.length > 1 && (
           <div className="absolute top-2 right-2 z-10 px-2 py-1 bg-blue-500 text-white text-[10px] rounded shadow">
-            {selectedIds.length} selected · Press Esc to exit
+            {selectedIds.length} selected
           </div>
         )}
         <DataGrid
+          apiRef={apiRef}
           rows={displayedSongs}
           columns={columns}
           sortModel={[{ field: sortColumn, sort: sortDirection }]}
@@ -425,9 +420,7 @@ export default function SongsDataGrid({
           onRowDoubleClick={handleRowDoubleClick}
           onRowClick={handleRowClick}
           rowSelectionModel={rowSelectionModel}
-          onRowSelectionModelChange={isSelectionMode ? handleSelectionModelChange : undefined}
-          checkboxSelection={isSelectionMode}
-          disableRowSelectionOnClick={isSelectionMode}
+          disableRowSelectionOnClick
           disableColumnMenu
           hideFooter
           rowHeight={20}
@@ -437,9 +430,9 @@ export default function SongsDataGrid({
 
         {/* Context Menu */}
         {contextMenu && (() => {
-          // If in selection mode and clicked song is selected, operate on all selected
+          // If clicked song is part of a multi-selection, operate on all selected
           const isSelectedSong = selectedIds.includes(contextMenu.song.id || "");
-          const targetSongs = (isSelectionMode && isSelectedSong)
+          const targetSongs = (isSelectedSong && selectedIds.length > 1)
             ? songs.filter((s) => s.id && selectedIds.includes(s.id))
             : [contextMenu.song];
           const count = targetSongs.length;
