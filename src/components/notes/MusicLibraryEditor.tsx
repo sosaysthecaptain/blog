@@ -200,12 +200,55 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
       [library.id, isUploading]
     );
 
-    // Handle file drop
+    // Recursively get files from a directory entry
+    const getFilesFromEntry = async (entry: FileSystemEntry): Promise<File[]> => {
+      if (entry.isFile) {
+        return new Promise((resolve) => {
+          (entry as FileSystemFileEntry).file((file) => resolve([file]), () => resolve([]));
+        });
+      } else if (entry.isDirectory) {
+        const dirReader = (entry as FileSystemDirectoryEntry).createReader();
+        const entries = await new Promise<FileSystemEntry[]>((resolve) => {
+          dirReader.readEntries((entries) => resolve(entries), () => resolve([]));
+        });
+        const allFiles: File[] = [];
+        for (const subEntry of entries) {
+          const files = await getFilesFromEntry(subEntry);
+          allFiles.push(...files);
+        }
+        return allFiles;
+      }
+      return [];
+    };
+
+    // Handle file drop (supports folders via webkitGetAsEntry)
     const handleDrop = useCallback(
-      (e: React.DragEvent) => {
+      async (e: React.DragEvent) => {
         e.preventDefault();
-        const files = Array.from(e.dataTransfer.files);
-        handleFilesUpload(files);
+        const items = Array.from(e.dataTransfer.items);
+        const allFiles: File[] = [];
+
+        // Try to use webkitGetAsEntry for folder support
+        for (const item of items) {
+          if (item.kind === "file") {
+            const entry = item.webkitGetAsEntry?.();
+            if (entry) {
+              const files = await getFilesFromEntry(entry);
+              allFiles.push(...files);
+            } else {
+              // Fallback: just get the file directly
+              const file = item.getAsFile();
+              if (file) allFiles.push(file);
+            }
+          }
+        }
+
+        // If webkitGetAsEntry didn't work, fall back to e.dataTransfer.files
+        if (allFiles.length === 0) {
+          allFiles.push(...Array.from(e.dataTransfer.files));
+        }
+
+        handleFilesUpload(allFiles);
       },
       [handleFilesUpload]
     );
@@ -397,21 +440,26 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
           onClearQueue={musicQueue.clearQueue}
         />
 
-        {/* Hidden file input */}
+        {/* Hidden file input - supports folders via webkitdirectory */}
         <input
           ref={fileInputRef}
           type="file"
           accept="audio/*"
           multiple
+          // @ts-expect-error webkitdirectory is non-standard but widely supported
+          webkitdirectory=""
           onChange={handleFileSelect}
           className="hidden"
         />
 
         {/* Upload progress overlay */}
         {isUploading && uploadProgress && (
-          <div className="fixed bottom-4 right-4 bg-[--background] border border-[--border] rounded-lg shadow-lg px-4 py-3 z-50">
+          <div
+            className="fixed bottom-24 right-4 border border-[--border] rounded-lg shadow-lg px-4 py-3"
+            style={{ backgroundColor: "var(--background)", zIndex: 9999 }}
+          >
             <div className="flex items-center gap-3">
-              <svg className="w-5 h-5 animate-spin text-[--accent]" fill="none" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 animate-spin text-blue-500" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
               </svg>

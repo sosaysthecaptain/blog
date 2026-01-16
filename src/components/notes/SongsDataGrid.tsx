@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { DataGrid, GridColDef, GridRenderCellParams, GridSortModel, GridRowParams } from "@mui/x-data-grid";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import { DataGrid, GridColDef, GridRenderCellParams, GridSortModel, GridRowParams, GridRowSelectionModel } from "@mui/x-data-grid";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { Song, sortSongs, searchSongs, formatDuration, formatFileSize } from "@/lib/songs";
 
@@ -69,6 +69,30 @@ export default function SongsDataGrid({
     duration: true,
     fileSize: true,
   });
+
+  // Google Photos-style selection mode
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const anchorRowRef = useRef<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Exit selection mode on Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isSelectionMode) {
+        setIsSelectionMode(false);
+        onSelectionChange([]);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isSelectionMode, onSelectionChange]);
+
+  // Exit selection mode when selection becomes empty
+  useEffect(() => {
+    if (isSelectionMode && selectedIds.length === 0) {
+      setIsSelectionMode(false);
+    }
+  }, [isSelectionMode, selectedIds.length]);
 
   // Create MUI theme based on CSS variables - using Lucida Grande (iTunes 2006 style)
   const theme = useMemo(
@@ -158,6 +182,24 @@ export default function SongsDataGrid({
     },
     "& .MuiDataGrid-row": {
       userSelect: "none",
+    },
+    // Checkbox column styling for selection mode
+    "& .MuiDataGrid-columnHeaderCheckbox, & .MuiDataGrid-cellCheckbox": {
+      minWidth: "32px !important",
+      maxWidth: "32px !important",
+    },
+    "& .MuiCheckbox-root": {
+      padding: "2px",
+      color: "var(--muted)",
+    },
+    "& .MuiCheckbox-root.Mui-checked": {
+      color: "#3b82f6",
+    },
+    "& .Mui-selected .MuiCheckbox-root": {
+      color: "#fff",
+    },
+    "& .Mui-selected .MuiCheckbox-root.Mui-checked": {
+      color: "#fff",
     },
   };
 
@@ -258,10 +300,66 @@ export default function SongsDataGrid({
     }
   };
 
-  // Handle row click - single selection only (MUI DataGrid free limitation)
-  const handleRowClick = (params: GridRowParams) => {
-    onSelectionChange([String(params.id)]);
-  };
+  // Get range of row IDs between two indices
+  const getRowRange = useCallback((startId: string, endId: string): string[] => {
+    const startIdx = displayedSongs.findIndex((r) => r.id === startId);
+    const endIdx = displayedSongs.findIndex((r) => r.id === endId);
+    if (startIdx === -1 || endIdx === -1) return [endId];
+    const minIdx = Math.min(startIdx, endIdx);
+    const maxIdx = Math.max(startIdx, endIdx);
+    return displayedSongs.slice(minIdx, maxIdx + 1).map((r) => r.id || "").filter(Boolean);
+  }, [displayedSongs]);
+
+  // Handle row click - supports selection mode
+  const handleRowClick = useCallback((params: GridRowParams, event: React.MouseEvent) => {
+    const rowId = String(params.id);
+    const isCmd = event.metaKey || event.ctrlKey;
+    const isShift = event.shiftKey;
+
+    if (isSelectionMode) {
+      // In selection mode
+      if (isShift && anchorRowRef.current) {
+        // Shift+click: range selection
+        const rangeIds = getRowRange(anchorRowRef.current, rowId);
+        onSelectionChange(rangeIds);
+      } else if (isCmd) {
+        // Cmd+click: toggle in selection
+        const newSelection = selectedIds.includes(rowId)
+          ? selectedIds.filter((id) => id !== rowId)
+          : [...selectedIds, rowId];
+        onSelectionChange(newSelection);
+        if (!selectedIds.includes(rowId)) {
+          anchorRowRef.current = rowId;
+        }
+      } else {
+        // Regular click in selection mode: toggle this item
+        const newSelection = selectedIds.includes(rowId)
+          ? selectedIds.filter((id) => id !== rowId)
+          : [...selectedIds, rowId];
+        onSelectionChange(newSelection);
+        anchorRowRef.current = rowId;
+      }
+    } else {
+      // Not in selection mode
+      if (isCmd) {
+        // Cmd+click: enter selection mode with this item selected
+        setIsSelectionMode(true);
+        anchorRowRef.current = rowId;
+        onSelectionChange([rowId]);
+      } else {
+        // Regular click: just highlight this row (single selection)
+        anchorRowRef.current = rowId;
+        onSelectionChange([rowId]);
+      }
+    }
+  }, [isSelectionMode, selectedIds, onSelectionChange, getRowRange]);
+
+  // Handle checkbox selection changes from MUI DataGrid
+  const handleSelectionModelChange = useCallback((selectionModel: GridRowSelectionModel) => {
+    if (!isSelectionMode) return; // Only handle in selection mode
+    const ids = Array.from(selectionModel.ids).map(String);
+    onSelectionChange(ids);
+  }, [isSelectionMode, onSelectionChange]);
 
   // Handle context menu
   const handleContextMenu = (event: React.MouseEvent) => {
@@ -301,9 +399,24 @@ export default function SongsDataGrid({
     onPlaySong?.(params.row);
   };
 
+  // Build selection model based on mode
+  const rowSelectionModel = useMemo(() => {
+    if (selectedIds.length === 0) return undefined;
+    if (isSelectionMode) {
+      return { type: "include" as const, ids: new Set(selectedIds) };
+    }
+    return { type: "include" as const, ids: new Set([selectedIds[0]]) };
+  }, [selectedIds, isSelectionMode]);
+
   return (
     <ThemeProvider theme={theme}>
-      <div className="h-full w-full" onContextMenu={handleContextMenu}>
+      <div ref={containerRef} className="h-full w-full" onContextMenu={handleContextMenu}>
+        {/* Selection mode indicator */}
+        {isSelectionMode && (
+          <div className="absolute top-2 right-2 z-10 px-2 py-1 bg-blue-500 text-white text-[10px] rounded shadow">
+            {selectedIds.length} selected · Press Esc to exit
+          </div>
+        )}
         <DataGrid
           rows={displayedSongs}
           columns={columns}
@@ -311,7 +424,10 @@ export default function SongsDataGrid({
           onSortModelChange={handleSortModelChange}
           onRowDoubleClick={handleRowDoubleClick}
           onRowClick={handleRowClick}
-          rowSelectionModel={selectedIds.length > 0 ? { type: "include" as const, ids: new Set([selectedIds[0]]) } : undefined}
+          rowSelectionModel={rowSelectionModel}
+          onRowSelectionModelChange={isSelectionMode ? handleSelectionModelChange : undefined}
+          checkboxSelection={isSelectionMode}
+          disableRowSelectionOnClick={isSelectionMode}
           disableColumnMenu
           hideFooter
           rowHeight={20}
@@ -321,9 +437,12 @@ export default function SongsDataGrid({
 
         {/* Context Menu */}
         {contextMenu && (() => {
-          // For now, context menu operates on single song (selectedIds[0])
-          const targetSong = contextMenu.song;
-          const count = 1;
+          // If in selection mode and clicked song is selected, operate on all selected
+          const isSelectedSong = selectedIds.includes(contextMenu.song.id || "");
+          const targetSongs = (isSelectionMode && isSelectedSong)
+            ? songs.filter((s) => s.id && selectedIds.includes(s.id))
+            : [contextMenu.song];
+          const count = targetSongs.length;
 
           return (
             <>
@@ -337,11 +456,11 @@ export default function SongsDataGrid({
                   fontFamily: "'Lucida Grande', 'Lucida Sans Unicode', sans-serif",
                 }}
               >
-                {onPlaySong && (
+                {onPlaySong && count === 1 && (
                   <button
                     type="button"
                     onClick={() => {
-                      onPlaySong(targetSong);
+                      onPlaySong(targetSongs[0]);
                       closeContextMenu();
                     }}
                     className="context-menu-item"
@@ -353,12 +472,12 @@ export default function SongsDataGrid({
                   <button
                     type="button"
                     onClick={() => {
-                      onQueueSong(targetSong);
+                      targetSongs.forEach((s) => onQueueSong(s));
                       closeContextMenu();
                     }}
                     className="context-menu-item"
                   >
-                    Add to Queue
+                    Add to Queue{count > 1 ? ` (${count})` : ""}
                   </button>
                 )}
                 <div className="h-px my-1" style={{ backgroundColor: "var(--border)" }} />
@@ -366,24 +485,27 @@ export default function SongsDataGrid({
                   <button
                     type="button"
                     onClick={() => {
-                      onEditMetadata([targetSong]);
+                      onEditMetadata(targetSongs);
                       closeContextMenu();
                     }}
                     className="context-menu-item"
                   >
-                    Edit Metadata
+                    Edit Metadata{count > 1 ? ` (${count})` : ""}
                   </button>
                 )}
                 {onExportSelected && (
                   <button
                     type="button"
                     onClick={() => {
+                      if (!isSelectedSong) {
+                        onSelectionChange([contextMenu.song.id || ""]);
+                      }
                       onExportSelected();
                       closeContextMenu();
                     }}
                     className="context-menu-item"
                   >
-                    Export
+                    Export{count > 1 ? ` (${count})` : ""}
                   </button>
                 )}
                 {onExportLibrary && (
@@ -402,12 +524,16 @@ export default function SongsDataGrid({
                 <button
                   type="button"
                   onClick={() => {
-                    onDeleteSong(targetSong);
+                    if (count > 1 && onDeleteSelected) {
+                      onDeleteSelected();
+                    } else {
+                      onDeleteSong(targetSongs[0]);
+                    }
                     closeContextMenu();
                   }}
                   className="context-menu-item danger"
                 >
-                  Delete
+                  Delete{count > 1 ? ` (${count})` : ""}
                 </button>
               </div>
             </>
