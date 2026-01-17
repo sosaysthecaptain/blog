@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, useImperativeHandle,
 import { NoteItem, updateNote, subscribeToNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap, generateSlug, blogSlugExists, recipeSlugExists } from "@/lib/notes";
 import { findRemovedFiles, deleteFileByUrl } from "@/lib/notes-storage";
 import { getCurrentUser, isAdminEmail } from "@/lib/auth";
+import { useAutosave } from "@/hooks/useAutosave";
 import TiptapEditor from "./TiptapEditor";
 import TagInput from "./TagInput";
 import ImageLightbox, { extractImagesFromHtml } from "@/components/ImageLightbox";
@@ -39,9 +40,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [tagColors, setTagColors] = useState<TagColorsMap>({});
 
-  // Save state
-  const [isSaving, setIsSaving] = useState(false);
-  const [hasLocalChanges, setHasLocalChanges] = useState(false);
+  // Save state (isSaving and hasLocalChanges now managed by autosave hook)
 
   // Remote sync state
   const [remoteNote, setRemoteNote] = useState<NoteItem | null>(null);
@@ -74,6 +73,48 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
   const canPublish = (isBlogNote || isRecipeNote) && isAdminEmail(currentUser?.email || null);
   const publishPath = isBlogNote ? "/blog/" : isRecipeNote ? "/recipes/" : "";
 
+  // Autosave data - memoized to prevent unnecessary re-renders
+  const autosaveData = useMemo(() => ({
+    title,
+    content,
+    date,
+    time,
+    tags,
+    published,
+    slug,
+  }), [title, content, date, time, tags, published, slug]);
+
+  // Autosave callback - saves to Firestore
+  const handleAutosave = useCallback(async (data: typeof autosaveData) => {
+    if (!note.id) return;
+
+    await updateNote(note.id, {
+      title: data.title,
+      content: data.content,
+      date: data.date,
+      time: data.time || null,
+      tags: data.tags,
+      published: data.published,
+      slug: data.slug,
+    });
+
+    // Update saved version reference
+    savedVersionRef.current = { ...data };
+
+    // Notify parent
+    onUpdate({ ...note, ...data });
+  }, [note, onUpdate]);
+
+  // Use autosave hook
+  const { status: autosaveStatus, isDirty: hasLocalChanges, save: triggerSave, markSaved } = useAutosave({
+    data: autosaveData,
+    onSave: handleAutosave,
+    debounceMs: 2000,
+    enabled: !!note.id,
+  });
+
+  const isSaving = autosaveStatus === "saving";
+
   // Extract images for lightbox
   const allImages = useMemo(() => extractImagesFromHtml(content), [content]);
 
@@ -103,7 +144,6 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
     setPublished(note.published || false);
     setSlug(note.slug || "");
     setSlugError(null);
-    setHasLocalChanges(false);
     setHasRemoteChanges(false);
     setRemoteNote(null);
 
@@ -127,6 +167,30 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
       if (!updatedNote) return;
 
       setRemoteNote(updatedNote);
+
+      // Check if remote matches our current local state (our own save just completed)
+      const remoteMatchesLocal =
+        updatedNote.title === title &&
+        (updatedNote.content || "") === content &&
+        (updatedNote.date || "") === date &&
+        (updatedNote.time || "") === (time || "") &&
+        JSON.stringify(updatedNote.tags || []) === JSON.stringify(tags) &&
+        (updatedNote.published || false) === published &&
+        (updatedNote.slug || "") === slug;
+
+      if (remoteMatchesLocal) {
+        // Remote matches our local state - this is our own save, update saved version
+        savedVersionRef.current = {
+          title: updatedNote.title,
+          content: updatedNote.content || "",
+          date: updatedNote.date || new Date().toISOString().split("T")[0],
+          time: updatedNote.time || "",
+          tags: updatedNote.tags || [],
+          published: updatedNote.published || false,
+          slug: updatedNote.slug || "",
+        };
+        return;
+      }
 
       // Check if remote has changes compared to our saved version
       const saved = savedVersionRef.current;
@@ -173,62 +237,29 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
     });
 
     return () => unsubscribe();
-  }, [note.id, hasLocalChanges, isSaving, onUpdate]);
-
-  // Track local changes
-  useEffect(() => {
-    const saved = savedVersionRef.current;
-    if (!saved) return;
-
-    const changed =
-      title !== saved.title ||
-      content !== saved.content ||
-      date !== saved.date ||
-      time !== saved.time ||
-      JSON.stringify(tags) !== JSON.stringify(saved.tags) ||
-      published !== saved.published ||
-      slug !== saved.slug;
-
-    setHasLocalChanges(changed);
-  }, [title, content, date, time, tags, published, slug]);
+  }, [note.id, title, content, date, time, tags, published, slug, hasLocalChanges, isSaving, onUpdate]);
 
   // Notify parent of unsaved changes
   useEffect(() => {
     onUnsavedChangesChange?.(hasLocalChanges);
   }, [hasLocalChanges, onUnsavedChangesChange]);
 
-  // Core save function (actually performs the save)
+  // Core save function - handles file deletion then triggers autosave
   const performSave = useCallback(async (filesToDelete: string[] = []) => {
     if (!note.id || isSaving) return;
 
-    setIsSaving(true);
     try {
       // Delete removed files from storage
       for (const url of filesToDelete) {
         await deleteFileByUrl(url);
       }
 
-      await updateNote(note.id, {
-        title,
-        content,
-        date,
-        time: time || null, // Firestore accepts null but not undefined
-        tags,
-        published,
-        slug,
-      });
-
-      // Update saved version reference
-      savedVersionRef.current = { title, content, date, time, tags, published, slug };
-      setHasLocalChanges(false);
-
-      // Notify parent
-      onUpdate({ ...note, title, content, date, time, tags, published, slug });
+      // Trigger the autosave hook's save function
+      triggerSave();
     } catch (error) {
       console.error("Failed to save note:", error);
     }
-    setIsSaving(false);
-  }, [note, title, content, date, time, tags, published, slug, isSaving, onUpdate]);
+  }, [note.id, isSaving, triggerSave]);
 
   // Save function - checks for removed files first
   const handleSave = useCallback(async () => {
@@ -250,9 +281,9 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
 
   // Expose save function and unsaved state to parent via ref
   useImperativeHandle(ref, () => ({
-    save: performSave,
+    save: async () => { triggerSave(); },
     hasUnsavedChanges: () => hasLocalChanges,
-  }), [performSave, hasLocalChanges]);
+  }), [triggerSave, hasLocalChanges]);
 
   // Handle confirming file deletion
   const handleConfirmDeleteFiles = useCallback(async () => {
@@ -290,10 +321,11 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
       slug: remoteNote.slug || "",
     };
 
-    setHasLocalChanges(false);
+    // Mark as saved so autosave knows this is the baseline
+    markSaved();
     setShowConflictDialog(false);
     onUpdate(remoteNote);
-  }, [remoteNote, onUpdate]);
+  }, [remoteNote, onUpdate, markSaved]);
 
   // Overwrite remote with local changes
   const handleOverwriteRemote = useCallback(async () => {
@@ -366,7 +398,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
   return (
     <div className="flex-1 h-full overflow-y-auto bg-[--background]">
       <div className={isFullWidth ? "px-4 py-6 md:px-8 md:py-12" : "max-w-3xl mx-auto px-4 py-6 md:px-8 md:py-12"}>
-        {/* Header row with back button and save button */}
+        {/* Header row with back button and autosave status */}
         <div className="flex items-center justify-between mb-6">
           {/* Back button */}
           {parentFolder ? (
@@ -385,31 +417,29 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
             <div />
           )}
 
-          {/* Save button - floppy disk */}
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={!hasLocalChanges || isSaving}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors ${
-              hasLocalChanges
-                ? "bg-[--foreground] text-[--background] hover:opacity-90"
-                : "bg-[--hover] text-[--muted] cursor-default"
-            }`}
-            title={hasLocalChanges ? "Save changes (Cmd+S)" : "No unsaved changes"}
-          >
+          {/* Autosave status indicator */}
+          <div className="flex items-center gap-2 text-sm text-[--muted]">
             {isSaving ? (
-              <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
+              <>
+                <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span className="hidden sm:inline">Saving...</span>
+              </>
+            ) : hasLocalChanges ? (
+              <>
+                <div className="w-2 h-2 rounded-full bg-amber-500" />
+                <span className="hidden sm:inline">Unsaved</span>
+              </>
             ) : (
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/>
-              </svg>
+              <>
+                <svg className="w-4 h-4 text-[--success]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <span className="hidden sm:inline">Saved</span>
+              </>
             )}
-            <span className="text-sm font-medium hidden sm:inline">
-              {isSaving ? "Saving..." : hasLocalChanges ? "Save" : "Saved"}
-            </span>
-          </button>
+          </div>
         </div>
 
         {/* Title */}

@@ -7,9 +7,13 @@ import {
   useCallback,
   forwardRef,
   useImperativeHandle,
+  useMemo,
 } from "react";
 import { NoteItem, subscribeToNote, updateNote } from "@/lib/notes";
-import { Song, subscribeToSongs, getSongsByLibrary, getLibraryStats, deleteSong } from "@/lib/songs";
+import { useAutosave } from "@/hooks/useAutosave";
+import { useCachedSongs } from "@/hooks/useCachedSongs";
+import { setupSongsListener } from "@/lib/cache-sync";
+import { Song, getSongsByLibrary, getLibraryStats, deleteSong, updateSong, sortSongs, searchSongs } from "@/lib/songs";
 import { uploadAudioFiles, deleteSongFiles, isAudioFile, getSongIdFromPath } from "@/lib/music-storage";
 import { useMusicQueue } from "@/hooks/useMusicQueue";
 import MusicPlayer from "./MusicPlayer";
@@ -49,8 +53,6 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
     // Local state
     const [localLibrary, setLocalLibrary] = useState<NoteItem>(library);
     const [songs, setSongs] = useState<Song[]>([]);
-    const [isDirty, setIsDirty] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState<{
@@ -64,10 +66,48 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
     const [showRecorderModal, setShowRecorderModal] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const playFnRef = useRef<((song: Song) => void) | null>(null);
 
-    // Music playback
-    const musicQueue = useMusicQueue();
+    // Compute displayed songs list for autoplay (same sorting as DataGrid)
+    const displayedSongs = useMemo(() => {
+      let result = songs;
+      if (searchQuery) {
+        result = searchSongs(songs, searchQuery);
+      }
+      result = sortSongs(result, localLibrary.musicSortColumn || "artist", localLibrary.musicSortDirection || "asc");
+      return result;
+    }, [songs, searchQuery, localLibrary.musicSortColumn, localLibrary.musicSortDirection]);
+
+    // Keep displayedSongs in a ref for the callback
+    const displayedSongsRef = useRef(displayedSongs);
+    useEffect(() => {
+      displayedSongsRef.current = displayedSongs;
+    }, [displayedSongs]);
+
+    // Callback to autoplay next song when queue is exhausted
+    const handleQueueExhausted = useCallback((currentSong: Song | null) => {
+      if (!currentSong) return;
+
+      // Find current song in displayed list and play the next one
+      const currentIndex = displayedSongsRef.current.findIndex((s) => s.id === currentSong.id);
+      if (currentIndex !== -1 && currentIndex < displayedSongsRef.current.length - 1) {
+        const nextSong = displayedSongsRef.current[currentIndex + 1];
+        if (nextSong && playFnRef.current) {
+          // Small delay to ensure state is settled
+          setTimeout(() => {
+            playFnRef.current?.(nextSong);
+          }, 50);
+        }
+      }
+    }, []);
+
+    // Music playback with autoplay
+    const musicQueue = useMusicQueue({ onQueueExhausted: handleQueueExhausted });
+
+    // Update play function ref
+    useEffect(() => {
+      playFnRef.current = musicQueue.play;
+    }, [musicQueue.play]);
 
     // Subscribe to library changes
     useEffect(() => {
@@ -83,18 +123,20 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
       return () => unsubscribe();
     }, [library.id, onUpdate]);
 
-    // Subscribe to songs changes
+    // Use cached songs for instant loading
+    const { songs: cachedSongs, isLoading: songsLoading } = useCachedSongs(library.id);
+
+    // Sync cached songs to local state
+    useEffect(() => {
+      if (cachedSongs.length > 0 || !songsLoading) {
+        setSongs(cachedSongs);
+      }
+    }, [cachedSongs, songsLoading]);
+
+    // Set up Firestore listener to keep cache in sync
     useEffect(() => {
       if (!library.id) return;
-
-      // Initial fetch
-      getSongsByLibrary(library.id).then(setSongs).catch(console.error);
-
-      // Subscribe to real-time updates
-      const unsubscribe = subscribeToSongs(library.id, (updatedSongs) => {
-        setSongs(updatedSongs);
-      });
-
+      const unsubscribe = setupSongsListener(library.id);
       return () => unsubscribe();
     }, [library.id]);
 
@@ -111,54 +153,49 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
       return () => window.removeEventListener("keydown", handleKeyDown);
     }, []);
 
+    // Autosave data - memoized to prevent unnecessary re-renders
+    const autosaveData = useMemo(() => ({
+      title: localLibrary.title,
+      musicSortColumn: localLibrary.musicSortColumn,
+      musicSortDirection: localLibrary.musicSortDirection,
+    }), [localLibrary.title, localLibrary.musicSortColumn, localLibrary.musicSortDirection]);
+
+    // Autosave callback - saves to Firestore
+    const handleAutosave = useCallback(async (data: typeof autosaveData) => {
+      if (!library.id) return;
+
+      await updateNote(library.id, {
+        title: data.title,
+        musicSortColumn: data.musicSortColumn,
+        musicSortDirection: data.musicSortDirection,
+      });
+
+      onUpdate({ ...localLibrary, ...data });
+    }, [library.id, localLibrary, onUpdate]);
+
+    // Use autosave hook
+    const { status: autosaveStatus, isDirty, save: triggerSave } = useAutosave({
+      data: autosaveData,
+      onSave: handleAutosave,
+      debounceMs: 1000,
+      enabled: !!library.id,
+    });
+
+    const isSaving = autosaveStatus === "saving";
+
     // Notify parent of unsaved changes
     useEffect(() => {
       onUnsavedChangesChange?.(isDirty);
     }, [isDirty, onUnsavedChangesChange]);
 
-    // Autosave
-    const scheduleAutosave = useCallback(() => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-      saveTimeoutRef.current = setTimeout(() => {
-        saveLibrary();
-      }, 1000);
-    }, []);
-
-    const saveLibrary = useCallback(async () => {
-      if (!library.id || !isDirty) return;
-
-      setIsSaving(true);
-      try {
-        await updateNote(library.id, {
-          title: localLibrary.title,
-          musicSortColumn: localLibrary.musicSortColumn,
-          musicSortDirection: localLibrary.musicSortDirection,
-        });
-        setIsDirty(false);
-      } catch (error) {
-        console.error("Failed to save library:", error);
-      } finally {
-        setIsSaving(false);
-      }
-    }, [library.id, localLibrary, isDirty]);
-
     // Expose save method to parent
     useImperativeHandle(ref, () => ({
-      save: async () => {
-        if (saveTimeoutRef.current) {
-          clearTimeout(saveTimeoutRef.current);
-        }
-        await saveLibrary();
-      },
-    }));
+      save: async () => { triggerSave(); },
+    }), [triggerSave]);
 
     // Handle field changes
     const handleTitleChange = (title: string) => {
       setLocalLibrary((prev) => ({ ...prev, title }));
-      setIsDirty(true);
-      scheduleAutosave();
     };
 
     const handleSortChange = (
@@ -170,8 +207,6 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
         musicSortColumn: column,
         musicSortDirection: direction,
       }));
-      setIsDirty(true);
-      scheduleAutosave();
     };
 
     // Handle file upload
@@ -301,8 +336,28 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
       setSelectedSongIds([]);
     }, [library.id, selectedSongIds, songs, handleDeleteSong]);
 
-    // Calculate stats
+    // Handle song metadata update
+    const handleUpdateSong = useCallback(async (song: Song) => {
+      if (!song.id) return;
+      try {
+        await updateSong(song.id, {
+          title: song.title,
+          artist: song.artist,
+          album: song.album,
+          year: song.year,
+        });
+      } catch (error) {
+        console.error("Failed to update song:", error);
+      }
+    }, []);
+
+    // Calculate stats - for selection if items are selected, otherwise for all songs
+    const selectedSongs = useMemo(() =>
+      songs.filter((s) => s.id && selectedSongIds.includes(s.id)),
+      [songs, selectedSongIds]
+    );
     const stats = getLibraryStats(songs);
+    const selectionStats = selectedSongIds.length > 0 ? getLibraryStats(selectedSongs) : null;
 
     return (
       <div
@@ -410,11 +465,13 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
               sortDirection={localLibrary.musicSortDirection || "asc"}
               selectedIds={selectedSongIds}
               currentPlayingSongId={musicQueue.currentSong?.id}
+              isPlaying={musicQueue.isPlaying}
               onSortChange={handleSortChange}
               onSelectionChange={setSelectedSongIds}
               onDeleteSong={handleDeleteSong}
               onDeleteSelected={handleDeleteSelected}
               onPlaySong={musicQueue.play}
+              onTogglePlayPause={musicQueue.togglePlayPause}
               onQueueSong={musicQueue.addToQueue}
               onExportSelected={() => setShowExportModal(true)}
               onExportLibrary={() => {
@@ -422,13 +479,18 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
                 setShowExportModal(true);
               }}
               onEditMetadata={setSongsToEdit}
+              onUpdateSong={handleUpdateSong}
             />
           )}
         </div>
 
         {/* Footer with stats */}
         <div className={`px-4 py-2 border-t border-[--border] text-xs text-[--muted] ${isFullWidth ? "" : "max-w-3xl mx-auto w-full"}`}>
-          {stats.count} songs · {stats.totalDuration} · {stats.totalSize}
+          {selectionStats ? (
+            <>{selectionStats.count} of {stats.count} selected · {selectionStats.totalDuration} · {selectionStats.totalSize}</>
+          ) : (
+            <>{stats.count} songs · {stats.totalDuration} · {stats.totalSize}</>
+          )}
         </div>
 
         {/* Music Player */}

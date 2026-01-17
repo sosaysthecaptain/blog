@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Notes - Marc Auger",
-  description: "Personal notes",
+  title: "Dirigible",
+  description: "Personal notes and music library",
   icons: {
     icon: "/favicon-notes.svg",
   },

@@ -18,6 +18,8 @@ import {
   updateNote,
   updateSortOrders,
 } from "@/lib/notes";
+import { CacheProvider, useCacheStatus } from "@/components/CacheProvider";
+import { useCachedNotes } from "@/hooks/useCachedNotes";
 import { getAllPosts, Post } from "@/lib/firestore";
 import { deleteNoteImages, downloadImageBlob } from "@/lib/notes-storage";
 import { useDarkMode } from "@/hooks/useDarkMode";
@@ -88,13 +90,17 @@ export default function NotesPage() {
     return unsubscribe;
   }, []);
 
-  // Load notes
-  useEffect(() => {
-    if (user) {
-      loadNotes();
-    }
-  }, [user]);
+  // Use cached notes for instant loading
+  const { notes: cachedNotes, isLoading: notesLoading } = useCachedNotes();
 
+  // Sync cached notes to items state
+  useEffect(() => {
+    if (user && cachedNotes.length > 0) {
+      setItems(cachedNotes);
+    }
+  }, [user, cachedNotes]);
+
+  // Legacy loadNotes function for manual refresh (still needed for some operations)
   const loadNotes = async () => {
     const notes = await getAllNotes();
     setItems(notes);
@@ -909,7 +915,20 @@ ${content}`;
   if (!user) {
     return (
       <div className="min-h-screen bg-[--background] flex flex-col items-center justify-center">
-        <h1 className="text-2xl font-bold text-[--foreground] mb-8">Notes</h1>
+        <div className="flex items-center gap-3 mb-8">
+          {/* Dirigible logo */}
+          <svg className="w-10 h-10 text-[--foreground]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <g transform="scale(-1,1) translate(-24,0)">
+              <ellipse cx="11" cy="9" rx="8" ry="4.5" />
+              <path d="M18 6.5 L21 4.5 L21 8" />
+              <path d="M18 11.5 L21 13.5 L21 10" />
+              <rect x="7" y="16" width="8" height="2.5" rx="0.75" />
+              <path d="M8.5 13.5 L8 16" />
+              <path d="M13.5 13.5 L14 16" />
+            </g>
+          </svg>
+          <h1 className="text-2xl font-bold text-[--foreground]">Dirigible</h1>
+        </div>
         <button
           onClick={handleSignIn}
           className="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -927,6 +946,7 @@ ${content}`;
   }
 
   return (
+    <CacheProvider>
     <div className="h-screen bg-[--background] flex overflow-hidden">
       {/* Mobile sidebar backdrop */}
       {mobileSidebarOpen && (
@@ -1095,5 +1115,6 @@ ${content}`;
         onCancel={handleCancelNavigation}
       />
     </div>
+    </CacheProvider>
   );
 }

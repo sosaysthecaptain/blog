@@ -235,7 +235,24 @@ export default function Sidebar({
               </svg>
             </button>
           )}
-          <span className="font-medium text-sm text-[--foreground]">Notes</span>
+          <div className="flex items-center gap-1.5">
+            {/* Dirigible logo - flipped to point left */}
+            <svg className="w-5 h-5 text-[--foreground]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <g transform="scale(-1,1) translate(-24,0)">
+                {/* Main envelope */}
+                <ellipse cx="11" cy="9" rx="8" ry="4.5" />
+                {/* Tail fins */}
+                <path d="M18 6.5 L21 4.5 L21 8" />
+                <path d="M18 11.5 L21 13.5 L21 10" />
+                {/* Gondola */}
+                <rect x="7" y="16" width="8" height="2.5" rx="0.75" />
+                {/* Suspension cables */}
+                <path d="M8.5 13.5 L8 16" />
+                <path d="M13.5 13.5 L14 16" />
+              </g>
+            </svg>
+            <span className="font-medium text-sm text-[--foreground]">Dirigible</span>
+          </div>
         </div>
         <div className="flex items-center gap-0.5">
           {/* New menu */}

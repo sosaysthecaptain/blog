@@ -31,12 +31,17 @@ export interface MusicQueueActions {
   toggleMute: () => void;
 }
 
-export function useMusicQueue(): MusicQueueState & MusicQueueActions {
+export interface UseMusicQueueOptions {
+  onQueueExhausted?: (currentSong: Song | null) => void;
+}
+
+export function useMusicQueue(options?: UseMusicQueueOptions): MusicQueueState & MusicQueueActions {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const currentSongUrlRef = useRef<string | null>(null);
   const queueRef = useRef<Song[]>([]);
   const currentIndexRef = useRef(-1);
   const isPlayingRef = useRef(false);
+  const onQueueExhaustedRef = useRef(options?.onQueueExhausted);
 
   const [queue, setQueue] = useState<Song[]>([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
@@ -58,6 +63,10 @@ export function useMusicQueue(): MusicQueueState & MusicQueueActions {
   useEffect(() => {
     isPlayingRef.current = isPlaying;
   }, [isPlaying]);
+
+  useEffect(() => {
+    onQueueExhaustedRef.current = options?.onQueueExhausted;
+  }, [options?.onQueueExhausted]);
 
   // Initialize audio element
   useEffect(() => {
@@ -89,7 +98,13 @@ export function useMusicQueue(): MusicQueueState & MusicQueueActions {
             audioRef.current?.play().catch(console.error);
           }, 50);
         } else {
-          setIsPlaying(false);
+          // Queue exhausted - call callback if provided
+          const currentSong = queueRef.current[currentIndexRef.current] || null;
+          if (onQueueExhaustedRef.current) {
+            onQueueExhaustedRef.current(currentSong);
+          } else {
+            setIsPlaying(false);
+          }
         }
       });
 

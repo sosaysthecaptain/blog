@@ -9,6 +9,16 @@ const nextConfig: NextConfig = {
     unoptimized: true,
   },
   trailingSlash: true,
+  // Turbopack config to handle sql.js Node.js polyfills
+  turbopack: {
+    resolveAlias: {
+      fs: { browser: "./src/lib/empty-module.js" },
+      path: { browser: "./src/lib/empty-module.js" },
+      crypto: { browser: "./src/lib/empty-module.js" },
+    },
+  },
+  // Server external packages for sql.js
+  serverExternalPackages: ["sql.js"],
 };
 
 export default nextConfig;

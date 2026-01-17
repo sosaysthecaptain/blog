@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
+import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef, useMemo } from "react";
 import { NoteItem, MoodboardImage, updateNote, subscribeToNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap } from "@/lib/notes";
+import { useAutosave } from "@/hooks/useAutosave";
 import { uploadMoodboardImages, deleteMoodboardImage, getImageIdFromUrl, getExtensionFromUrl } from "@/lib/moodboard-storage";
 import JSZip from "jszip";
 import TagInput from "./TagInput";
@@ -37,10 +38,6 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
   const [sortMode, setSortMode] = useState<"chronological" | "manual">(moodboard.sortMode || "manual");
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [tagColors, setTagColors] = useState<TagColorsMap>({});
-
-  // Save state
-  const [isSaving, setIsSaving] = useState(false);
-  const [hasLocalChanges, setHasLocalChanges] = useState(false);
 
   // Upload state
   const [isUploading, setIsUploading] = useState(false);
@@ -81,9 +78,6 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
     sortMode: "chronological" | "manual";
   } | null>(null);
 
-  // Autosave timer ref
-  const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
-
   // Load available tags
   useEffect(() => {
     getAllNoteTags().then(setAvailableTags);
@@ -113,7 +107,6 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
     setImages(moodboard.images || []);
     setGridSize(moodboard.gridSize || "medium");
     setSortMode(moodboard.sortMode || "manual");
-    setHasLocalChanges(false);
 
     savedVersionRef.current = {
       title: moodboard.title,
@@ -151,83 +144,60 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
         gridSize: updated.gridSize || "medium",
         sortMode: updated.sortMode || "manual",
       };
-      setHasLocalChanges(false);
       onUpdate(updated);
     });
 
     return () => unsubscribe();
   }, [moodboard.id, onUpdate]);
 
-  // Track local changes and trigger autosave
-  useEffect(() => {
-    const saved = savedVersionRef.current;
-    if (!saved) return;
+  // Autosave data - memoized to prevent unnecessary re-renders
+  const autosaveData = useMemo(() => ({
+    title,
+    date,
+    time,
+    tags,
+    images,
+    gridSize,
+    sortMode,
+  }), [title, date, time, tags, images, gridSize, sortMode]);
 
-    const changed =
-      title !== saved.title ||
-      date !== saved.date ||
-      time !== saved.time ||
-      JSON.stringify(tags) !== JSON.stringify(saved.tags) ||
-      JSON.stringify(images) !== JSON.stringify(saved.images) ||
-      gridSize !== saved.gridSize ||
-      sortMode !== saved.sortMode;
+  // Autosave callback - saves to Firestore
+  const handleAutosave = useCallback(async (data: typeof autosaveData) => {
+    if (!moodboard.id) return;
 
-    setHasLocalChanges(changed);
+    await updateNote(moodboard.id, {
+      title: data.title,
+      date: data.date,
+      time: data.time || null,
+      tags: data.tags,
+      images: data.images,
+      gridSize: data.gridSize,
+      sortMode: data.sortMode,
+    });
 
-    // Autosave after 1 second of no changes
-    if (changed && moodboard.id) {
-      if (autosaveTimerRef.current) {
-        clearTimeout(autosaveTimerRef.current);
-      }
-      autosaveTimerRef.current = setTimeout(() => {
-        performAutosave();
-      }, 1000);
-    }
+    savedVersionRef.current = { ...data };
+    onUpdate({ ...moodboard, ...data });
+  }, [moodboard, onUpdate]);
 
-    return () => {
-      if (autosaveTimerRef.current) {
-        clearTimeout(autosaveTimerRef.current);
-      }
-    };
-  }, [title, date, time, tags, images, gridSize, sortMode, moodboard.id]);
+  // Use autosave hook
+  const { status: autosaveStatus, isDirty: hasLocalChanges, save: triggerSave, markSaved } = useAutosave({
+    data: autosaveData,
+    onSave: handleAutosave,
+    debounceMs: 1000,
+    enabled: !!moodboard.id,
+  });
+
+  const isSaving = autosaveStatus === "saving";
 
   // Notify parent of unsaved changes
   useEffect(() => {
     onUnsavedChangesChange?.(hasLocalChanges);
   }, [hasLocalChanges, onUnsavedChangesChange]);
 
-  // Autosave function (called by debounced effect)
-  const performAutosave = useCallback(async () => {
-    if (!moodboard.id || isSaving) return;
-
-    setIsSaving(true);
-    try {
-      await updateNote(moodboard.id, {
-        title,
-        date,
-        time: time || null,
-        tags,
-        images,
-        gridSize,
-        sortMode,
-      });
-
-      savedVersionRef.current = { title, date, time, tags, images, gridSize, sortMode };
-      setHasLocalChanges(false);
-      onUpdate({ ...moodboard, title, date, time, tags, images, gridSize, sortMode });
-    } catch (error) {
-      console.error("Failed to save moodboard:", error);
-    }
-    setIsSaving(false);
-  }, [moodboard, title, date, time, tags, images, gridSize, sortMode, isSaving, onUpdate]);
-
   // Manual save function (for keyboard shortcut and ref)
   const handleSave = useCallback(async () => {
-    if (autosaveTimerRef.current) {
-      clearTimeout(autosaveTimerRef.current);
-    }
-    await performAutosave();
-  }, [performAutosave]);
+    triggerSave();
+  }, [triggerSave]);
 
   // Expose save function via ref
   useImperativeHandle(ref, () => ({
@@ -442,7 +412,7 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
       }}
     >
       <div className={isFullWidth ? "px-4 py-6 md:px-8 md:py-12" : "max-w-4xl mx-auto px-4 py-6 md:px-8 md:py-12"}>
-        {/* Header row with back button and save button */}
+        {/* Header row with back button and controls */}
         <div className="flex items-center justify-between mb-6">
           {/* Back button */}
           {parentFolder ? (
