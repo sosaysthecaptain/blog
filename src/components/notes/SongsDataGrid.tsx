@@ -92,6 +92,11 @@ const dataGridSx = {
   },
   "& .MuiDataGrid-sortIcon": {
     color: "var(--muted)",
+    opacity: 1,
+  },
+  "& .MuiDataGrid-iconButtonContainer": {
+    visibility: "visible",
+    width: "auto",
   },
   "& .MuiDataGrid-menuIcon": {
     color: "var(--muted)",
@@ -230,7 +235,7 @@ export default function SongsDataGrid({
           return isPlaying ? (
             <div className="w-full h-full flex items-center justify-center">
               <svg
-                className="w-3 h-3"
+                className="w-4 h-4"
                 fill="currentColor"
                 viewBox="0 0 24 24"
                 style={{ color: isSelected ? "#fff" : "#1e6bbd" }}

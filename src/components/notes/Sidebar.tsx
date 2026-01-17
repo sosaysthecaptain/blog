@@ -236,22 +236,25 @@ export default function Sidebar({
             </button>
           )}
           <div className="flex items-center gap-1.5">
-            {/* Dirigible logo - flipped to point left */}
-            <svg className="w-5 h-5 text-[--foreground]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <g transform="scale(-1,1) translate(-24,0)">
-                {/* Main envelope */}
-                <ellipse cx="11" cy="9" rx="8" ry="4.5" />
-                {/* Tail fins */}
-                <path d="M18 6.5 L21 4.5 L21 8" />
-                <path d="M18 11.5 L21 13.5 L21 10" />
-                {/* Gondola */}
-                <rect x="7" y="16" width="8" height="2.5" rx="0.75" />
-                {/* Suspension cables */}
-                <path d="M8.5 13.5 L8 16" />
-                <path d="M13.5 13.5 L14 16" />
-              </g>
+            {/* Zeppelin logo - elongated rigid airship pointing left */}
+            <svg className="w-5 h-5 text-[--foreground]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
+              {/* Main hull - elongated cigar shape, pointed at front (left) */}
+              <path d="M1 10 Q1 6, 6 6 L19 6 Q23 8, 23 10 Q23 12, 19 14 L6 14 Q1 14, 1 10 Z" />
+              {/* Internal ribs for rigid structure */}
+              <line x1="7" y1="6.3" x2="7" y2="13.7" strokeWidth="0.6" opacity="0.4" />
+              <line x1="11" y1="6.1" x2="11" y2="13.9" strokeWidth="0.6" opacity="0.4" />
+              <line x1="15" y1="6.1" x2="15" y2="13.9" strokeWidth="0.6" opacity="0.4" />
+              <line x1="19" y1="6.8" x2="19" y2="13.2" strokeWidth="0.6" opacity="0.4" />
+              {/* Tail fins */}
+              <path d="M22 8 L24 6.5" strokeWidth="1" />
+              <path d="M22 12 L24 13.5" strokeWidth="1" />
+              {/* Gondola */}
+              <rect x="8" y="15" width="5" height="1.5" rx="0.4" />
+              {/* Suspension cables */}
+              <line x1="9" y1="14" x2="9" y2="15" strokeWidth="0.6" />
+              <line x1="12" y1="14" x2="12" y2="15" strokeWidth="0.6" />
             </svg>
-            <span className="font-medium text-sm text-[--foreground]">Dirigible</span>
+            <span className="font-medium text-sm text-[--foreground]" style={{ fontFamily: "'Lucida Grande', 'Lucida Sans Unicode', sans-serif" }}>Dirigible</span>
           </div>
         </div>
         <div className="flex items-center gap-0.5">
