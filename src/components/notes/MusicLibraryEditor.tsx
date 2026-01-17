@@ -366,7 +366,7 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
         onDragOver={handleDragOver}
       >
         {/* Header with search */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-[--border] bg-[--sidebar-bg]">
+        <div className="flex items-center justify-between px-4 py-1 border-b border-[--border] bg-[--sidebar-bg]">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <button
               type="button"

@@ -249,7 +249,9 @@ export default function SongsDataGrid({
       {
         field: "trackNumber",
         headerName: "#",
-        width: 32,
+        width: 24,
+        minWidth: 24,
+        maxWidth: 24,
         sortable: true,
         renderCell: (params: GridRenderCellParams) => params.value || "",
       },
@@ -575,7 +577,7 @@ export default function SongsDataGrid({
           disableRowSelectionOnClick
           disableColumnMenu
           hideFooter
-          rowHeight={20}
+          rowHeight={18}
           columnHeaderHeight={24}
           sx={dataGridSx}
         />

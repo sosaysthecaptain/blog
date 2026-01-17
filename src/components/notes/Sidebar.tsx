@@ -220,7 +220,7 @@ export default function Sidebar({
       onClick={() => { closeContextMenu(); setShowMoreMenu(false); setShowNewMenu(false); }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[--border]">
+      <div className="flex items-center justify-between px-3 py-1 border-b border-[--border]">
         <div className="flex items-center gap-2">
           {/* Mobile close button */}
           {onCloseMobile && (
@@ -236,23 +236,24 @@ export default function Sidebar({
             </button>
           )}
           <div className="flex items-center gap-1.5">
-            {/* Zeppelin logo - Hindenburg-style profile facing right */}
-            <svg className="w-5 h-5 text-[--foreground]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-              {/* Main hull - Hindenburg profile: rounded nose, widest 1/3 from front, tapers to tail */}
-              <path d="M22 10 Q23 7.5, 20 6 L16 5.5 Q10 5, 6 6.5 Q2 8, 1.5 10 Q2 12, 6 13.5 Q10 15, 16 14.5 L20 14 Q23 12.5, 22 10 Z" />
-              {/* Horizontal ring structure lines */}
-              <line x1="4" y1="10" x2="21" y2="10" strokeWidth="0.5" opacity="0.3" />
-              <line x1="5" y1="8" x2="20" y2="8" strokeWidth="0.4" opacity="0.25" />
-              <line x1="5" y1="12" x2="20" y2="12" strokeWidth="0.4" opacity="0.25" />
-              {/* Large tail fins - X configuration */}
-              <path d="M2.5 7 L0 4" strokeWidth="1.2" />
-              <path d="M2.5 13 L0 16" strokeWidth="1.2" />
-              <path d="M3 10 L0 10" strokeWidth="1" />
-              {/* Gondola */}
-              <rect x="10" y="15.5" width="6" height="1.2" rx="0.3" />
-              {/* Suspension */}
-              <line x1="11" y1="14.5" x2="11" y2="15.5" strokeWidth="0.5" />
-              <line x1="15" y1="14.5" x2="15" y2="15.5" strokeWidth="0.5" />
+            {/* Zeppelin logo - elongated rigid airship pointing right */}
+            <svg className="w-5 h-5 text-[--foreground]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
+              {/* Main hull - elongated cigar shape, pointed at front (right) */}
+              <path d="M23 10 Q23 6, 18 6 L5 6 Q1 8, 1 10 Q1 12, 5 14 L18 14 Q23 14, 23 10 Z" />
+              {/* Internal ribs for rigid structure */}
+              <line x1="17" y1="6.3" x2="17" y2="13.7" strokeWidth="0.6" opacity="0.4" />
+              <line x1="13" y1="6.1" x2="13" y2="13.9" strokeWidth="0.6" opacity="0.4" />
+              <line x1="9" y1="6.1" x2="9" y2="13.9" strokeWidth="0.6" opacity="0.4" />
+              <line x1="5" y1="6.8" x2="5" y2="13.2" strokeWidth="0.6" opacity="0.4" />
+              {/* Tail fins */}
+              <path d="M2 8 L0 6.5" strokeWidth="1" />
+              <path d="M2 12 L0 13.5" strokeWidth="1" />
+              {/* Gondola - longer */}
+              <rect x="9" y="15" width="8" height="1.5" rx="0.4" />
+              {/* Suspension cables */}
+              <line x1="10" y1="14" x2="10" y2="15" strokeWidth="0.6" />
+              <line x1="13" y1="14" x2="13" y2="15" strokeWidth="0.6" />
+              <line x1="16" y1="14" x2="16" y2="15" strokeWidth="0.6" />
             </svg>
             <span className="font-medium text-sm text-[--foreground]">Dirigible</span>
           </div>
@@ -302,7 +303,9 @@ export default function Sidebar({
                   className="context-menu-item flex items-center gap-2"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                    <rect x="6" y="3" width="14" height="10" rx="1" />
+                    <rect x="4" y="6" width="14" height="10" rx="1" />
+                    <rect x="2" y="9" width="14" height="10" rx="1" />
                   </svg>
                   + Album
                 </button>
@@ -334,7 +337,7 @@ export default function Sidebar({
       </div>
 
       {/* Search */}
-      <div className="px-3 py-2 border-b border-[--border]">
+      <div className="px-3 py-1 border-b border-[--border]">
         <div className="relative">
           <svg
             className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[--muted]"
@@ -398,7 +401,7 @@ export default function Sidebar({
       </div>
 
       {/* Footer with more menu */}
-      <div className="px-3 py-2 border-t border-[--border] relative">
+      <div className="px-3 py-1 border-t border-[--border] relative">
         <div className="flex items-center justify-between">
           <button
             type="button"

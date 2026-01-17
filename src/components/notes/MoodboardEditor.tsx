@@ -443,15 +443,22 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
                     setGridMenuOpen(false);
                   }}
                   className="flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-colors bg-[--hover] text-[--muted] hover:text-[--foreground]"
-                  title={sortMode === "chronological" ? "Sorted by date" : "Manual order"}
+                  title={sortMode === "chronological" ? "Album (chronological)" : "Moodboard (manual)"}
                 >
                   {sortMode === "chronological" ? (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                    // Stacked photos icon for album view
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                      <rect x="6" y="3" width="14" height="10" rx="1" />
+                      <rect x="4" y="6" width="14" height="10" rx="1" />
+                      <rect x="2" y="9" width="14" height="10" rx="1" />
                     </svg>
                   ) : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                    // Masonry grid icon for moodboard view
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                      <rect x="2" y="2" width="9" height="6" rx="1" />
+                      <rect x="13" y="2" width="9" height="9" rx="1" />
+                      <rect x="2" y="10" width="9" height="12" rx="1" />
+                      <rect x="13" y="13" width="9" height="9" rx="1" />
                     </svg>
                   )}
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -459,7 +466,7 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
                   </svg>
                 </button>
                 {sortMenuOpen && (
-                  <div className="absolute right-0 mt-1 bg-[--background] border border-[--border] rounded-lg shadow-lg py-1 z-20 min-w-[140px]">
+                  <div className="absolute right-0 mt-1 bg-[--background] border border-[--border] rounded-lg shadow-lg py-1 z-20 min-w-[220px]">
                     <button
                       type="button"
                       onClick={() => {
@@ -472,12 +479,14 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
                           : "text-[--muted] hover:text-[--foreground] hover:bg-[--hover]"
                       }`}
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                      <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                        <rect x="6" y="3" width="14" height="10" rx="1" />
+                        <rect x="4" y="6" width="14" height="10" rx="1" />
+                        <rect x="2" y="9" width="14" height="10" rx="1" />
                       </svg>
-                      By date
+                      Album (chronological)
                       {sortMode === "chronological" && (
-                        <svg className="w-4 h-4 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 ml-auto flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                       )}
@@ -494,12 +503,15 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
                           : "text-[--muted] hover:text-[--foreground] hover:bg-[--hover]"
                       }`}
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                      <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                        <rect x="2" y="2" width="9" height="6" rx="1" />
+                        <rect x="13" y="2" width="9" height="9" rx="1" />
+                        <rect x="2" y="10" width="9" height="12" rx="1" />
+                        <rect x="13" y="13" width="9" height="9" rx="1" />
                       </svg>
-                      Manual
+                      Moodboard (manual)
                       {sortMode === "manual" && (
-                        <svg className="w-4 h-4 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 ml-auto flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                       )}
