@@ -3,8 +3,6 @@
 import { useState, useRef, useEffect } from "react";
 import { NoteItem } from "@/lib/notes";
 
-const FONT_FAMILY = "'Lucida Grande', 'Lucida Sans Unicode', 'Helvetica Neue', Helvetica, Arial, sans-serif";
-
 interface FolderTreeProps {
   items: NoteItem[];
   parentId: string | null;
@@ -180,7 +178,7 @@ export default function FolderTree({
   };
 
   return (
-    <div style={{ fontFamily: FONT_FAMILY }}>
+    <div>
       {children.map((item) => {
         const isExpanded = item.type === "folder" && expandedFolders.has(item.id!);
         const isSelected = selectedId === item.id;
@@ -382,11 +380,8 @@ function NoteIcon({ className }: { className?: string }) {
 
 function MoodboardIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-      <rect x="3" y="3" width="7" height="7" rx="1" />
-      <rect x="14" y="3" width="7" height="7" rx="1" />
-      <rect x="3" y="14" width="7" height="7" rx="1" />
-      <rect x="14" y="14" width="7" height="7" rx="1" />
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
     </svg>
   );
 }

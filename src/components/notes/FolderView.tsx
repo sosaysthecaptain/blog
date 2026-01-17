@@ -57,6 +57,7 @@ interface FolderViewProps {
   onCreateNote: (parentId: string | null) => void;
   onCreateFolder?: (parentId: string | null) => void;
   onCreateMoodboard?: (parentId: string | null) => void;
+  onCreateMusicLibrary?: (parentId: string | null) => void;
   onDelete?: (item: NoteItem) => void;
   onRename?: (item: NoteItem) => void;
 }
@@ -65,6 +66,7 @@ interface ContextMenuState {
   x: number;
   y: number;
   item: NoteItem | null;
+  isEmptyArea?: boolean;
 }
 
 export default function FolderView({
@@ -78,16 +80,17 @@ export default function FolderView({
   onCreateNote,
   onCreateFolder,
   onCreateMoodboard,
+  onCreateMusicLibrary,
   onDelete,
   onRename,
 }: FolderViewProps) {
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
-  const handleContextMenu = (e: React.MouseEvent, item: NoteItem) => {
+  const handleContextMenu = (e: React.MouseEvent, item: NoteItem | null) => {
     e.preventDefault();
     e.stopPropagation();
-    setContextMenu({ x: e.clientX, y: e.clientY, item });
+    setContextMenu({ x: e.clientX, y: e.clientY, item, isEmptyArea: item === null });
   };
 
   const closeContextMenu = () => setContextMenu(null);
@@ -189,8 +192,22 @@ export default function FolderView({
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-y-auto">
-        <table className="w-full">
+      <div
+        className="flex-1 overflow-y-auto"
+        onContextMenu={(e) => {
+          // Only trigger if clicking directly on the container, not on items
+          if (e.target === e.currentTarget || (e.target as HTMLElement).closest('table') && !(e.target as HTMLElement).closest('tr[data-item]')) {
+            handleContextMenu(e, null);
+          }
+        }}
+      >
+        <table className="w-full" onContextMenu={(e) => {
+          // Prevent table-level context menu if clicking on empty area
+          const target = e.target as HTMLElement;
+          if (!target.closest('tr[data-item]')) {
+            handleContextMenu(e, null);
+          }
+        }}>
           <thead className="sticky top-0 bg-[--sidebar-bg] border-b border-[--border]">
             <tr>
               <th className="text-left px-4 py-1.5">
@@ -208,6 +225,7 @@ export default function FolderView({
             {contents.map((item) => (
               <tr
                 key={item.id}
+                data-item="true"
                 onClick={() => onSelect(item)}
                 onContextMenu={(e) => handleContextMenu(e, item)}
                 className="hover:bg-[--hover] cursor-pointer"
@@ -219,11 +237,8 @@ export default function FolderView({
                         <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
                       </svg>
                     ) : item.type === "moodboard" ? (
-                      <svg className="w-3.5 h-3.5 text-[--muted]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                        <rect x="3" y="3" width="7" height="7" rx="1" />
-                        <rect x="14" y="3" width="7" height="7" rx="1" />
-                        <rect x="3" y="14" width="7" height="7" rx="1" />
-                        <rect x="14" y="14" width="7" height="7" rx="1" />
+                      <svg className="w-3.5 h-3.5 text-[--muted]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
                       </svg>
                     ) : item.type === "music" ? (
                       <svg className="w-3.5 h-3.5 text-[--muted]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
@@ -266,40 +281,11 @@ export default function FolderView({
                 </td>
               </tr>
             )}
-            {/* New note row */}
-            {!searchQuery && (
-              <tr
-                onClick={() => onCreateNote(folder?.id || null)}
-                className="hover:bg-[--hover] cursor-pointer text-[--muted] hover:text-[--foreground]"
-              >
-                <td className="px-4 py-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                    </svg>
-                    <span className="text-sm">New note</span>
-                  </div>
+            {contents.length === 0 && !searchQuery && (
+              <tr>
+                <td colSpan={3} className="px-4 py-8 text-center">
+                  <span className="text-sm text-[--muted]">Right-click to create</span>
                 </td>
-                <td className="px-4 py-1.5 hidden md:table-cell"></td>
-                <td className="px-4 py-1.5 hidden md:table-cell"></td>
-              </tr>
-            )}
-            {/* New moodboard row */}
-            {!searchQuery && onCreateMoodboard && (
-              <tr
-                onClick={() => onCreateMoodboard(folder?.id || null)}
-                className="hover:bg-[--hover] cursor-pointer text-[--muted] hover:text-[--foreground]"
-              >
-                <td className="px-4 py-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                    </svg>
-                    <span className="text-sm">New moodboard</span>
-                  </div>
-                </td>
-                <td className="px-4 py-1.5 hidden md:table-cell"></td>
-                <td className="px-4 py-1.5 hidden md:table-cell"></td>
               </tr>
             )}
           </tbody>
@@ -311,15 +297,76 @@ export default function FolderView({
         <>
           <div className="fixed inset-0 z-40" onClick={closeContextMenu} />
           <div
-            className="fixed z-50 py-1 rounded shadow-lg border border-[--border] min-w-[140px]"
+            className="fixed z-50 py-1 rounded shadow-lg border border-[--border] min-w-[160px]"
             style={{
               left: contextMenu.x,
               top: contextMenu.y,
               backgroundColor: 'var(--background)',
             }}
           >
+            {/* Create options - always shown */}
+            <button
+              type="button"
+              onClick={() => {
+                onCreateNote(folder?.id || null);
+                closeContextMenu();
+              }}
+              className="context-menu-item"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+              </svg>
+              New Note
+            </button>
+            {onCreateFolder && (
+              <button
+                type="button"
+                onClick={() => {
+                  onCreateFolder(folder?.id || null);
+                  closeContextMenu();
+                }}
+                className="context-menu-item"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+                </svg>
+                New Folder
+              </button>
+            )}
+            {onCreateMoodboard && (
+              <button
+                type="button"
+                onClick={() => {
+                  onCreateMoodboard(folder?.id || null);
+                  closeContextMenu();
+                }}
+                className="context-menu-item"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                </svg>
+                New Album
+              </button>
+            )}
+            {onCreateMusicLibrary && (
+              <button
+                type="button"
+                onClick={() => {
+                  onCreateMusicLibrary(folder?.id || null);
+                  closeContextMenu();
+                }}
+                className="context-menu-item"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V4.5l-10.5 3v8.553m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z" />
+                </svg>
+                New Music Library
+              </button>
+            )}
+            {/* Item-specific options */}
             {contextMenu.item && (
               <>
+                <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
                 <button
                   type="button"
                   onClick={() => {

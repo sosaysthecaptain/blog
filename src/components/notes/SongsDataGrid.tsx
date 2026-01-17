@@ -224,9 +224,9 @@ export default function SongsDataGrid({
       {
         field: "playing",
         headerName: "",
-        width: 20,
-        minWidth: 20,
-        maxWidth: 20,
+        width: 28,
+        minWidth: 28,
+        maxWidth: 28,
         sortable: false,
         disableColumnMenu: true,
         renderCell: (params: GridRenderCellParams) => {
