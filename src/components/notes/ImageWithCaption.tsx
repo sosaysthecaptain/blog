@@ -98,6 +98,7 @@ function ImageWithCaptionView({ node, updateAttributes, selected }: NodeViewProp
   const imageRef = useRef<HTMLImageElement>(null);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
+  const currentWidthRef = useRef<number | null>(null);
 
   useEffect(() => {
     setCurrentWidth(width || null);
@@ -107,16 +108,19 @@ function ImageWithCaptionView({ node, updateAttributes, selected }: NodeViewProp
     e.preventDefault();
     startXRef.current = e.clientX;
     startWidthRef.current = imageRef.current?.offsetWidth || 300;
+    currentWidthRef.current = startWidthRef.current;
 
     const handleMouseMove = (e: MouseEvent) => {
       const diff = e.clientX - startXRef.current;
       const newWidth = Math.max(100, startWidthRef.current + diff);
+      currentWidthRef.current = newWidth;
       setCurrentWidth(newWidth);
     };
 
     const handleMouseUp = () => {
-      if (currentWidth) {
-        updateAttributes({ width: currentWidth });
+      // Use ref to get the latest width value (avoids stale closure)
+      if (currentWidthRef.current) {
+        updateAttributes({ width: currentWidthRef.current });
       }
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);

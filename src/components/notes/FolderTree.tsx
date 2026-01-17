@@ -58,7 +58,7 @@ function RenameInput({
       onKeyDown={handleKeyDown}
       onBlur={() => onSubmit(value)}
       onClick={(e) => e.stopPropagation()}
-      className="flex-1 min-w-0 px-1 py-0 text-sm border border-[--accent] rounded outline-none"
+      className="flex-1 min-w-0 px-1 py-0 text-xs border border-[--accent] rounded outline-none"
       style={{ backgroundColor: 'var(--background)', color: 'var(--foreground)' }}
     />
   );
@@ -214,7 +214,7 @@ export default function FolderTree({
                 onDrop={(e) => handleDrop(e, item.id!, item)}
                 onClick={() => !isRenaming && onSelect(item)}
                 onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, item, parentId); }}
-                className={`w-full flex items-center gap-1 px-2 py-0.5 text-sm text-left transition-colors ${
+                className={`w-full flex items-center gap-1 px-2 py-0.5 text-xs text-left transition-colors ${
                   !isSelected && !isDropInside ? "hover:bg-[--hover]" : ""
                 } ${isDragging ? "opacity-50" : ""}`}
                 style={{
@@ -253,7 +253,7 @@ export default function FolderTree({
                     onCancel={() => onRenameCancel?.()}
                   />
                 ) : (
-                  <span className="truncate text-sm">{item.title || "Untitled"}</span>
+                  <span className="truncate text-xs">{item.title || "Untitled"}</span>
                 )}
               </button>
               {/* Drop indicator - after */}
@@ -309,7 +309,7 @@ export default function FolderTree({
               onDrop={(e) => handleDrop(e, item.id!, item)}
               onClick={() => !isRenaming && onSelect(item)}
               onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, item, parentId); }}
-              className={`w-full flex items-center gap-1 px-2 py-0.5 text-sm text-left transition-colors ${
+              className={`w-full flex items-center gap-1 px-2 py-0.5 text-xs text-left transition-colors ${
                 !isSelected ? "hover:bg-[--hover]" : ""
               } ${isDragging ? "opacity-50" : ""}`}
               style={{
@@ -335,7 +335,7 @@ export default function FolderTree({
                 />
               ) : (
                 <>
-                  <span className="truncate text-sm flex-1">{item.title || "Untitled"}</span>
+                  <span className="truncate text-xs flex-1">{item.title || "Untitled"}</span>
                   {item.published && (
                     <span
                       className="w-2 h-2 rounded-full flex-shrink-0"
@@ -379,12 +379,13 @@ function NoteIcon({ className }: { className?: string }) {
 }
 
 function MoodboardIcon({ className }: { className?: string }) {
-  // Stacked photos icon to represent multiple images
+  // Stacked photos icon - two overlapping photo frames
   return (
-    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-      <rect x="6" y="3" width="14" height="10" rx="1" />
-      <rect x="4" y="6" width="14" height="10" rx="1" />
-      <rect x="2" y="9" width="14" height="10" rx="1" />
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+      <rect x="2" y="2" width="16" height="12" rx="2" />
+      <rect x="6" y="10" width="16" height="12" rx="2" fill="var(--background)" />
+      <rect x="6" y="10" width="16" height="12" rx="2" />
+      <path d="M8 19l4-4 3 3 5-5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

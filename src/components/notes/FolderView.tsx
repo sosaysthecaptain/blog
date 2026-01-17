@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { NoteItem, searchNotes } from "@/lib/notes";
 import { getTagColor } from "./TagInput";
+import PropertiesModal from "./PropertiesModal";
 
 export type SortOption = "manual" | "date-desc" | "date-asc" | "title-asc" | "title-desc" | "updated-desc";
 
@@ -86,6 +87,7 @@ export default function FolderView({
 }: FolderViewProps) {
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [propertiesItem, setPropertiesItem] = useState<NoteItem | null>(null);
 
   const handleContextMenu = (e: React.MouseEvent, item: NoteItem | null) => {
     e.preventDefault();
@@ -237,10 +239,11 @@ export default function FolderView({
                         <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
                       </svg>
                     ) : item.type === "moodboard" ? (
-                      <svg className="w-3.5 h-3.5 text-[--muted]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                        <rect x="6" y="3" width="14" height="10" rx="1" />
-                        <rect x="4" y="6" width="14" height="10" rx="1" />
-                        <rect x="2" y="9" width="14" height="10" rx="1" />
+                      <svg className="w-3.5 h-3.5 text-[--muted]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                        <rect x="2" y="2" width="16" height="12" rx="2" />
+                        <rect x="6" y="10" width="16" height="12" rx="2" fill="var(--background)" />
+                        <rect x="6" y="10" width="16" height="12" rx="2" />
+                        <path d="M8 19l4-4 3 3 5-5" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     ) : item.type === "music" ? (
                       <svg className="w-3.5 h-3.5 text-[--muted]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
@@ -344,10 +347,11 @@ export default function FolderView({
                 }}
                 className="context-menu-item"
               >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                  <rect x="6" y="3" width="14" height="10" rx="1" />
-                  <rect x="4" y="6" width="14" height="10" rx="1" />
-                  <rect x="2" y="9" width="14" height="10" rx="1" />
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                  <rect x="2" y="2" width="16" height="12" rx="2" />
+                  <rect x="6" y="10" width="16" height="12" rx="2" fill="var(--background)" />
+                  <rect x="6" y="10" width="16" height="12" rx="2" />
+                  <path d="M8 19l4-4 3 3 5-5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
                 New Album
               </button>
@@ -400,6 +404,19 @@ export default function FolderView({
                     Rename
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPropertiesItem(contextMenu.item!);
+                    closeContextMenu();
+                  }}
+                  className="context-menu-item"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Properties
+                </button>
                 {onDelete && (
                   <button
                     type="button"
@@ -419,6 +436,14 @@ export default function FolderView({
             )}
           </div>
         </>
+      )}
+
+      {/* Properties Modal */}
+      {propertiesItem && (
+        <PropertiesModal
+          item={propertiesItem}
+          onClose={() => setPropertiesItem(null)}
+        />
       )}
     </div>
   );

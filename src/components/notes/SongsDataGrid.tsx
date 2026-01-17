@@ -224,9 +224,9 @@ export default function SongsDataGrid({
       {
         field: "playing",
         headerName: "",
-        width: 28,
-        minWidth: 28,
-        maxWidth: 28,
+        width: 18,
+        minWidth: 18,
+        maxWidth: 18,
         sortable: false,
         disableColumnMenu: true,
         renderCell: (params: GridRenderCellParams) => {
@@ -235,7 +235,7 @@ export default function SongsDataGrid({
           return isPlaying ? (
             <div className="w-full h-full flex items-center justify-center">
               <svg
-                className="w-5 h-5"
+                className="w-3 h-3"
                 fill="currentColor"
                 viewBox="0 0 24 24"
                 style={{ color: isSelected ? "#fff" : "#1e6bbd" }}
@@ -249,9 +249,9 @@ export default function SongsDataGrid({
       {
         field: "trackNumber",
         headerName: "#",
-        width: 24,
-        minWidth: 24,
-        maxWidth: 24,
+        width: 28,
+        minWidth: 28,
+        maxWidth: 28,
         sortable: true,
         renderCell: (params: GridRenderCellParams) => params.value || "",
       },

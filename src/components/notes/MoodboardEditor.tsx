@@ -448,9 +448,13 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
                   {sortMode === "chronological" ? (
                     // Stacked photos icon for album view
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-                      <rect x="6" y="3" width="14" height="10" rx="1" />
-                      <rect x="4" y="6" width="14" height="10" rx="1" />
-                      <rect x="2" y="9" width="14" height="10" rx="1" />
+                      {/* Back photo */}
+                      <rect x="2" y="2" width="16" height="12" rx="2" />
+                      {/* Front photo */}
+                      <rect x="6" y="10" width="16" height="12" rx="2" fill="var(--background)" />
+                      <rect x="6" y="10" width="16" height="12" rx="2" />
+                      {/* Mountain in front photo */}
+                      <path d="M8 19l4-4 3 3 5-5" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   ) : (
                     // Masonry grid icon for moodboard view
@@ -466,7 +470,7 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
                   </svg>
                 </button>
                 {sortMenuOpen && (
-                  <div className="absolute right-0 mt-1 bg-[--background] border border-[--border] rounded-lg shadow-lg py-1 z-20 min-w-[220px]">
+                  <div className="absolute right-0 mt-1 bg-[--background] border border-[--border] rounded-lg shadow-lg py-1 z-20 w-72">
                     <button
                       type="button"
                       onClick={() => {
@@ -480,9 +484,10 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
                       }`}
                     >
                       <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-                        <rect x="6" y="3" width="14" height="10" rx="1" />
-                        <rect x="4" y="6" width="14" height="10" rx="1" />
-                        <rect x="2" y="9" width="14" height="10" rx="1" />
+                        <rect x="2" y="2" width="16" height="12" rx="2" />
+                        <rect x="6" y="10" width="16" height="12" rx="2" fill="var(--background)" />
+                        <rect x="6" y="10" width="16" height="12" rx="2" />
+                        <path d="M8 19l4-4 3 3 5-5" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                       Album (chronological)
                       {sortMode === "chronological" && (

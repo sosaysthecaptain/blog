@@ -257,24 +257,24 @@ export default function NotesPage() {
     setPendingNavigation(null);
   }, []);
 
-  const handleSelect = (item: NoteItem) => {
-    // Check if we're leaving a note, moodboard, or music library with unsaved changes
-    if ((selectedItem?.type === "note" || selectedItem?.type === "moodboard" || selectedItem?.type === "music") && hasUnsavedChanges && item.id !== selectedItem.id) {
-      setPendingNavigation({ item, action: "select" });
-      setUnsavedDialog(true);
-      return;
+  const handleSelect = async (item: NoteItem) => {
+    // Autosave handles saving - just flush any pending changes and navigate
+    if ((selectedItem?.type === "note" || selectedItem?.type === "moodboard" || selectedItem?.type === "music") && item.id !== selectedItem.id) {
+      // Trigger save to flush any pending changes
+      if (noteEditorRef.current) noteEditorRef.current.save();
+      if (moodboardEditorRef.current) moodboardEditorRef.current.save();
+      if (musicLibraryEditorRef.current) musicLibraryEditorRef.current.save();
     }
     performNavigation(item, "select");
   };
 
   const handleBackWithUnsavedCheck = useCallback(() => {
-    if (hasUnsavedChanges) {
-      setPendingNavigation({ item: null, action: "back" });
-      setUnsavedDialog(true);
-      return;
-    }
+    // Autosave handles saving - just flush any pending changes and navigate
+    if (noteEditorRef.current) noteEditorRef.current.save();
+    if (moodboardEditorRef.current) moodboardEditorRef.current.save();
+    if (musicLibraryEditorRef.current) musicLibraryEditorRef.current.save();
     performNavigation(null, "back");
-  }, [hasUnsavedChanges, performNavigation]);
+  }, [performNavigation]);
 
   const handleCreateNote = async (parentId: string | null) => {
     const now = new Date();

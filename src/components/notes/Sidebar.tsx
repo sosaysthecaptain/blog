@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { NoteItem } from "@/lib/notes";
 import FolderTree from "./FolderTree";
 import { SortOption, sortItems } from "./FolderView";
+import PropertiesModal from "./PropertiesModal";
 
 interface SidebarProps {
   items: NoteItem[];
@@ -85,6 +86,7 @@ export default function Sidebar({
   const [showNewMenu, setShowNewMenu] = useState(false);
   const [localSearchInput, setLocalSearchInput] = useState("");
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [propertiesItem, setPropertiesItem] = useState<NoteItem | null>(null);
 
   // Sync local input with prop (for when search is cleared externally)
   useEffect(() => {
@@ -236,24 +238,12 @@ export default function Sidebar({
             </button>
           )}
           <div className="flex items-center gap-1.5">
-            {/* Zeppelin logo - elongated rigid airship pointing right */}
-            <svg className="w-5 h-5 text-[--foreground]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
-              {/* Main hull - elongated cigar shape, pointed at front (right) */}
-              <path d="M23 10 Q23 6, 18 6 L5 6 Q1 8, 1 10 Q1 12, 5 14 L18 14 Q23 14, 23 10 Z" />
-              {/* Internal ribs for rigid structure */}
-              <line x1="17" y1="6.3" x2="17" y2="13.7" strokeWidth="0.6" opacity="0.4" />
-              <line x1="13" y1="6.1" x2="13" y2="13.9" strokeWidth="0.6" opacity="0.4" />
-              <line x1="9" y1="6.1" x2="9" y2="13.9" strokeWidth="0.6" opacity="0.4" />
-              <line x1="5" y1="6.8" x2="5" y2="13.2" strokeWidth="0.6" opacity="0.4" />
-              {/* Tail fins */}
-              <path d="M2 8 L0 6.5" strokeWidth="1" />
-              <path d="M2 12 L0 13.5" strokeWidth="1" />
-              {/* Gondola - longer */}
-              <rect x="9" y="15" width="8" height="1.5" rx="0.4" />
-              {/* Suspension cables */}
-              <line x1="10" y1="14" x2="10" y2="15" strokeWidth="0.6" />
-              <line x1="13" y1="14" x2="13" y2="15" strokeWidth="0.6" />
-              <line x1="16" y1="14" x2="16" y2="15" strokeWidth="0.6" />
+            {/* Dirigible logo - based on user's outline */}
+            <svg className="w-5 h-5 text-[--foreground]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="0.9">
+              {/* Main hull with integrated tail fins */}
+              <path d="M1,12 C1,9 2,7 4,6 L5,5 L5,4 C5,4 4,4 3,4 L2,4 L1.5,6 L1,9 L1,12 L1.5,15 L2,17 C2,17 3,17 4,17 L5,17 L5,16 L4,15 C2,14 1,13 1,12 Z M4,6 C6,5 10,4 14,4 C18,4 21,5 22,7 C23,9 23,11 22,13 C21,15 18,17 14,17 C10,17 6,16 4,15" strokeLinejoin="round" />
+              {/* Gondola */}
+              <path d="M8,15 L8,16 L14,16 L14,15" />
             </svg>
             <span className="font-medium text-sm text-[--foreground]">Dirigible</span>
           </div>
@@ -302,10 +292,11 @@ export default function Sidebar({
                   onClick={() => { onCreateMoodboard(currentFolderId); setShowNewMenu(false); }}
                   className="context-menu-item flex items-center gap-2"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                    <rect x="6" y="3" width="14" height="10" rx="1" />
-                    <rect x="4" y="6" width="14" height="10" rx="1" />
-                    <rect x="2" y="9" width="14" height="10" rx="1" />
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                    <rect x="2" y="2" width="16" height="12" rx="2" />
+                    <rect x="6" y="10" width="16" height="12" rx="2" fill="var(--background)" />
+                    <rect x="6" y="10" width="16" height="12" rx="2" />
+                    <path d="M8 19l4-4 3 3 5-5" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                   + Album
                 </button>
@@ -577,6 +568,16 @@ export default function Sidebar({
               >
                 Rename
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPropertiesItem(contextMenu.item!);
+                  closeContextMenu();
+                }}
+                className="context-menu-item"
+              >
+                Properties
+              </button>
               {contextMenu.item.type === "folder" && (
                 <>
                   <button
@@ -614,6 +615,14 @@ export default function Sidebar({
             </>
           )}
         </div>
+      )}
+
+      {/* Properties Modal */}
+      {propertiesItem && (
+        <PropertiesModal
+          item={propertiesItem}
+          onClose={() => setPropertiesItem(null)}
+        />
       )}
     </div>
   );

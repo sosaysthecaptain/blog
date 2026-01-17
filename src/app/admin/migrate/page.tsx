@@ -6,6 +6,7 @@ import { posts as hardcodedPosts } from "@/lib/posts";
 import { createPost, getAllPosts } from "@/lib/firestore";
 import { getBlogFolderId, getNotesByParent, updateNote, generateSlug } from "@/lib/notes";
 import { onAuthChange, isAdminEmail, signInWithGoogle } from "@/lib/auth";
+import { backfillImageSizes } from "@/lib/migrations/backfill-image-sizes";
 import Link from "next/link";
 
 export default function MigratePage() {
@@ -133,6 +134,29 @@ export default function MigratePage() {
     }
   };
 
+  // Backfill image sizes for moodboards
+  const handleBackfillImageSizes = async () => {
+    setMigrating(true);
+    setStatus("Backfilling image sizes...");
+
+    try {
+      const result = await backfillImageSizes();
+
+      if (result.errors.length > 0) {
+        console.error("Migration errors:", result.errors);
+        setStatus(`Updated ${result.updated} moodboards. ${result.errors.length} errors (see console).`);
+      } else {
+        setStatus(`Successfully updated ${result.updated} moodboards with image sizes!`);
+      }
+      setDone(true);
+    } catch (error) {
+      console.error("Backfill error:", error);
+      setStatus(`Error: ${error}`);
+    } finally {
+      setMigrating(false);
+    }
+  };
+
   // Loading state
   if (authLoading) {
     return (
@@ -193,6 +217,13 @@ export default function MigratePage() {
               className="block w-full px-6 py-3 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
             >
               {migrating ? "Working..." : "Publish All Blog Folder Notes"}
+            </button>
+            <button
+              onClick={handleBackfillImageSizes}
+              disabled={migrating}
+              className="block w-full px-6 py-3 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+            >
+              {migrating ? "Working..." : "Backfill Album Image Sizes"}
             </button>
           </div>
         )}
