@@ -1075,6 +1075,8 @@ ${content}`;
             onCreateMoodboard={handleCreateMoodboard}
             onDelete={handleDelete}
             onRename={(item) => setRenamingId(item.id!)}
+            onExport={handleExportFolder}
+            onExportArchivable={handleExportArchivable}
           />
         )}
       </div>

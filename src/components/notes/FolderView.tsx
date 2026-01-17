@@ -61,6 +61,8 @@ interface FolderViewProps {
   onCreateMusicLibrary?: (parentId: string | null) => void;
   onDelete?: (item: NoteItem) => void;
   onRename?: (item: NoteItem) => void;
+  onExport?: (itemId: string) => void;
+  onExportArchivable?: (itemId: string) => void;
 }
 
 interface ContextMenuState {
@@ -84,6 +86,8 @@ export default function FolderView({
   onCreateMusicLibrary,
   onDelete,
   onRename,
+  onExport,
+  onExportArchivable,
 }: FolderViewProps) {
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -309,85 +313,18 @@ export default function FolderView({
               backgroundColor: 'var(--background)',
             }}
           >
-            {/* Create options - always shown */}
-            <button
-              type="button"
-              onClick={() => {
-                onCreateNote(folder?.id || null);
-                closeContextMenu();
-              }}
-              className="context-menu-item"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-              </svg>
-              New Note
-            </button>
-            {onCreateFolder && (
-              <button
-                type="button"
-                onClick={() => {
-                  onCreateFolder(folder?.id || null);
-                  closeContextMenu();
-                }}
-                className="context-menu-item"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
-                </svg>
-                New Folder
-              </button>
-            )}
-            {onCreateMoodboard && (
-              <button
-                type="button"
-                onClick={() => {
-                  onCreateMoodboard(folder?.id || null);
-                  closeContextMenu();
-                }}
-                className="context-menu-item"
-              >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-                  <rect x="2" y="2" width="16" height="12" rx="2" />
-                  <rect x="6" y="10" width="16" height="12" rx="2" fill="var(--background)" />
-                  <rect x="6" y="10" width="16" height="12" rx="2" />
-                  <path d="M8 19l4-4 3 3 5-5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                New Album
-              </button>
-            )}
-            {onCreateMusicLibrary && (
-              <button
-                type="button"
-                onClick={() => {
-                  onCreateMusicLibrary(folder?.id || null);
-                  closeContextMenu();
-                }}
-                className="context-menu-item"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V4.5l-10.5 3v8.553m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z" />
-                </svg>
-                New Music Library
-              </button>
-            )}
-            {/* Item-specific options */}
+            {/* Item-specific actions (when clicking on an item) */}
             {contextMenu.item && (
               <>
-                <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
                 <button
                   type="button"
                   onClick={() => {
-                    onSelect(contextMenu.item!);
+                    setPropertiesItem(contextMenu.item!);
                     closeContextMenu();
                   }}
                   className="context-menu-item"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                  Open
+                  Properties
                 </button>
                 {onRename && (
                   <button
@@ -398,25 +335,33 @@ export default function FolderView({
                     }}
                     className="context-menu-item"
                   >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
                     Rename
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPropertiesItem(contextMenu.item!);
-                    closeContextMenu();
-                  }}
-                  className="context-menu-item"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Properties
-                </button>
+                {onExport && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onExport(contextMenu.item!.id!);
+                      closeContextMenu();
+                    }}
+                    className="context-menu-item"
+                  >
+                    Export
+                  </button>
+                )}
+                {onExportArchivable && contextMenu.item.type === "note" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onExportArchivable(contextMenu.item!.id!);
+                      closeContextMenu();
+                    }}
+                    className="context-menu-item"
+                  >
+                    Export Archivable
+                  </button>
+                )}
                 {onDelete && (
                   <button
                     type="button"
@@ -426,10 +371,64 @@ export default function FolderView({
                     }}
                     className="context-menu-item danger"
                   >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
                     Delete
+                  </button>
+                )}
+              </>
+            )}
+
+            {/* Folder: show both item actions and "new" actions */}
+            {contextMenu.item?.type === "folder" && (
+              <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
+            )}
+
+            {/* "New" actions - show when clicking background OR on a folder */}
+            {(!contextMenu.item || contextMenu.item.type === "folder") && (
+              <>
+                {onCreateFolder && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onCreateFolder(contextMenu.item?.type === "folder" ? contextMenu.item.id! : folder?.id || null);
+                      closeContextMenu();
+                    }}
+                    className="context-menu-item"
+                  >
+                    New Folder
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    onCreateNote(contextMenu.item?.type === "folder" ? contextMenu.item.id! : folder?.id || null);
+                    closeContextMenu();
+                  }}
+                  className="context-menu-item"
+                >
+                  New Note
+                </button>
+                {onCreateMoodboard && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onCreateMoodboard(contextMenu.item?.type === "folder" ? contextMenu.item.id! : folder?.id || null);
+                      closeContextMenu();
+                    }}
+                    className="context-menu-item"
+                  >
+                    New Album
+                  </button>
+                )}
+                {onCreateMusicLibrary && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onCreateMusicLibrary(contextMenu.item?.type === "folder" ? contextMenu.item.id! : folder?.id || null);
+                      closeContextMenu();
+                    }}
+                    className="context-menu-item"
+                  >
+                    New Music Library
                   </button>
                 )}
               </>

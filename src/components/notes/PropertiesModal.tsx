@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useEffect } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { NoteItem } from "@/lib/notes";
+import { getSongsByLibrary, Song } from "@/lib/songs";
 
 interface PropertiesModalProps {
   item: NoteItem;
@@ -11,6 +12,20 @@ interface PropertiesModalProps {
 }
 
 export default function PropertiesModal({ item, onClose, onExport }: PropertiesModalProps) {
+  const [musicSongs, setMusicSongs] = useState<Song[] | null>(null);
+  const [loadingSongs, setLoadingSongs] = useState(false);
+
+  // Fetch songs for music libraries
+  useEffect(() => {
+    if (item.type === "music" && item.id) {
+      setLoadingSongs(true);
+      getSongsByLibrary(item.id)
+        .then(setMusicSongs)
+        .catch(() => setMusicSongs([]))
+        .finally(() => setLoadingSongs(false));
+    }
+  }, [item.type, item.id]);
+
   // Handle escape key
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -58,11 +73,14 @@ export default function PropertiesModal({ item, onClose, onExport }: PropertiesM
     if (item.type === "moodboard" && item.images) {
       return item.images.reduce((sum, img) => sum + (img.fileSize || 0), 0);
     }
+    if (item.type === "music" && musicSongs) {
+      return musicSongs.reduce((sum, song) => sum + (song.fileSize || 0), 0);
+    }
     if (item.type === "note" && item.content) {
       return new Blob([item.content]).size;
     }
     return 0;
-  }, [item]);
+  }, [item, musicSongs]);
 
   // Calculate item-specific stats
   const stats = useMemo(() => {
@@ -80,8 +98,12 @@ export default function PropertiesModal({ item, onClose, onExport }: PropertiesM
     // Title
     result.push({ label: "Title", value: item.title || "Untitled" });
 
-    // Size - always show
-    result.push({ label: "Size", value: totalSize > 0 ? formatSize(totalSize) : "—" });
+    // Size - always show (with loading state for music)
+    if (item.type === "music" && loadingSongs) {
+      result.push({ label: "Size", value: "Loading..." });
+    } else {
+      result.push({ label: "Size", value: totalSize > 0 ? formatSize(totalSize) : "—" });
+    }
 
     // Date created
     result.push({ label: "Created", value: formatDate(item.createdAt) });
@@ -107,8 +129,16 @@ export default function PropertiesModal({ item, onClose, onExport }: PropertiesM
     }
 
     if (item.type === "music") {
-      if (item.musicSortColumn) {
-        result.push({ label: "Sort By", value: item.musicSortColumn });
+      if (musicSongs) {
+        result.push({ label: "Songs", value: `${musicSongs.length}` });
+        const totalDuration = musicSongs.reduce((sum, s) => sum + (s.duration || 0), 0);
+        if (totalDuration > 0) {
+          const hours = Math.floor(totalDuration / 3600);
+          const mins = Math.floor((totalDuration % 3600) / 60);
+          result.push({ label: "Duration", value: hours > 0 ? `${hours}h ${mins}m` : `${mins}m` });
+        }
+      } else if (loadingSongs) {
+        result.push({ label: "Songs", value: "Loading..." });
       }
     }
 
@@ -118,7 +148,7 @@ export default function PropertiesModal({ item, onClose, onExport }: PropertiesM
     }
 
     return result;
-  }, [item, totalSize]);
+  }, [item, totalSize, loadingSongs, musicSongs]);
 
   const modalContent = (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">

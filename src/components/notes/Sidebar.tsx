@@ -238,12 +238,9 @@ export default function Sidebar({
             </button>
           )}
           <div className="flex items-center gap-1.5">
-            {/* Dirigible logo - based on user's outline */}
-            <svg className="w-5 h-5 text-[--foreground]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="0.9">
-              {/* Main hull with integrated tail fins */}
-              <path d="M1,12 C1,9 2,7 4,6 L5,5 L5,4 C5,4 4,4 3,4 L2,4 L1.5,6 L1,9 L1,12 L1.5,15 L2,17 C2,17 3,17 4,17 L5,17 L5,16 L4,15 C2,14 1,13 1,12 Z M4,6 C6,5 10,4 14,4 C18,4 21,5 22,7 C23,9 23,11 22,13 C21,15 18,17 14,17 C10,17 6,16 4,15" strokeLinejoin="round" />
-              {/* Gondola */}
-              <path d="M8,15 L8,16 L14,16 L14,15" />
+            {/* Dirigible logo - user's hand-drawn outline */}
+            <svg className="h-3.5" viewBox="0 0 818 226" fill="none" stroke="currentColor" strokeWidth="8" style={{ width: 'auto' }}>
+              <path d="M173.792 71.29C203.261 66.2743 231.635 62.1658 253.292 60C318.292 53.5 361.292 51.5 475.292 50C589.292 48.5 695.792 62.5 712.292 66.5C728.792 70.5 772.792 85.5 784.792 93.5C789.626 97.6667 800.192 107.2 803.792 112C807.392 116.8 807.626 118 807.292 118C805.626 120.833 801.392 127.4 797.792 131C794.192 134.6 785.292 142.5 781.292 146C770.792 152.5 741.691 165.676 692.792 173.5C642.792 181.5 590.292 184 460.792 184.5C331.292 185 241.792 175.5 164.292 164.5C121.624 158.444 79.034 146.515 49.0723 136.568M173.792 71.29C172.959 69.0267 169.492 63.3 162.292 58.5C153.292 52.5 143.792 49 141.792 48.5C139.792 48 131.792 47 128.792 47C126.392 47 84.1258 46.3333 63.2924 46C61.6258 46 58.0924 46.8 57.2924 50C56.4924 53.2 51.9591 81 49.7924 94.5L49.0723 97.5M173.792 71.29C127.736 79.129 79.008 89.1837 49.0723 97.5M49.0723 97.5C40.6761 99.8325 33.7583 102.028 28.7924 104C1.59242 114.8 9.79242 122.5 17.2924 125C24.5157 127.962 35.498 132.062 49.0723 136.568M49.0723 136.568C51.1457 149.545 55.3924 175.9 55.7924 177.5C56.1924 179.1 73.2924 182.5 81.7924 184C95.7924 185.667 125.892 188.7 134.292 187.5C144.792 186 156.292 182 160.292 179C164.292 176 170.292 170.5 172.792 166.5M51.2924 118C54.4591 116.833 62.8924 114.3 71.2924 113.5C81.7924 112.5 108.792 110.5 130.292 111C151.792 111.5 158.292 112.5 159.292 112.5C160.292 112.5 168.292 114 169.792 115.5C170.992 116.7 170.959 118.333 170.792 119C167.959 120 161.092 122.1 156.292 122.5C150.292 123 131.292 124 121.792 124C112.292 124 97.7924 124 78.2924 124C62.6924 124 53.7924 120 51.2924 118Z" />
             </svg>
             <span className="font-medium text-sm text-[--foreground]">Dirigible</span>
           </div>
@@ -515,49 +512,19 @@ export default function Sidebar({
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <button
-            type="button"
-            onClick={() => {
-              onCreateNote(contextMenu.item?.type === "folder" ? contextMenu.item.id! : contextMenu.parentId);
-              closeContextMenu();
-            }}
-            className="context-menu-item"
-          >
-            + Note
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              onCreateFolder(contextMenu.item?.type === "folder" ? contextMenu.item.id! : contextMenu.parentId);
-              closeContextMenu();
-            }}
-            className="context-menu-item"
-          >
-            + Folder
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              onCreateMoodboard(contextMenu.item?.type === "folder" ? contextMenu.item.id! : contextMenu.parentId);
-              closeContextMenu();
-            }}
-            className="context-menu-item"
-          >
-            + Album
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              onCreateMusicLibrary(contextMenu.item?.type === "folder" ? contextMenu.item.id! : contextMenu.parentId);
-              closeContextMenu();
-            }}
-            className="context-menu-item"
-          >
-            + Music Library
-          </button>
+          {/* Item-specific actions (when clicking on an item) */}
           {contextMenu.item && (
             <>
-              <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
+              <button
+                type="button"
+                onClick={() => {
+                  setPropertiesItem(contextMenu.item!);
+                  closeContextMenu();
+                }}
+                className="context-menu-item"
+              >
+                Properties
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -571,36 +538,24 @@ export default function Sidebar({
               <button
                 type="button"
                 onClick={() => {
-                  setPropertiesItem(contextMenu.item!);
+                  onExportFolder(contextMenu.item!.id!);
                   closeContextMenu();
                 }}
                 className="context-menu-item"
               >
-                Properties
+                Export
               </button>
-              {contextMenu.item.type === "folder" && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onExportFolder(contextMenu.item!.id!);
-                      closeContextMenu();
-                    }}
-                    className="context-menu-item"
-                  >
-                    Export Folder
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onExportArchivable(contextMenu.item!.id!);
-                      closeContextMenu();
-                    }}
-                    className="context-menu-item"
-                  >
-                    Export Archivable
-                  </button>
-                </>
+              {contextMenu.item.type === "note" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onExportArchivable(contextMenu.item!.id!);
+                    closeContextMenu();
+                  }}
+                  className="context-menu-item"
+                >
+                  Export Archivable
+                </button>
               )}
               <button
                 type="button"
@@ -611,6 +566,57 @@ export default function Sidebar({
                 className="context-menu-item danger"
               >
                 Delete
+              </button>
+            </>
+          )}
+
+          {/* Folder: show both item actions and "new" actions */}
+          {contextMenu.item?.type === "folder" && (
+            <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
+          )}
+
+          {/* "New" actions - show when clicking background OR on a folder */}
+          {(!contextMenu.item || contextMenu.item.type === "folder") && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  onCreateFolder(contextMenu.item?.type === "folder" ? contextMenu.item.id! : contextMenu.parentId);
+                  closeContextMenu();
+                }}
+                className="context-menu-item"
+              >
+                New Folder
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onCreateNote(contextMenu.item?.type === "folder" ? contextMenu.item.id! : contextMenu.parentId);
+                  closeContextMenu();
+                }}
+                className="context-menu-item"
+              >
+                New Note
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onCreateMoodboard(contextMenu.item?.type === "folder" ? contextMenu.item.id! : contextMenu.parentId);
+                  closeContextMenu();
+                }}
+                className="context-menu-item"
+              >
+                New Album
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onCreateMusicLibrary(contextMenu.item?.type === "folder" ? contextMenu.item.id! : contextMenu.parentId);
+                  closeContextMenu();
+                }}
+                className="context-menu-item"
+              >
+                New Music Library
               </button>
             </>
           )}
