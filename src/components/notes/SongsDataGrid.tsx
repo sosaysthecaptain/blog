@@ -235,7 +235,7 @@ export default function SongsDataGrid({
           return isPlaying ? (
             <div className="w-full h-full flex items-center justify-center">
               <svg
-                className="w-4 h-4"
+                className="w-5 h-5"
                 fill="currentColor"
                 viewBox="0 0 24 24"
                 style={{ color: isSelected ? "#fff" : "#1e6bbd" }}

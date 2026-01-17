@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from "react";
 import { NoteItem } from "@/lib/notes";
 
+const FONT_FAMILY = "'Lucida Grande', 'Lucida Sans Unicode', 'Helvetica Neue', Helvetica, Arial, sans-serif";
+
 interface FolderTreeProps {
   items: NoteItem[];
   parentId: string | null;
@@ -178,7 +180,7 @@ export default function FolderTree({
   };
 
   return (
-    <div>
+    <div style={{ fontFamily: FONT_FAMILY }}>
       {children.map((item) => {
         const isExpanded = item.type === "folder" && expandedFolders.has(item.id!);
         const isSelected = selectedId === item.id;
