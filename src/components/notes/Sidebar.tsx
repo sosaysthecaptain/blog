@@ -189,9 +189,14 @@ export default function Sidebar({
     onSearch(value);
   };
 
+  // Collapsed new menu state
+  const [collapsedNewMenu, setCollapsedNewMenu] = useState(false);
+  const [collapsedMoreMenu, setCollapsedMoreMenu] = useState(false);
+
   if (collapsed) {
     return (
       <div className="w-12 bg-[--sidebar-bg] border-r border-[--border] flex flex-col h-full">
+        {/* Expand button */}
         <button
           type="button"
           onClick={onToggleCollapse}
@@ -202,16 +207,116 @@ export default function Sidebar({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
           </svg>
         </button>
-        <button
-          type="button"
-          onClick={() => onCreateNote(currentFolderId)}
-          className="p-3 text-[--muted] hover:text-[--foreground] hover:bg-[--hover]"
-          title="New note"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
-          </svg>
-        </button>
+
+        {/* New menu button */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => { setCollapsedNewMenu(!collapsedNewMenu); setCollapsedMoreMenu(false); }}
+            className="p-3 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] w-full"
+            title="Create new..."
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+          {collapsedNewMenu && (
+            <div
+              className="absolute left-full top-0 ml-1 rounded shadow-lg py-1 z-50 min-w-[160px]"
+              style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)' }}
+            >
+              <button
+                type="button"
+                onClick={() => { onCreateFolder(currentFolderId); setCollapsedNewMenu(false); }}
+                className="context-menu-item"
+              >
+                New Folder
+              </button>
+              <button
+                type="button"
+                onClick={() => { onCreateNote(currentFolderId); setCollapsedNewMenu(false); }}
+                className="context-menu-item"
+              >
+                New Note
+              </button>
+              <button
+                type="button"
+                onClick={() => { onCreateMoodboard(currentFolderId); setCollapsedNewMenu(false); }}
+                className="context-menu-item"
+              >
+                New Album
+              </button>
+              <button
+                type="button"
+                onClick={() => { onCreateMusicLibrary(currentFolderId); setCollapsedNewMenu(false); }}
+                className="context-menu-item"
+              >
+                New Music Library
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* More menu at bottom */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => { setCollapsedMoreMenu(!collapsedMoreMenu); setCollapsedNewMenu(false); }}
+            className="p-3 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] w-full"
+            title="More options"
+          >
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z" />
+            </svg>
+          </button>
+          {collapsedMoreMenu && (
+            <div
+              className="absolute left-full bottom-0 ml-1 rounded shadow-lg py-1 z-50 min-w-[160px]"
+              style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)' }}
+            >
+              <button
+                type="button"
+                onClick={() => { onToggleDarkMode(); setCollapsedMoreMenu(false); }}
+                className="context-menu-item flex items-center gap-2"
+              >
+                {isDark ? "Light mode" : "Dark mode"}
+              </button>
+              <button
+                type="button"
+                onClick={() => { onToggleFullWidth(); setCollapsedMoreMenu(false); }}
+                className="context-menu-item flex items-center gap-2"
+              >
+                {isFullWidth ? "Constrain width" : "Full width"}
+              </button>
+              <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
+              <button
+                type="button"
+                onClick={() => { window.location.href = '/admin'; }}
+                className="context-menu-item"
+              >
+                Admin
+              </button>
+              <button
+                type="button"
+                onClick={() => { window.location.href = '/'; }}
+                className="context-menu-item"
+              >
+                Home
+              </button>
+              <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
+              <button
+                type="button"
+                onClick={() => { onSignOut(); setCollapsedMoreMenu(false); }}
+                className="context-menu-item danger"
+              >
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -238,9 +343,16 @@ export default function Sidebar({
             </button>
           )}
           <div className="flex items-center gap-1.5">
-            {/* Dirigible logo - user's hand-drawn outline */}
-            <svg className="h-3.5" viewBox="0 0 818 226" fill="none" stroke="currentColor" strokeWidth="8" style={{ width: 'auto' }}>
-              <path d="M173.792 71.29C203.261 66.2743 231.635 62.1658 253.292 60C318.292 53.5 361.292 51.5 475.292 50C589.292 48.5 695.792 62.5 712.292 66.5C728.792 70.5 772.792 85.5 784.792 93.5C789.626 97.6667 800.192 107.2 803.792 112C807.392 116.8 807.626 118 807.292 118C805.626 120.833 801.392 127.4 797.792 131C794.192 134.6 785.292 142.5 781.292 146C770.792 152.5 741.691 165.676 692.792 173.5C642.792 181.5 590.292 184 460.792 184.5C331.292 185 241.792 175.5 164.292 164.5C121.624 158.444 79.034 146.515 49.0723 136.568M173.792 71.29C172.959 69.0267 169.492 63.3 162.292 58.5C153.292 52.5 143.792 49 141.792 48.5C139.792 48 131.792 47 128.792 47C126.392 47 84.1258 46.3333 63.2924 46C61.6258 46 58.0924 46.8 57.2924 50C56.4924 53.2 51.9591 81 49.7924 94.5L49.0723 97.5M173.792 71.29C127.736 79.129 79.008 89.1837 49.0723 97.5M49.0723 97.5C40.6761 99.8325 33.7583 102.028 28.7924 104C1.59242 114.8 9.79242 122.5 17.2924 125C24.5157 127.962 35.498 132.062 49.0723 136.568M49.0723 136.568C51.1457 149.545 55.3924 175.9 55.7924 177.5C56.1924 179.1 73.2924 182.5 81.7924 184C95.7924 185.667 125.892 188.7 134.292 187.5C144.792 186 156.292 182 160.292 179C164.292 176 170.292 170.5 172.792 166.5M51.2924 118C54.4591 116.833 62.8924 114.3 71.2924 113.5C81.7924 112.5 108.792 110.5 130.292 111C151.792 111.5 158.292 112.5 159.292 112.5C160.292 112.5 168.292 114 169.792 115.5C170.992 116.7 170.959 118.333 170.792 119C167.959 120 161.092 122.1 156.292 122.5C150.292 123 131.292 124 121.792 124C112.292 124 97.7924 124 78.2924 124C62.6924 124 53.7924 120 51.2924 118Z" />
+            {/* Dirigible logo - stylized, compact */}
+            <svg className="w-5 h-3" viewBox="0 0 40 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              {/* Main hull - stubby cigar shape */}
+              <ellipse cx="22" cy="11" rx="16" ry="7" />
+              {/* Tail fins - integrated cruciform */}
+              <path d="M3 11 L8 5 L8 8 M3 11 L8 17 L8 14" strokeLinejoin="round" />
+              {/* Gondola */}
+              <rect x="16" y="17" width="10" height="3" rx="1" />
+              <line x1="18" y1="18" x2="18" y2="15" />
+              <line x1="24" y1="18" x2="24" y2="15" />
             </svg>
             <span className="font-medium text-sm text-[--foreground]">Dirigible</span>
           </div>
