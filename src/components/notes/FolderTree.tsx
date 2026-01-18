@@ -58,7 +58,7 @@ function RenameInput({
       onKeyDown={handleKeyDown}
       onBlur={() => onSubmit(value)}
       onClick={(e) => e.stopPropagation()}
-      className="flex-1 min-w-0 px-1 py-0 text-xs border border-[--accent] rounded outline-none"
+      className="flex-1 min-w-0 px-1 py-0 text-[11px] border border-[--accent] rounded outline-none"
       style={{ backgroundColor: 'var(--background)', color: 'var(--foreground)' }}
     />
   );
@@ -214,7 +214,7 @@ export default function FolderTree({
                 onDrop={(e) => handleDrop(e, item.id!, item)}
                 onClick={() => !isRenaming && onSelect(item)}
                 onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, item, parentId); }}
-                className={`w-full flex items-center gap-1 px-2 py-0.5 text-xs text-left transition-colors ${
+                className={`w-full flex items-center gap-1 px-2 py-0.5 text-[11px] text-left transition-colors ${
                   !isSelected && !isDropInside ? "hover:bg-[--hover]" : ""
                 } ${isDragging ? "opacity-50" : ""}`}
                 style={{
@@ -253,7 +253,7 @@ export default function FolderTree({
                     onCancel={() => onRenameCancel?.()}
                   />
                 ) : (
-                  <span className="truncate text-xs">{item.title || "Untitled"}</span>
+                  <span className="truncate text-[11px]">{item.title || "Untitled"}</span>
                 )}
               </button>
               {/* Drop indicator - after */}
@@ -309,7 +309,7 @@ export default function FolderTree({
               onDrop={(e) => handleDrop(e, item.id!, item)}
               onClick={() => !isRenaming && onSelect(item)}
               onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, item, parentId); }}
-              className={`w-full flex items-center gap-1 px-2 py-0.5 text-xs text-left transition-colors ${
+              className={`w-full flex items-center gap-1 px-2 py-0.5 text-[11px] text-left transition-colors ${
                 !isSelected ? "hover:bg-[--hover]" : ""
               } ${isDragging ? "opacity-50" : ""}`}
               style={{
@@ -335,7 +335,7 @@ export default function FolderTree({
                 />
               ) : (
                 <>
-                  <span className="truncate text-xs flex-1">{item.title || "Untitled"}</span>
+                  <span className="truncate text-[11px] flex-1">{item.title || "Untitled"}</span>
                   {item.published && (
                     <span
                       className="w-2 h-2 rounded-full flex-shrink-0"

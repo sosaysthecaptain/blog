@@ -38,6 +38,7 @@ interface SidebarProps {
   onSignOut: () => void;
   onSortChange: (sort: SortOption) => void;
   onCloseMobile?: () => void;
+  onToggleStar?: (item: NoteItem) => void;
 }
 
 export default function Sidebar({
@@ -72,6 +73,7 @@ export default function Sidebar({
   onSignOut,
   onSortChange,
   onCloseMobile,
+  onToggleStar,
 }: SidebarProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set()
@@ -135,6 +137,14 @@ export default function Sidebar({
       : items;
     return sortItems(result, sortOption);
   }, [items, searchQuery, sortOption]);
+
+  // Get starred items
+  const starredItems = useMemo(() => {
+    return items.filter(item => item.starred);
+  }, [items]);
+
+  // Expanded state for starred section
+  const [starredExpanded, setStarredExpanded] = useState(true);
 
   // Auto-expand parent folders when an item is selected
   useEffect(() => {
@@ -343,16 +353,9 @@ export default function Sidebar({
             </button>
           )}
           <div className="flex items-center gap-1.5">
-            {/* Dirigible logo - stylized, compact */}
-            <svg className="w-5 h-3" viewBox="0 0 40 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              {/* Main hull - stubby cigar shape */}
-              <ellipse cx="22" cy="11" rx="16" ry="7" />
-              {/* Tail fins - integrated cruciform */}
-              <path d="M3 11 L8 5 L8 8 M3 11 L8 17 L8 14" strokeLinejoin="round" />
-              {/* Gondola */}
-              <rect x="16" y="17" width="10" height="3" rx="1" />
-              <line x1="18" y1="18" x2="18" y2="15" />
-              <line x1="24" y1="18" x2="24" y2="15" />
+            {/* Dirigible logo - from user's outline2 */}
+            <svg className="h-3" viewBox="0 0 728 387" fill="none" stroke="currentColor" strokeWidth="14" style={{ width: 'auto' }}>
+              <path d="M148.677 123.244C173.807 115.461 198.003 109.086 216.472 105.725C271.902 95.6382 308.571 92.5347 405.787 90.2071C503.003 87.8794 593.823 109.604 607.893 115.811C621.964 122.018 659.486 145.295 669.719 157.709C673.841 164.175 682.852 178.968 685.922 186.417C688.992 193.865 689.191 195.727 688.907 195.727C687.485 200.124 683.875 210.314 680.805 215.9C677.735 221.487 670.146 233.746 666.735 239.177C657.78 249.263 632.963 269.71 591.264 281.85C548.626 294.264 503.856 298.144 393.422 298.92C282.988 299.696 206.665 284.954 140.576 267.884C104.189 258.487 67.87 239.975 42.3196 224.54M148.677 123.244C147.967 119.732 145.01 110.846 138.87 103.397C131.195 94.0865 123.094 88.6553 121.389 87.8794C119.683 87.1035 112.861 85.5518 110.303 85.5518C108.256 85.5518 72.2122 84.5173 54.4462 84C53.0249 84 50.0117 85.2414 49.3295 90.2071C48.6473 95.1727 44.7814 138.312 42.9338 159.261L42.3196 163.916M148.677 123.244C109.402 135.408 67.8479 151.011 42.3196 163.916M42.3196 163.916C35.1597 167.536 29.2604 170.943 25.0256 174.003C1.83031 190.762 8.82298 202.71 15.2188 206.59C21.3785 211.186 30.7439 217.547 42.3196 224.54M42.3196 224.54C44.0878 244.678 47.7092 285.575 48.0504 288.057C48.3915 290.54 62.9739 295.816 70.2224 298.144C82.1612 300.73 107.83 305.437 114.993 303.575C123.947 301.247 133.754 295.04 137.165 290.385C140.576 285.73 145.692 277.195 147.824 270.988M44.2129 195.727C46.9133 193.917 54.105 189.986 61.2683 188.744C70.2224 187.193 93.2471 184.089 111.582 184.865C129.916 185.641 135.459 187.193 136.312 187.193C137.165 187.193 143.987 189.52 145.266 191.848C146.289 193.71 146.261 196.245 146.119 197.279C143.703 198.831 137.847 202.089 133.754 202.71C128.637 203.486 112.434 205.038 104.333 205.038C96.2318 205.038 83.8667 205.038 67.2377 205.038C53.9345 205.038 46.3448 198.831 44.2129 195.727Z" />
             </svg>
             <span className="font-medium text-sm text-[--foreground]">Dirigible</span>
           </div>
@@ -457,6 +460,66 @@ export default function Sidebar({
           />
         </div>
       </div>
+
+      {/* Starred section */}
+      {starredItems.length > 0 && (
+        <div className="border-b border-[--border]">
+          <button
+            type="button"
+            onClick={() => setStarredExpanded(!starredExpanded)}
+            className="w-full flex items-center gap-1 px-3 py-1 text-[11px] text-[--muted] hover:text-[--foreground]"
+          >
+            <svg className={`w-3 h-3 transition-transform ${starredExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            <svg className="w-3 h-3 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+            </svg>
+            <span>Starred</span>
+            <span className="ml-auto text-[10px] text-[--muted]">{starredItems.length}</span>
+          </button>
+          {starredExpanded && (
+            <div className="pb-1">
+              {starredItems.map(item => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onSelect(item)}
+                  onContextMenu={(e) => handleContextMenu(e, item, item.parentId)}
+                  className={`w-full flex items-center gap-1.5 px-3 py-0.5 text-[11px] text-left hover:bg-[--hover] ${
+                    selectedId === item.id ? 'bg-[--hover] text-[--foreground]' : 'text-[--muted]'
+                  }`}
+                >
+                  {/* Item type icon */}
+                  {item.type === 'folder' && (
+                    <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+                    </svg>
+                  )}
+                  {item.type === 'note' && (
+                    <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                    </svg>
+                  )}
+                  {item.type === 'moodboard' && (
+                    <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                      <rect x="2" y="2" width="16" height="12" rx="2" />
+                      <rect x="6" y="10" width="16" height="12" rx="2" fill="var(--sidebar-bg)" />
+                      <rect x="6" y="10" width="16" height="12" rx="2" />
+                    </svg>
+                  )}
+                  {item.type === 'music' && (
+                    <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V4.5l-10.5 3v8.553m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z" />
+                    </svg>
+                  )}
+                  <span className="truncate">{item.title || 'Untitled'}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Tree */}
       <div
@@ -637,6 +700,21 @@ export default function Sidebar({
               >
                 Properties
               </button>
+              {onToggleStar && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onToggleStar(contextMenu.item!);
+                    closeContextMenu();
+                  }}
+                  className="context-menu-item flex items-center gap-2"
+                >
+                  <svg className="w-3.5 h-3.5" fill={contextMenu.item.starred ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                  </svg>
+                  {contextMenu.item.starred ? 'Unstar' : 'Star'}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
