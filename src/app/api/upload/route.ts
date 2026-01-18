@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { uploadToB2, getB2PublicUrl } from "@/lib/b2-storage";
+import { uploadToB2, getB2PublicUrl, deleteFromB2 } from "@/lib/b2-storage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -60,6 +60,30 @@ export async function GET(request: NextRequest) {
     console.error("Get URL error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to get URL" },
+      { status: 500 }
+    );
+  }
+}
+
+// Delete a file from B2
+export async function DELETE(request: NextRequest) {
+  try {
+    const { path } = await request.json();
+
+    if (!path) {
+      return NextResponse.json(
+        { error: "Missing path parameter" },
+        { status: 400 }
+      );
+    }
+
+    await deleteFromB2(path);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Delete error:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Delete failed" },
       { status: 500 }
     );
   }

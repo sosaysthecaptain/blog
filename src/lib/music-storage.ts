@@ -1,11 +1,4 @@
-import {
-  ref,
-  uploadBytes,
-  getDownloadURL,
-  deleteObject,
-  listAll,
-} from "firebase/storage";
-import { storage } from "./firebase";
+import { uploadToB2, deleteFromB2, getB2Url } from "./b2-client";
 import { Song, createSong } from "./songs";
 import * as musicMetadata from "music-metadata";
 
@@ -165,7 +158,6 @@ async function uploadAlbumArt(
 ): Promise<{ albumArtUrl: string; albumArtThumbUrl: string }> {
   // Upload original album art
   const artPath = `notes/${libraryId}/music/${songId}_art.webp`;
-  const artRef = ref(storage, artPath);
 
   // Convert to webp if needed
   let artBlob = albumArt;
@@ -193,15 +185,14 @@ async function uploadAlbumArt(
     }
   }
 
-  await uploadBytes(artRef, artBlob);
-  const albumArtUrl = await getDownloadURL(artRef);
+  await uploadToB2(artBlob, artPath);
+  const albumArtUrl = getB2Url(artPath);
 
   // Generate and upload thumbnail
   const thumbBlob = await generateAlbumArtThumbnail(albumArt);
   const thumbPath = `notes/${libraryId}/music/${songId}_art_thumb.webp`;
-  const thumbRef = ref(storage, thumbPath);
-  await uploadBytes(thumbRef, thumbBlob);
-  const albumArtThumbUrl = await getDownloadURL(thumbRef);
+  await uploadToB2(thumbBlob, thumbPath);
+  const albumArtThumbUrl = getB2Url(thumbPath);
 
   return { albumArtUrl, albumArtThumbUrl };
 }
@@ -224,9 +215,8 @@ export async function uploadAudioFile(
 
   // Upload audio file
   const storagePath = `notes/${libraryId}/music/${songId}.${extension}`;
-  const audioRef = ref(storage, storagePath);
-  await uploadBytes(audioRef, file);
-  const storageUrl = await getDownloadURL(audioRef);
+  await uploadToB2(file, storagePath);
+  const storageUrl = getB2Url(storagePath);
   onProgress?.(70);
 
   // Upload album art if present
@@ -401,21 +391,21 @@ export async function deleteSongFiles(
 ): Promise<void> {
   // Delete audio file
   try {
-    await deleteObject(ref(storage, storagePath));
+    await deleteFromB2(storagePath);
   } catch (error) {
     console.error("Error deleting audio file:", error);
   }
 
   // Delete album art
   try {
-    await deleteObject(ref(storage, `notes/${libraryId}/music/${songId}_art.webp`));
+    await deleteFromB2(`notes/${libraryId}/music/${songId}_art.webp`);
   } catch {
     // Album art might not exist
   }
 
   // Delete album art thumbnail
   try {
-    await deleteObject(ref(storage, `notes/${libraryId}/music/${songId}_art_thumb.webp`));
+    await deleteFromB2(`notes/${libraryId}/music/${songId}_art_thumb.webp`);
   } catch {
     // Thumbnail might not exist
   }
@@ -423,14 +413,26 @@ export async function deleteSongFiles(
 
 /**
  * Delete all audio files for a music library
+ * Note: This requires the song list to be passed in since B2 doesn't support listing by prefix client-side
  */
-export async function deleteAllMusicFiles(libraryId: string): Promise<void> {
-  const listRef = ref(storage, `notes/${libraryId}/music`);
-  try {
-    const result = await listAll(listRef);
-    await Promise.all(result.items.map((item) => deleteObject(item)));
-  } catch (error) {
-    console.error("Error deleting music files:", error);
+export async function deleteAllMusicFiles(
+  libraryId: string,
+  songs?: Array<{ id: string; storagePath: string }>
+): Promise<void> {
+  if (!songs || songs.length === 0) {
+    console.warn("No songs provided for deletion");
+    return;
+  }
+
+  for (const song of songs) {
+    const songId = getSongIdFromPath(song.storagePath);
+    if (songId) {
+      try {
+        await deleteSongFiles(song.storagePath, libraryId, songId);
+      } catch (error) {
+        console.error(`Error deleting song ${song.id}:`, error);
+      }
+    }
   }
 }
 
@@ -452,39 +454,41 @@ export async function copySongFiles(
   const extension = sourceStoragePath.split(".").pop() || "mp3";
 
   // Download and re-upload audio file
-  const sourceAudioRef = ref(storage, sourceStoragePath);
-  const sourceUrl = await getDownloadURL(sourceAudioRef);
+  const sourceUrl = getB2Url(sourceStoragePath);
   const response = await fetch(sourceUrl);
   const audioBlob = await response.blob();
 
   const newStoragePath = `notes/${targetLibraryId}/music/${newSongId}.${extension}`;
-  const newAudioRef = ref(storage, newStoragePath);
-  await uploadBytes(newAudioRef, audioBlob);
-  const storageUrl = await getDownloadURL(newAudioRef);
+  await uploadToB2(audioBlob, newStoragePath);
+  const storageUrl = getB2Url(newStoragePath);
 
   // Try to copy album art
   let albumArtUrl: string | null = null;
   let albumArtThumbUrl: string | null = null;
 
   try {
-    const sourceArtRef = ref(storage, `notes/${sourceLibraryId}/music/${sourceSongId}_art.webp`);
-    const artUrl = await getDownloadURL(sourceArtRef);
+    const sourceArtPath = `notes/${sourceLibraryId}/music/${sourceSongId}_art.webp`;
+    const artUrl = getB2Url(sourceArtPath);
     const artResponse = await fetch(artUrl);
-    const artBlob = await artResponse.blob();
+    if (artResponse.ok) {
+      const artBlob = await artResponse.blob();
 
-    const newArtRef = ref(storage, `notes/${targetLibraryId}/music/${newSongId}_art.webp`);
-    await uploadBytes(newArtRef, artBlob);
-    albumArtUrl = await getDownloadURL(newArtRef);
+      const newArtPath = `notes/${targetLibraryId}/music/${newSongId}_art.webp`;
+      await uploadToB2(artBlob, newArtPath);
+      albumArtUrl = getB2Url(newArtPath);
 
-    // Copy thumbnail
-    const sourceThumbRef = ref(storage, `notes/${sourceLibraryId}/music/${sourceSongId}_art_thumb.webp`);
-    const thumbUrl = await getDownloadURL(sourceThumbRef);
-    const thumbResponse = await fetch(thumbUrl);
-    const thumbBlob = await thumbResponse.blob();
+      // Copy thumbnail
+      const sourceThumbPath = `notes/${sourceLibraryId}/music/${sourceSongId}_art_thumb.webp`;
+      const thumbUrl = getB2Url(sourceThumbPath);
+      const thumbResponse = await fetch(thumbUrl);
+      if (thumbResponse.ok) {
+        const thumbBlob = await thumbResponse.blob();
 
-    const newThumbRef = ref(storage, `notes/${targetLibraryId}/music/${newSongId}_art_thumb.webp`);
-    await uploadBytes(newThumbRef, thumbBlob);
-    albumArtThumbUrl = await getDownloadURL(newThumbRef);
+        const newThumbPath = `notes/${targetLibraryId}/music/${newSongId}_art_thumb.webp`;
+        await uploadToB2(thumbBlob, newThumbPath);
+        albumArtThumbUrl = getB2Url(newThumbPath);
+      }
+    }
   } catch {
     // Album art might not exist
   }
@@ -640,9 +644,8 @@ export async function uploadRecordedAudio(
 
   // Upload audio file
   const storagePath = `notes/${libraryId}/music/${songId}.${extension}`;
-  const audioRef = ref(storage, storagePath);
-  await uploadBytes(audioRef, blob);
-  const storageUrl = await getDownloadURL(audioRef);
+  await uploadToB2(blob, storagePath);
+  const storageUrl = getB2Url(storagePath);
 
   // Upload album art if provided
   let albumArtUrl: string | null = null;

@@ -1,20 +1,19 @@
 import {
   ref,
-  uploadBytes,
-  getDownloadURL,
   deleteObject,
   listAll,
+  getDownloadURL,
 } from "firebase/storage";
 import { storage } from "./firebase";
+import { uploadToB2, deleteFromB2, getB2Url } from "./b2-client";
 
 // Upload image and return URL
 export async function uploadImage(
   file: File | Blob,
   path: string
 ): Promise<string> {
-  const storageRef = ref(storage, path);
-  await uploadBytes(storageRef, file);
-  return getDownloadURL(storageRef);
+  await uploadToB2(file, path);
+  return getB2Url(path);
 }
 
 // Upload image from paste (dataURL or blob)

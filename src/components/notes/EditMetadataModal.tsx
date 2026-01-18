@@ -2,8 +2,7 @@
 
 import { useState, useRef } from "react";
 import { Song, updateSong } from "@/lib/songs";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { storage } from "@/lib/firebase";
+import { uploadToB2, getB2Url } from "@/lib/b2-client";
 
 interface EditMetadataModalProps {
   songs: Song[];
@@ -90,16 +89,14 @@ async function uploadAlbumArt(
 
   // Upload original album art
   const artPath = `notes/${libraryId}/music/${songId}_art.webp`;
-  const artRef = ref(storage, artPath);
-  await uploadBytes(artRef, artBlob);
-  const albumArtUrl = await getDownloadURL(artRef);
+  await uploadToB2(artBlob, artPath);
+  const albumArtUrl = getB2Url(artPath);
 
   // Generate and upload thumbnail
   const thumbBlob = await generateAlbumArtThumbnail(file);
   const thumbPath = `notes/${libraryId}/music/${songId}_art_thumb.webp`;
-  const thumbRef = ref(storage, thumbPath);
-  await uploadBytes(thumbRef, thumbBlob);
-  const albumArtThumbUrl = await getDownloadURL(thumbRef);
+  await uploadToB2(thumbBlob, thumbPath);
+  const albumArtThumbUrl = getB2Url(thumbPath);
 
   return { albumArtUrl, albumArtThumbUrl };
 }

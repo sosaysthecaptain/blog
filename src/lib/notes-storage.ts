@@ -1,29 +1,58 @@
 import {
   ref,
-  uploadBytes,
-  getDownloadURL,
   deleteObject,
   listAll,
   getBlob,
+  getDownloadURL,
 } from "firebase/storage";
 import { storage } from "./firebase";
+import { uploadToB2, deleteFromB2, getB2Url } from "./b2-client";
 
-// Extract all Firebase Storage URLs from HTML content (images and file attachments)
+// Extract all storage URLs from HTML content (images and file attachments)
+// Supports both Firebase Storage and B2 URLs
 export function extractStorageUrls(html: string): string[] {
   if (!html) return [];
 
   const urls: string[] = [];
+  const seen = new Set<string>();
 
-  // Match Firebase Storage URLs in img src and a href
+  // Match Firebase Storage URLs
   // Firebase Storage URLs look like: https://firebasestorage.googleapis.com/v0/b/...
-  const regex = /https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/[^"'\s<>]+/g;
-  const matches = html.match(regex);
+  const firebaseRegex = /https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/[^"'\s<>]+/g;
+  const firebaseMatches = html.match(firebaseRegex);
 
-  if (matches) {
-    // Dedupe
-    const seen = new Set<string>();
-    for (const url of matches) {
-      // Clean up any HTML entities or trailing characters
+  if (firebaseMatches) {
+    for (const url of firebaseMatches) {
+      const cleanUrl = url.split('&quot;')[0].split('"')[0];
+      if (!seen.has(cleanUrl)) {
+        seen.add(cleanUrl);
+        urls.push(cleanUrl);
+      }
+    }
+  }
+
+  // Match B2 proxy URLs
+  // B2 proxy URLs look like: /api/files/...
+  const b2ProxyRegex = /\/api\/files\/[^"'\s<>]+/g;
+  const b2ProxyMatches = html.match(b2ProxyRegex);
+
+  if (b2ProxyMatches) {
+    for (const url of b2ProxyMatches) {
+      const cleanUrl = url.split('&quot;')[0].split('"')[0];
+      if (!seen.has(cleanUrl)) {
+        seen.add(cleanUrl);
+        urls.push(cleanUrl);
+      }
+    }
+  }
+
+  // Also match direct B2 Storage URLs (legacy)
+  // B2 URLs look like: https://dirigible-content.s3.us-west-004.backblazeb2.com/...
+  const b2DirectRegex = /https:\/\/dirigible-content\.s3\.us-west-004\.backblazeb2\.com\/[^"'\s<>]+/g;
+  const b2DirectMatches = html.match(b2DirectRegex);
+
+  if (b2DirectMatches) {
+    for (const url of b2DirectMatches) {
       const cleanUrl = url.split('&quot;')[0].split('"')[0];
       if (!seen.has(cleanUrl)) {
         seen.add(cleanUrl);
@@ -36,10 +65,27 @@ export function extractStorageUrls(html: string): string[] {
 }
 
 // Delete a file from storage by its download URL
+// Supports Firebase, B2 direct, and B2 proxy URLs
 export async function deleteFileByUrl(url: string): Promise<boolean> {
   try {
-    // Extract the storage path from the URL
-    // URL format: https://firebasestorage.googleapis.com/v0/b/BUCKET/o/PATH?token=...
+    // Check if it's a B2 proxy URL
+    if (url.startsWith("/api/files/")) {
+      const path = url.replace("/api/files/", "");
+      await deleteFromB2(decodeURIComponent(path));
+      return true;
+    }
+
+    // Check if it's a direct B2 URL (legacy)
+    if (url.includes("backblazeb2.com")) {
+      // B2 URL format: https://dirigible-content.s3.us-west-004.backblazeb2.com/PATH
+      const match = url.match(/backblazeb2\.com\/(.+)$/);
+      if (!match) return false;
+      const path = decodeURIComponent(match[1]);
+      await deleteFromB2(path);
+      return true;
+    }
+
+    // Firebase Storage URL format: https://firebasestorage.googleapis.com/v0/b/BUCKET/o/PATH?token=...
     const match = url.match(/\/o\/([^?]+)/);
     if (!match) return false;
 
@@ -75,9 +121,8 @@ export async function uploadNoteImage(
   const timestamp = Date.now();
   const extension = blob.type.split("/")[1] || "png";
   const path = `notes/${noteId}/${timestamp}.${extension}`;
-  const storageRef = ref(storage, path);
-  await uploadBytes(storageRef, blob);
-  return getDownloadURL(storageRef);
+  await uploadToB2(blob, path);
+  return getB2Url(path);
 }
 
 // Upload a file (any type) for a note
@@ -89,9 +134,8 @@ export async function uploadNoteFile(
   // Preserve original filename but prefix with timestamp for uniqueness
   const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
   const path = `notes/${noteId}/files/${timestamp}_${sanitizedName}`;
-  const storageRef = ref(storage, path);
-  await uploadBytes(storageRef, file);
-  const url = await getDownloadURL(storageRef);
+  await uploadToB2(file, path);
+  const url = getB2Url(path);
   return { url, filename: file.name, size: file.size };
 }
 

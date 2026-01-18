@@ -18,10 +18,11 @@ export interface B2UploadResult {
 }
 
 /**
- * Get the public URL for a file in B2
+ * Get the URL for a file in B2 via our proxy endpoint
  */
 export function getB2PublicUrl(path: string): string {
-  return `https://${B2_BUCKET}.${B2_ENDPOINT}/${path}`;
+  // Use our API proxy to serve files from private B2 bucket
+  return `/api/files/${path}`;
 }
 
 /**
@@ -67,9 +68,33 @@ export async function generateUploadUrl(
 
   const authData = await authResponse.json();
   const { apiUrl, authorizationToken, allowed } = authData;
+  let bucketId = allowed?.bucketId;
 
-  // Get bucket ID from allowed buckets
-  const bucketId = allowed.bucketId;
+  // If bucketId is null (master key), we need to list buckets to find it
+  if (!bucketId) {
+    const listBucketsResponse = await fetch(
+      `${apiUrl}/b2api/v2/b2_list_buckets`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: authorizationToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ accountId: authData.accountId, bucketName: B2_BUCKET }),
+      }
+    );
+
+    if (!listBucketsResponse.ok) {
+      throw new Error(`Failed to list buckets: ${listBucketsResponse.statusText}`);
+    }
+
+    const bucketsData = await listBucketsResponse.json();
+    const bucket = bucketsData.buckets?.find((b: { bucketName: string }) => b.bucketName === B2_BUCKET);
+    if (!bucket) {
+      throw new Error(`Bucket ${B2_BUCKET} not found`);
+    }
+    bucketId = bucket.bucketId;
+  }
 
   // Get upload URL
   const uploadUrlResponse = await fetch(
@@ -130,7 +155,33 @@ export async function uploadToB2(
 
   const authData = await authResponse.json();
   const { apiUrl, authorizationToken, allowed } = authData;
-  const bucketId = allowed.bucketId;
+  let bucketId = allowed?.bucketId;
+
+  // If bucketId is null (master key), we need to list buckets to find it
+  if (!bucketId) {
+    const listBucketsResponse = await fetch(
+      `${apiUrl}/b2api/v2/b2_list_buckets`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: authorizationToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ accountId: authData.accountId, bucketName: B2_BUCKET }),
+      }
+    );
+
+    if (!listBucketsResponse.ok) {
+      throw new Error(`Failed to list buckets: ${listBucketsResponse.statusText}`);
+    }
+
+    const bucketsData = await listBucketsResponse.json();
+    const bucket = bucketsData.buckets?.find((b: { bucketName: string }) => b.bucketName === B2_BUCKET);
+    if (!bucket) {
+      throw new Error(`Bucket ${B2_BUCKET} not found`);
+    }
+    bucketId = bucket.bucketId;
+  }
 
   // Get upload URL
   const uploadUrlResponse = await fetch(
@@ -146,7 +197,8 @@ export async function uploadToB2(
   );
 
   if (!uploadUrlResponse.ok) {
-    throw new Error(`Failed to get upload URL: ${uploadUrlResponse.statusText}`);
+    const errorText = await uploadUrlResponse.text();
+    throw new Error(`Failed to get upload URL: ${uploadUrlResponse.statusText} - ${errorText}`);
   }
 
   const uploadData = await uploadUrlResponse.json();
@@ -165,7 +217,7 @@ export async function uploadToB2(
       "X-Bz-File-Name": encodeURIComponent(path),
       "X-Bz-Content-Sha1": sha1,
     },
-    body: file,
+    body: new Uint8Array(file) as BodyInit,
   });
 
   if (!uploadResponse.ok) {
@@ -207,7 +259,33 @@ export async function deleteFromB2(path: string): Promise<void> {
 
   const authData = await authResponse.json();
   const { apiUrl, authorizationToken, allowed } = authData;
-  const bucketId = allowed.bucketId;
+  let bucketId = allowed?.bucketId;
+
+  // If bucketId is null (master key), we need to list buckets to find it
+  if (!bucketId) {
+    const listBucketsResponse = await fetch(
+      `${apiUrl}/b2api/v2/b2_list_buckets`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: authorizationToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ accountId: authData.accountId, bucketName: B2_BUCKET }),
+      }
+    );
+
+    if (!listBucketsResponse.ok) {
+      throw new Error(`Failed to list buckets: ${listBucketsResponse.statusText}`);
+    }
+
+    const bucketsData = await listBucketsResponse.json();
+    const bucket = bucketsData.buckets?.find((b: { bucketName: string }) => b.bucketName === B2_BUCKET);
+    if (!bucket) {
+      throw new Error(`Bucket ${B2_BUCKET} not found`);
+    }
+    bucketId = bucket.bucketId;
+  }
 
   // List file versions to get fileId
   const listResponse = await fetch(

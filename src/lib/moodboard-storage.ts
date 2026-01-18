@@ -1,11 +1,4 @@
-import {
-  ref,
-  uploadBytes,
-  getDownloadURL,
-  deleteObject,
-  listAll,
-} from "firebase/storage";
-import { storage } from "./firebase";
+import { uploadToB2, deleteFromB2, getB2Url } from "./b2-client";
 import { MoodboardImage } from "./notes";
 import { Timestamp } from "firebase/firestore";
 
@@ -102,16 +95,14 @@ export async function uploadMoodboardImage(
 
   // Upload original
   const originalPath = `notes/${moodboardId}/moodboard/${imageId}.${extension}`;
-  const originalRef = ref(storage, originalPath);
-  await uploadBytes(originalRef, blob);
-  const url = await getDownloadURL(originalRef);
+  await uploadToB2(blob, originalPath);
+  const url = getB2Url(originalPath);
   onProgress?.(70);
 
   // Upload thumbnail
   const thumbnailPath = `notes/${moodboardId}/moodboard/${imageId}_thumb.webp`;
-  const thumbnailRef = ref(storage, thumbnailPath);
-  await uploadBytes(thumbnailRef, thumbnailBlob);
-  const thumbnailUrl = await getDownloadURL(thumbnailRef);
+  await uploadToB2(thumbnailBlob, thumbnailPath);
+  const thumbnailUrl = getB2Url(thumbnailPath);
   onProgress?.(100);
 
   return {
@@ -164,13 +155,13 @@ export async function deleteMoodboardImage(
   const thumbnailPath = `notes/${moodboardId}/moodboard/${imageId}_thumb.webp`;
 
   try {
-    await deleteObject(ref(storage, originalPath));
+    await deleteFromB2(originalPath);
   } catch (error) {
     console.error("Error deleting original:", error);
   }
 
   try {
-    await deleteObject(ref(storage, thumbnailPath));
+    await deleteFromB2(thumbnailPath);
   } catch (error) {
     console.error("Error deleting thumbnail:", error);
   }
@@ -178,14 +169,24 @@ export async function deleteMoodboardImage(
 
 /**
  * Delete all images for a moodboard
+ * Note: This requires the image list to be passed in since B2 doesn't support listing by prefix client-side
  */
-export async function deleteAllMoodboardImages(moodboardId: string): Promise<void> {
-  const listRef = ref(storage, `notes/${moodboardId}/moodboard`);
-  try {
-    const result = await listAll(listRef);
-    await Promise.all(result.items.map((item) => deleteObject(item)));
-  } catch (error) {
-    console.error("Error deleting moodboard images:", error);
+export async function deleteAllMoodboardImages(
+  moodboardId: string,
+  images?: Array<{ id: string; url: string }>
+): Promise<void> {
+  if (!images || images.length === 0) {
+    console.warn("No images provided for deletion");
+    return;
+  }
+
+  for (const image of images) {
+    const extension = getExtensionFromUrl(image.url);
+    try {
+      await deleteMoodboardImage(moodboardId, image.id, extension);
+    } catch (error) {
+      console.error(`Error deleting image ${image.id}:`, error);
+    }
   }
 }
 
@@ -193,8 +194,8 @@ export async function deleteAllMoodboardImages(moodboardId: string): Promise<voi
  * Extract image ID from a storage URL
  */
 export function getImageIdFromUrl(url: string): string | null {
-  // URL format: .../moodboard/{imageId}.{ext}?...
-  const match = url.match(/\/moodboard\/([^.]+)\./);
+  // URL format: .../moodboard/{imageId}.{ext} (B2) or .../moodboard/{imageId}.{ext}?... (Firebase)
+  const match = url.match(/\/moodboard\/([^.?]+)\./);
   return match ? match[1] : null;
 }
 
@@ -202,6 +203,7 @@ export function getImageIdFromUrl(url: string): string | null {
  * Get extension from URL
  */
 export function getExtensionFromUrl(url: string): string {
-  const match = url.match(/\.([a-z]+)\?/i);
+  // Handle both B2 URLs (no query string) and Firebase URLs (with query string)
+  const match = url.match(/\.([a-z]+)(?:\?|$)/i);
   return match ? match[1] : "png";
 }
