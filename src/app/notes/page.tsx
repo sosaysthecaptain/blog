@@ -447,18 +447,6 @@ export default function NotesPage() {
     setRenamingId(null);
   };
 
-  const handleToggleStar = async (item: NoteItem) => {
-    if (!item.id) return;
-    const newStarred = !item.starred;
-    await updateNote(item.id, { starred: newStarred });
-    setItems((prev) =>
-      prev.map((i) => (i.id === item.id ? { ...i, starred: newStarred } : i))
-    );
-    if (selectedItem?.id === item.id) {
-      setSelectedItem({ ...item, starred: newStarred });
-    }
-  };
-
   const handleNoteUpdate = useCallback((updatedNote: NoteItem) => {
     setItems((prev) =>
       prev.map((i) => (i.id === updatedNote.id ? updatedNote : i))
@@ -1044,7 +1032,6 @@ ${content}`;
           onToggleFullWidth={() => setIsFullWidth(!isFullWidth)}
           onSortChange={setSortOption}
           onCloseMobile={() => setMobileSidebarOpen(false)}
-          onToggleStar={handleToggleStar}
         />
       </div>
 

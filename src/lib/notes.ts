@@ -67,9 +67,6 @@ export interface NoteItem {
 
   // Sort order for manual reordering (lower = earlier)
   sortOrder?: number;
-
-  // Starred items appear in a separate section at top
-  starred?: boolean;
 }
 
 // Get all notes and folders
