@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo, useImperativeHandle, forwardRef } from "react";
-import { NoteItem, updateNote, subscribeToNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap, generateSlug, blogSlugExists, recipeSlugExists } from "@/lib/notes";
+import { NoteItem, EmbeddedMedia, updateNote, subscribeToNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap, generateSlug, blogSlugExists, recipeSlugExists } from "@/lib/notes";
 import { findRemovedFiles, deleteFileByUrl } from "@/lib/notes-storage";
 import { getCurrentUser, isAdminEmail } from "@/lib/auth";
 import { useAutosave } from "@/hooks/useAutosave";
@@ -39,6 +39,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
   const [slugError, setSlugError] = useState<string | null>(null);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [tagColors, setTagColors] = useState<TagColorsMap>({});
+  const [embeddedMedia, setEmbeddedMedia] = useState<EmbeddedMedia[]>(note.embeddedMedia || []);
 
   // Save state (isSaving and hasLocalChanges now managed by autosave hook)
 
@@ -64,6 +65,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
     tags: string[];
     published: boolean;
     slug: string;
+    embeddedMedia: EmbeddedMedia[];
   } | null>(null);
 
   // Check if this note is in a publishable folder
@@ -82,7 +84,8 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
     tags,
     published,
     slug,
-  }), [title, content, date, time, tags, published, slug]);
+    embeddedMedia,
+  }), [title, content, date, time, tags, published, slug, embeddedMedia]);
 
   // Autosave callback - saves to Firestore
   const handleAutosave = useCallback(async (data: typeof autosaveData) => {
@@ -96,6 +99,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
       tags: data.tags,
       published: data.published,
       slug: data.slug,
+      embeddedMedia: data.embeddedMedia,
     });
 
     // Update saved version reference
@@ -143,6 +147,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
     setTags(note.tags || []);
     setPublished(note.published || false);
     setSlug(note.slug || "");
+    setEmbeddedMedia(note.embeddedMedia || []);
     setSlugError(null);
     setHasRemoteChanges(false);
     setRemoteNote(null);
@@ -156,6 +161,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
       tags: note.tags || [],
       published: note.published || false,
       slug: note.slug || "",
+      embeddedMedia: note.embeddedMedia || [],
     };
   }, [note.id]); // Only reset when note ID changes
 
@@ -188,6 +194,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
           tags: updatedNote.tags || [],
           published: updatedNote.published || false,
           slug: updatedNote.slug || "",
+          embeddedMedia: updatedNote.embeddedMedia || [],
         };
         return;
       }
@@ -218,6 +225,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
             setTags(updatedNote.tags || []);
             setPublished(updatedNote.published || false);
             setSlug(updatedNote.slug || "");
+            setEmbeddedMedia(updatedNote.embeddedMedia || []);
 
             // Update saved version
             savedVersionRef.current = {
@@ -228,6 +236,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
               tags: updatedNote.tags || [],
               published: updatedNote.published || false,
               slug: updatedNote.slug || "",
+              embeddedMedia: updatedNote.embeddedMedia || [],
             };
 
             onUpdate(updatedNote);
@@ -310,6 +319,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
     setTags(remoteNote.tags || []);
     setPublished(remoteNote.published || false);
     setSlug(remoteNote.slug || "");
+    setEmbeddedMedia(remoteNote.embeddedMedia || []);
 
     savedVersionRef.current = {
       title: remoteNote.title,
@@ -319,6 +329,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
       tags: remoteNote.tags || [],
       published: remoteNote.published || false,
       slug: remoteNote.slug || "",
+      embeddedMedia: remoteNote.embeddedMedia || [],
     };
 
     // Mark as saved so autosave knows this is the baseline
@@ -381,6 +392,11 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
     await setTagColor(tag, colorIndex);
     setTagColors(prev => ({ ...prev, [tag]: colorIndex }));
   };
+
+  // Handle new media added to the note
+  const handleMediaAdded = useCallback((media: EmbeddedMedia) => {
+    setEmbeddedMedia(prev => [...prev, media]);
+  }, []);
 
   // Keyboard shortcut: Cmd+S to save
   useEffect(() => {
@@ -538,6 +554,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
           onChange={setContent}
           onImageClick={openLightbox}
           noteId={note.id!}
+          onMediaAdded={handleMediaAdded}
         />
       </div>
 

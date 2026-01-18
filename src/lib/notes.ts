@@ -28,6 +28,15 @@ export interface MoodboardImage {
   createdAt: Timestamp; // When image was added
 }
 
+export interface EmbeddedMedia {
+  id: string;           // Unique ID
+  url: string;          // Storage URL (B2 proxy path)
+  path: string;         // B2 storage path for deletion
+  type: "image" | "file";
+  filename?: string;    // Original filename for files
+  fileSize: number;     // File size in bytes
+}
+
 export interface NoteItem {
   id?: string;
   type: "note" | "folder" | "moodboard" | "music";
@@ -41,6 +50,7 @@ export interface NoteItem {
   date?: string;
   time?: string | null; // HH:MM format, optional
   tags?: string[];
+  embeddedMedia?: EmbeddedMedia[]; // Track images/files for size calculation and cleanup
 
   // Moodboard-specific fields
   images?: MoodboardImage[];

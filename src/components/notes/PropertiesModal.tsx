@@ -76,8 +76,12 @@ export default function PropertiesModal({ item, onClose, onExport }: PropertiesM
     if (item.type === "music" && musicSongs) {
       return musicSongs.reduce((sum, song) => sum + (song.fileSize || 0), 0);
     }
-    if (item.type === "note" && item.content) {
-      return new Blob([item.content]).size;
+    if (item.type === "note") {
+      // Calculate size from embedded media (images/files in B2)
+      const mediaSize = item.embeddedMedia?.reduce((sum, m) => sum + (m.fileSize || 0), 0) || 0;
+      // Add HTML content size (small, but include for completeness)
+      const htmlSize = item.content ? new Blob([item.content]).size : 0;
+      return mediaSize + htmlSize;
     }
     return 0;
   }, [item, musicSongs]);

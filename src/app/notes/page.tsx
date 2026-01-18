@@ -21,7 +21,10 @@ import {
 import { CacheProvider, useCacheStatus } from "@/components/CacheProvider";
 import { useCachedNotes } from "@/hooks/useCachedNotes";
 import { getAllPosts, Post } from "@/lib/firestore";
-import { deleteNoteImages, downloadImageBlob } from "@/lib/notes-storage";
+import { deleteNoteImages, deleteNoteEmbeddedMedia, downloadImageBlob } from "@/lib/notes-storage";
+import { deleteAllMoodboardImages } from "@/lib/moodboard-storage";
+import { deleteAllMusicFiles } from "@/lib/music-storage";
+import { getSongsByLibrary } from "@/lib/songs";
 import { useDarkMode } from "@/hooks/useDarkMode";
 import Sidebar from "@/components/notes/Sidebar";
 import NoteEditor, { NoteEditorRef } from "@/components/notes/NoteEditor";
@@ -371,8 +374,28 @@ export default function NotesPage() {
     const doDelete = async () => {
       if (item.type === "folder") {
         await deleteFolderRecursive(item.id!);
-      } else {
+      } else if (item.type === "note") {
+        // Delete B2 embedded media if present
+        if (item.embeddedMedia && item.embeddedMedia.length > 0) {
+          await deleteNoteEmbeddedMedia(item.embeddedMedia);
+        }
+        // Also try Firebase legacy deletion for older notes
         await deleteNoteImages(item.id!);
+        await deleteNote(item.id!);
+      } else if (item.type === "moodboard") {
+        // Delete moodboard images from B2
+        if (item.images && item.images.length > 0) {
+          await deleteAllMoodboardImages(item.id!, item.images);
+        }
+        await deleteNote(item.id!);
+      } else if (item.type === "music") {
+        // Delete music files from B2
+        const songs = await getSongsByLibrary(item.id!);
+        if (songs.length > 0) {
+          await deleteAllMusicFiles(item.id!, songs.map(s => ({ id: s.id!, storagePath: s.storagePath })));
+        }
+        await deleteNote(item.id!);
+      } else {
         await deleteNote(item.id!);
       }
 
@@ -1046,6 +1069,7 @@ ${content}`;
 
         {selectedItem?.type === "note" ? (
           <NoteEditor
+            key={selectedItem.id}
             ref={noteEditorRef}
             note={selectedItem}
             parentFolder={selectedItem.parentId ? items.find(i => i.id === selectedItem.parentId && i.type === "folder") || null : null}
@@ -1056,6 +1080,7 @@ ${content}`;
           />
         ) : selectedItem?.type === "moodboard" ? (
           <MoodboardEditor
+            key={selectedItem.id}
             ref={moodboardEditorRef}
             moodboard={selectedItem}
             parentFolder={selectedItem.parentId ? items.find(i => i.id === selectedItem.parentId && i.type === "folder") || null : null}
@@ -1066,6 +1091,7 @@ ${content}`;
           />
         ) : selectedItem?.type === "music" ? (
           <MusicLibraryEditor
+            key={selectedItem.id}
             ref={musicLibraryEditorRef}
             library={selectedItem}
             parentFolder={selectedItem.parentId ? items.find(i => i.id === selectedItem.parentId && i.type === "folder") || null : null}

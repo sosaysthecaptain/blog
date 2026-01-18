@@ -231,14 +231,13 @@ export default function SongsDataGrid({
         disableColumnMenu: true,
         renderCell: (params: GridRenderCellParams) => {
           const isPlaying = params.row.id === currentPlayingSongId;
-          const isSelected = selectedIds.includes(params.row.id);
           return isPlaying ? (
             <div className="w-full h-full flex items-center justify-center">
               <svg
                 className="w-3 h-3"
                 fill="currentColor"
                 viewBox="0 0 24 24"
-                style={{ color: isSelected ? "#fff" : "#1e6bbd" }}
+                style={{ color: "var(--accent)" }}
               >
                 <path d="M8 5v14l11-7z" />
               </svg>
@@ -495,6 +494,7 @@ export default function SongsDataGrid({
   }, [onUpdateSong]);
 
   // Generate dynamic CSS for selection - this avoids re-rendering DataGrid
+  // Uses CSS variables to match sidebar selection styling
   const selectionStyles = useMemo(() => {
     if (selectedIds.length === 0) return "";
 
@@ -504,14 +504,11 @@ export default function SongsDataGrid({
 
     return `
       ${selectors} {
-        background-color: #1e6bbd !important;
-        color: #fff !important;
+        background-color: var(--hover) !important;
       }
       ${selectors}:hover {
-        background-color: #2277cc !important;
-      }
-      ${selectors} .MuiDataGrid-cell {
-        color: #fff !important;
+        background-color: var(--hover) !important;
+        filter: brightness(0.95);
       }
     `;
   }, [selectedIds]);
@@ -556,7 +553,7 @@ export default function SongsDataGrid({
       >
         {/* Selection count indicator */}
         {selectedIds.length > 1 && (
-          <div className="absolute top-2 right-2 z-10 px-2 py-1 bg-blue-500 text-white text-[10px] rounded shadow">
+          <div className="absolute top-2 right-2 z-10 px-2 py-1 text-[10px] rounded shadow" style={{ backgroundColor: 'var(--accent)', color: 'white' }}>
             {selectedIds.length} selected
           </div>
         )}

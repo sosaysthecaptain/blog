@@ -45,12 +45,22 @@ import { ImageWithCaption } from "./ImageWithCaption";
 import { FilePlaceholder } from "./FilePlaceholder";
 import { FileAttachment } from "./FileAttachment";
 
+interface MediaInfo {
+  id: string;
+  url: string;
+  path: string;
+  type: "image" | "file";
+  filename?: string;
+  fileSize: number;
+}
+
 interface TiptapEditorProps {
   content: string;
   onChange: (content: string) => void;
   noteId: string;
   placeholder?: string;
   onImageClick?: (src: string) => void;
+  onMediaAdded?: (media: MediaInfo) => void;
 }
 
 export default function TiptapEditor({
@@ -59,6 +69,7 @@ export default function TiptapEditor({
   noteId,
   placeholder = "Start typing...",
   onImageClick,
+  onMediaAdded,
 }: TiptapEditorProps) {
   const placeholderIdRef = useRef(0);
   const noteIdRef = useRef(noteId);
@@ -125,7 +136,18 @@ export default function TiptapEditor({
 
       const id = noteId || `temp-${Date.now()}`;
       try {
-        const url = await uploadNoteImage(blob, id);
+        const result = await uploadNoteImage(blob, id);
+
+        // Track the media for size calculation and cleanup
+        if (onMediaAdded) {
+          onMediaAdded({
+            id: `img-${Date.now()}`,
+            url: result.url,
+            path: result.path,
+            type: "image",
+            fileSize: result.size,
+          });
+        }
 
         // Find and replace the placeholder with the actual image
         const { doc, tr } = editor.state;
@@ -149,14 +171,14 @@ export default function TiptapEditor({
             .focus()
             .setNodeSelection(placeholderPos)
             .deleteSelection()
-            .setImageWithCaption({ src: url, alt: "Image", caption: "" })
+            .setImageWithCaption({ src: result.url, alt: "Image", caption: "" })
             .run();
         } else {
           // Fallback: just insert at current position
           editor
             .chain()
             .focus()
-            .setImageWithCaption({ src: url, alt: "Image", caption: "" })
+            .setImageWithCaption({ src: result.url, alt: "Image", caption: "" })
             .run();
         }
       } catch (error) {
@@ -180,7 +202,7 @@ export default function TiptapEditor({
         });
       }
     },
-    [editor, noteId]
+    [editor, noteId, onMediaAdded]
   );
 
   // Handle generic file upload (non-images)
@@ -203,7 +225,19 @@ export default function TiptapEditor({
 
       const id = noteId || `temp-${Date.now()}`;
       try {
-        const { url, filename, size } = await uploadNoteFile(file, id);
+        const result = await uploadNoteFile(file, id);
+
+        // Track the media for size calculation and cleanup
+        if (onMediaAdded) {
+          onMediaAdded({
+            id: `file-${Date.now()}`,
+            url: result.url,
+            path: result.path,
+            type: "file",
+            filename: result.filename,
+            fileSize: result.size,
+          });
+        }
 
         // Find and replace the placeholder with the actual file attachment
         const { doc } = editor.state;
@@ -227,14 +261,14 @@ export default function TiptapEditor({
             .focus()
             .setNodeSelection(placeholderPos)
             .deleteSelection()
-            .setFileAttachment({ url, filename, size })
+            .setFileAttachment({ url: result.url, filename: result.filename, size: result.size })
             .run();
         } else {
           // Fallback: just insert at current position
           editor
             .chain()
             .focus()
-            .setFileAttachment({ url, filename, size })
+            .setFileAttachment({ url: result.url, filename: result.filename, size: result.size })
             .run();
         }
       } catch (error) {
@@ -258,7 +292,7 @@ export default function TiptapEditor({
         });
       }
     },
-    [editor, noteId]
+    [editor, noteId, onMediaAdded]
   );
 
   // Handle file paste/drop events (images and other files)

@@ -113,30 +113,30 @@ export function findRemovedFiles(oldContent: string, newContent: string): string
   return removed;
 }
 
-// Upload an image for a note
+// Upload an image for a note - returns info for tracking
 export async function uploadNoteImage(
   blob: Blob,
   noteId: string
-): Promise<string> {
+): Promise<{ url: string; path: string; size: number }> {
   const timestamp = Date.now();
   const extension = blob.type.split("/")[1] || "png";
   const path = `notes/${noteId}/${timestamp}.${extension}`;
   await uploadToB2(blob, path);
-  return getB2Url(path);
+  return { url: getB2Url(path), path, size: blob.size };
 }
 
-// Upload a file (any type) for a note
+// Upload a file (any type) for a note - returns info for tracking
 export async function uploadNoteFile(
   file: File,
   noteId: string
-): Promise<{ url: string; filename: string; size: number }> {
+): Promise<{ url: string; path: string; filename: string; size: number }> {
   const timestamp = Date.now();
   // Preserve original filename but prefix with timestamp for uniqueness
   const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
   const path = `notes/${noteId}/files/${timestamp}_${sanitizedName}`;
   await uploadToB2(file, path);
   const url = getB2Url(path);
-  return { url, filename: file.name, size: file.size };
+  return { url, path, filename: file.name, size: file.size };
 }
 
 // Delete a single image
@@ -160,7 +160,7 @@ export async function listNoteImages(noteId: string): Promise<string[]> {
   }
 }
 
-// Delete all images for a note
+// Delete all images for a note (Firebase legacy - uses listAll)
 export async function deleteNoteImages(noteId: string): Promise<void> {
   const listRef = ref(storage, `notes/${noteId}`);
   try {
@@ -168,6 +168,22 @@ export async function deleteNoteImages(noteId: string): Promise<void> {
     await Promise.all(result.items.map((item) => deleteObject(item)));
   } catch (error) {
     console.error("Error deleting note images:", error);
+  }
+}
+
+// Delete all embedded media for a note from B2
+// This uses the stored embeddedMedia array rather than listing files
+export async function deleteNoteEmbeddedMedia(
+  embeddedMedia: Array<{ path: string }> | undefined
+): Promise<void> {
+  if (!embeddedMedia || embeddedMedia.length === 0) return;
+
+  for (const media of embeddedMedia) {
+    try {
+      await deleteFromB2(media.path);
+    } catch (error) {
+      console.error(`Error deleting media ${media.path}:`, error);
+    }
   }
 }
 
