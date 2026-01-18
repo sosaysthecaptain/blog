@@ -9,8 +9,10 @@ import {
   useImperativeHandle,
   useMemo,
 } from "react";
-import { NoteItem, subscribeToNote, updateNote } from "@/lib/notes";
+import { NoteItem, updateNote } from "@/lib/notes";
 import { useAutosave } from "@/hooks/useAutosave";
+import { useFocusSync } from "@/hooks/useFocusSync";
+import { ConfirmDialog } from "@/components/ui/Dialog";
 import { useCachedSongs } from "@/hooks/useCachedSongs";
 import { setupSongsListener } from "@/lib/cache-sync";
 import { Song, getSongsByLibrary, getLibraryStats, deleteSong, updateSong, sortSongs, searchSongs } from "@/lib/songs";
@@ -65,6 +67,11 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
     const [songsToEdit, setSongsToEdit] = useState<Song[]>([]);
     const [showRecorderModal, setShowRecorderModal] = useState(false);
 
+    // Sync conflict state
+    const [showConflictDialog, setShowConflictDialog] = useState(false);
+    const [remoteVersion, setRemoteVersion] = useState<NoteItem | null>(null);
+    const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+
     const fileInputRef = useRef<HTMLInputElement>(null);
     const playFnRef = useRef<((song: Song) => void) | null>(null);
 
@@ -109,19 +116,18 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
       playFnRef.current = musicQueue.play;
     }, [musicQueue.play]);
 
-    // Subscribe to library changes
-    useEffect(() => {
-      if (!library.id) return;
+    // Handle remote update (no local changes - auto-apply)
+    const handleRemoteUpdate = useCallback((remoteDoc: NoteItem) => {
+      setLocalLibrary(remoteDoc);
+      setLastSavedAt(remoteDoc.updatedAt?.toDate() || null);
+      onUpdate(remoteDoc);
+    }, [onUpdate]);
 
-      const unsubscribe = subscribeToNote(library.id, (updated) => {
-        if (updated) {
-          setLocalLibrary(updated);
-          onUpdate(updated);
-        }
-      });
-
-      return () => unsubscribe();
-    }, [library.id, onUpdate]);
+    // Handle sync conflict
+    const handleConflict = useCallback((remoteDoc: NoteItem) => {
+      setRemoteVersion(remoteDoc);
+      setShowConflictDialog(true);
+    }, []);
 
     // Use cached songs for instant loading
     const { songs: cachedSongs, isLoading: songsLoading } = useCachedSongs(library.id);
@@ -170,6 +176,7 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
         musicSortDirection: data.musicSortDirection,
       });
 
+      setLastSavedAt(new Date());
       onUpdate({ ...localLibrary, ...data });
     }, [library.id, localLibrary, onUpdate]);
 
@@ -182,6 +189,28 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
     });
 
     const isSaving = autosaveStatus === "saving";
+
+    // Check for remote updates when user returns to tab after inactivity
+    useFocusSync({
+      documentId: library.id,
+      localUpdatedAt: lastSavedAt,
+      hasLocalChanges: isDirty,
+      onRemoteUpdate: handleRemoteUpdate,
+      onConflict: handleConflict,
+    });
+
+    // Conflict resolution: accept remote version
+    const handleAcceptRemote = useCallback(() => {
+      if (!remoteVersion) return;
+      handleRemoteUpdate(remoteVersion);
+      setShowConflictDialog(false);
+    }, [remoteVersion, handleRemoteUpdate]);
+
+    // Conflict resolution: keep local and overwrite remote
+    const handleKeepLocal = useCallback(async () => {
+      setShowConflictDialog(false);
+      triggerSave();
+    }, [triggerSave]);
 
     // Notify parent of unsaved changes
     useEffect(() => {
@@ -582,6 +611,18 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
             }}
           />
         )}
+
+        {/* Sync Conflict Dialog */}
+        <ConfirmDialog
+          open={showConflictDialog}
+          title="Sync Conflict"
+          message="This music library was updated on another device. What would you like to do with your local changes?"
+          confirmLabel="Save Mine"
+          cancelLabel="Load Theirs"
+          variant="danger"
+          onConfirm={handleKeepLocal}
+          onCancel={handleAcceptRemote}
+        />
       </div>
     );
   }

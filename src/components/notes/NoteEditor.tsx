@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo, useImperativeHandle, forwardRef } from "react";
-import { NoteItem, EmbeddedMedia, updateNote, subscribeToNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap, generateSlug, blogSlugExists, recipeSlugExists } from "@/lib/notes";
+import { NoteItem, EmbeddedMedia, updateNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap, generateSlug, blogSlugExists, recipeSlugExists } from "@/lib/notes";
 import { findRemovedFiles, deleteFileByUrl } from "@/lib/notes-storage";
 import { getCurrentUser, isAdminEmail } from "@/lib/auth";
 import { useAutosave } from "@/hooks/useAutosave";
+import { useFocusSync } from "@/hooks/useFocusSync";
 import TiptapEditor from "./TiptapEditor";
 import TagInput from "./TagInput";
 import ImageLightbox, { extractImagesFromHtml } from "@/components/ImageLightbox";
@@ -45,8 +46,8 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
 
   // Remote sync state
   const [remoteNote, setRemoteNote] = useState<NoteItem | null>(null);
-  const [hasRemoteChanges, setHasRemoteChanges] = useState(false);
   const [showConflictDialog, setShowConflictDialog] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
 
   // File cleanup state
   const [pendingDeleteFiles, setPendingDeleteFiles] = useState<string[]>([]);
@@ -104,6 +105,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
 
     // Update saved version reference
     savedVersionRef.current = { ...data };
+    setLastSavedAt(new Date());
 
     // Notify parent
     onUpdate({ ...note, ...data });
@@ -149,7 +151,6 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
     setSlug(note.slug || "");
     setEmbeddedMedia(note.embeddedMedia || []);
     setSlugError(null);
-    setHasRemoteChanges(false);
     setRemoteNote(null);
 
     // Store the saved version for comparison
@@ -165,88 +166,45 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
     };
   }, [note.id]); // Only reset when note ID changes
 
-  // Subscribe to real-time updates
-  useEffect(() => {
-    if (!note.id) return;
+  // Handle remote update when no local changes (auto-apply)
+  const handleRemoteUpdate = useCallback((remoteDoc: NoteItem) => {
+    setTitle(remoteDoc.title);
+    setContent(remoteDoc.content || "");
+    setDate(remoteDoc.date || new Date().toISOString().split("T")[0]);
+    setTime(remoteDoc.time || "");
+    setTags(remoteDoc.tags || []);
+    setPublished(remoteDoc.published || false);
+    setSlug(remoteDoc.slug || "");
+    setEmbeddedMedia(remoteDoc.embeddedMedia || []);
 
-    const unsubscribe = subscribeToNote(note.id, (updatedNote) => {
-      if (!updatedNote) return;
+    savedVersionRef.current = {
+      title: remoteDoc.title,
+      content: remoteDoc.content || "",
+      date: remoteDoc.date || new Date().toISOString().split("T")[0],
+      time: remoteDoc.time || "",
+      tags: remoteDoc.tags || [],
+      published: remoteDoc.published || false,
+      slug: remoteDoc.slug || "",
+      embeddedMedia: remoteDoc.embeddedMedia || [],
+    };
+    setLastSavedAt(remoteDoc.updatedAt?.toDate() || null);
+    onUpdate(remoteDoc);
+  }, [onUpdate]);
 
-      setRemoteNote(updatedNote);
+  // Handle sync conflict (local changes exist + remote has updates)
+  const handleConflict = useCallback((remoteDoc: NoteItem) => {
+    setRemoteNote(remoteDoc);
+    setShowConflictDialog(true);
+  }, []);
 
-      // Check if remote matches our current local state (our own save just completed)
-      const remoteMatchesLocal =
-        updatedNote.title === title &&
-        (updatedNote.content || "") === content &&
-        (updatedNote.date || "") === date &&
-        (updatedNote.time || "") === (time || "") &&
-        JSON.stringify(updatedNote.tags || []) === JSON.stringify(tags) &&
-        (updatedNote.published || false) === published &&
-        (updatedNote.slug || "") === slug;
-
-      if (remoteMatchesLocal) {
-        // Remote matches our local state - this is our own save, update saved version
-        savedVersionRef.current = {
-          title: updatedNote.title,
-          content: updatedNote.content || "",
-          date: updatedNote.date || new Date().toISOString().split("T")[0],
-          time: updatedNote.time || "",
-          tags: updatedNote.tags || [],
-          published: updatedNote.published || false,
-          slug: updatedNote.slug || "",
-          embeddedMedia: updatedNote.embeddedMedia || [],
-        };
-        return;
-      }
-
-      // Check if remote has changes compared to our saved version
-      const saved = savedVersionRef.current;
-      if (saved) {
-        const remoteChanged =
-          updatedNote.title !== saved.title ||
-          (updatedNote.content || "") !== saved.content ||
-          (updatedNote.date || "") !== saved.date ||
-          (updatedNote.time || "") !== saved.time ||
-          JSON.stringify(updatedNote.tags || []) !== JSON.stringify(saved.tags) ||
-          (updatedNote.published || false) !== saved.published ||
-          (updatedNote.slug || "") !== saved.slug;
-
-        if (remoteChanged) {
-          // Only show conflict if we have local changes AND we're not currently saving
-          // (our own save triggers the listener too, so ignore during save)
-          if (hasLocalChanges && !isSaving) {
-            setShowConflictDialog(true);
-          } else if (!hasLocalChanges) {
-            // No local changes - auto-apply remote changes
-            setTitle(updatedNote.title);
-            setContent(updatedNote.content || "");
-            setDate(updatedNote.date || new Date().toISOString().split("T")[0]);
-            setTime(updatedNote.time || "");
-            setTags(updatedNote.tags || []);
-            setPublished(updatedNote.published || false);
-            setSlug(updatedNote.slug || "");
-            setEmbeddedMedia(updatedNote.embeddedMedia || []);
-
-            // Update saved version
-            savedVersionRef.current = {
-              title: updatedNote.title,
-              content: updatedNote.content || "",
-              date: updatedNote.date || new Date().toISOString().split("T")[0],
-              time: updatedNote.time || "",
-              tags: updatedNote.tags || [],
-              published: updatedNote.published || false,
-              slug: updatedNote.slug || "",
-              embeddedMedia: updatedNote.embeddedMedia || [],
-            };
-
-            onUpdate(updatedNote);
-          }
-        }
-      }
-    });
-
-    return () => unsubscribe();
-  }, [note.id, title, content, date, time, tags, published, slug, hasLocalChanges, isSaving, onUpdate]);
+  // Check for remote updates when user returns to tab after inactivity
+  useFocusSync({
+    documentId: note.id,
+    localUpdatedAt: lastSavedAt,
+    hasLocalChanges,
+    onRemoteUpdate: handleRemoteUpdate,
+    onConflict: handleConflict,
+  });
 
   // Notify parent of unsaved changes
   useEffect(() => {

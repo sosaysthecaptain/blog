@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef, useMemo } from "react";
-import { NoteItem, MoodboardImage, updateNote, subscribeToNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap } from "@/lib/notes";
+import { NoteItem, MoodboardImage, updateNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap } from "@/lib/notes";
 import { useAutosave } from "@/hooks/useAutosave";
+import { useFocusSync } from "@/hooks/useFocusSync";
+import { ConfirmDialog } from "@/components/ui/Dialog";
 import { uploadMoodboardImages, deleteMoodboardImage, getImageIdFromUrl, getExtensionFromUrl } from "@/lib/moodboard-storage";
 import JSZip from "jszip";
 import TagInput from "./TagInput";
@@ -57,6 +59,11 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
 
   // Export state
   const [isExporting, setIsExporting] = useState(false);
+
+  // Sync conflict state
+  const [showConflictDialog, setShowConflictDialog] = useState(false);
+  const [remoteVersion, setRemoteVersion] = useState<NoteItem | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
 
   // Dropdown menu state
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
@@ -119,36 +126,34 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
     };
   }, [moodboard.id]);
 
-  // Subscribe to real-time updates
-  useEffect(() => {
-    if (!moodboard.id) return;
+  // Handle remote update (no local changes - auto-apply)
+  const handleRemoteUpdate = useCallback((remoteDoc: NoteItem) => {
+    setTitle(remoteDoc.title);
+    setDate(remoteDoc.date || new Date().toISOString().split("T")[0]);
+    setTime(remoteDoc.time || "");
+    setTags(remoteDoc.tags || []);
+    setImages(remoteDoc.images || []);
+    setGridSize(remoteDoc.gridSize || "medium");
+    setSortMode(remoteDoc.sortMode || "manual");
 
-    const unsubscribe = subscribeToNote(moodboard.id, (updated) => {
-      if (!updated) return;
-      // Always update from remote - autosave means we should stay in sync
-      setTitle(updated.title);
-      setDate(updated.date || new Date().toISOString().split("T")[0]);
-      setTime(updated.time || "");
-      setTags(updated.tags || []);
-      setImages(updated.images || []);
-      setGridSize(updated.gridSize || "medium");
-      setSortMode(updated.sortMode || "manual");
+    savedVersionRef.current = {
+      title: remoteDoc.title,
+      date: remoteDoc.date || new Date().toISOString().split("T")[0],
+      time: remoteDoc.time || "",
+      tags: remoteDoc.tags || [],
+      images: remoteDoc.images || [],
+      gridSize: remoteDoc.gridSize || "medium",
+      sortMode: remoteDoc.sortMode || "manual",
+    };
+    setLastSavedAt(remoteDoc.updatedAt?.toDate() || null);
+    onUpdate(remoteDoc);
+  }, [onUpdate]);
 
-      // Update saved version ref to match remote
-      savedVersionRef.current = {
-        title: updated.title,
-        date: updated.date || new Date().toISOString().split("T")[0],
-        time: updated.time || "",
-        tags: updated.tags || [],
-        images: updated.images || [],
-        gridSize: updated.gridSize || "medium",
-        sortMode: updated.sortMode || "manual",
-      };
-      onUpdate(updated);
-    });
-
-    return () => unsubscribe();
-  }, [moodboard.id, onUpdate]);
+  // Handle sync conflict (local changes + remote changes)
+  const handleConflict = useCallback((remoteDoc: NoteItem) => {
+    setRemoteVersion(remoteDoc);
+    setShowConflictDialog(true);
+  }, []);
 
   // Autosave data - memoized to prevent unnecessary re-renders
   const autosaveData = useMemo(() => ({
@@ -176,6 +181,7 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
     });
 
     savedVersionRef.current = { ...data };
+    setLastSavedAt(new Date());
     onUpdate({ ...moodboard, ...data });
   }, [moodboard, onUpdate]);
 
@@ -188,6 +194,29 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
   });
 
   const isSaving = autosaveStatus === "saving";
+
+  // Check for remote updates when user returns to tab after inactivity
+  useFocusSync({
+    documentId: moodboard.id,
+    localUpdatedAt: lastSavedAt,
+    hasLocalChanges,
+    onRemoteUpdate: handleRemoteUpdate,
+    onConflict: handleConflict,
+  });
+
+  // Conflict resolution: accept remote version
+  const handleAcceptRemote = useCallback(() => {
+    if (!remoteVersion) return;
+    handleRemoteUpdate(remoteVersion);
+    markSaved();
+    setShowConflictDialog(false);
+  }, [remoteVersion, handleRemoteUpdate, markSaved]);
+
+  // Conflict resolution: keep local and overwrite remote
+  const handleKeepLocal = useCallback(async () => {
+    setShowConflictDialog(false);
+    triggerSave();
+  }, [triggerSave]);
 
   // Notify parent of unsaved changes
   useEffect(() => {
@@ -861,6 +890,18 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
           onUpdateCaption={handleUpdateCaption}
         />
       )}
+
+      {/* Sync Conflict Dialog */}
+      <ConfirmDialog
+        open={showConflictDialog}
+        title="Sync Conflict"
+        message="This album was updated on another device. What would you like to do with your local changes?"
+        confirmLabel="Save Mine"
+        cancelLabel="Load Theirs"
+        variant="danger"
+        onConfirm={handleKeepLocal}
+        onCancel={handleAcceptRemote}
+      />
     </div>
   );
 });
