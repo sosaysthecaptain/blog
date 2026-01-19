@@ -372,25 +372,26 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
   return (
     <div className="flex-1 h-full overflow-y-auto bg-[--background]">
       <div className={isFullWidth ? "px-4 py-6 md:px-8 md:py-12" : "max-w-3xl mx-auto px-4 py-6 md:px-8 md:py-12"}>
-        {/* Header row with back button and autosave status */}
+        {/* Header row with back button */}
         <div className="flex items-center justify-between mb-6">
           {/* Back button */}
-          {parentFolder ? (
-            <button
-              type="button"
-              onClick={handleBack}
-              className="flex items-center gap-2 text-sm text-[--muted] hover:text-[--foreground]"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              <span className="hidden sm:inline">Back to {parentFolder.title}</span>
-              <span className="sm:hidden">Back</span>
-            </button>
-          ) : (
-            <div />
-          )}
-
+          <button
+            type="button"
+            onClick={handleBack}
+            className="flex items-center gap-2 text-sm text-[--muted] hover:text-[--foreground]"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            {parentFolder ? (
+              <>
+                <span className="hidden sm:inline">Back to {parentFolder.title}</span>
+                <span className="sm:hidden">Back</span>
+              </>
+            ) : (
+              <span>Back</span>
+            )}
+          </button>
         </div>
 
         {/* Title */}

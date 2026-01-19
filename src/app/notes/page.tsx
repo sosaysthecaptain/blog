@@ -5,6 +5,8 @@ import { User } from "firebase/auth";
 import Link from "next/link";
 import {
   signInWithGoogle,
+  signInWithEmail,
+  signUpWithEmail,
   signOut,
   onAuthChange,
   isAdminEmail,
@@ -33,6 +35,162 @@ import MusicLibraryEditor, { MusicLibraryEditorRef } from "@/components/notes/Mu
 import FolderView from "@/components/notes/FolderView";
 import { ConfirmDialog, AlertDialog, ProgressDialog, SaveDiscardDialog } from "@/components/ui/Dialog";
 import JSZip from "jszip";
+
+// Hindenburg logo SVG path
+const HindenburgLogo = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 728 387" fill="currentColor">
+    <path d="M148.677 123.244C173.807 115.461 198.003 109.086 216.472 105.725C271.902 95.6382 308.571 92.5347 405.787 90.2071C503.003 87.8794 593.823 109.604 607.893 115.811C621.964 122.018 659.486 145.295 669.719 157.709C673.841 164.175 682.852 178.968 685.922 186.417C688.992 193.865 689.191 195.727 688.907 195.727C687.485 200.124 683.875 210.314 680.805 215.9C677.735 221.487 670.146 233.746 666.735 239.177C657.78 249.263 632.963 269.71 591.264 281.85C548.626 294.264 503.856 298.144 393.422 298.92C282.988 299.696 206.665 284.954 140.576 267.884C104.189 258.487 67.87 239.975 42.3196 224.54C30.7439 217.547 21.3785 211.186 15.2188 206.59C8.82298 202.71 1.83031 190.762 25.0256 174.003C29.2604 170.943 35.1597 167.536 42.3196 163.916L42.9338 159.261C44.7814 138.312 48.6473 95.1727 49.3295 90.2071C50.0117 85.2414 53.0249 84 54.4462 84C72.2122 84.5173 108.256 85.5518 110.303 85.5518C112.861 85.5518 119.683 87.1035 121.389 87.8794C123.094 88.6553 131.195 94.0865 138.87 103.397C145.01 110.846 147.967 119.732 148.677 123.244ZM42.3196 224.54C44.0878 244.678 47.7092 285.575 48.0504 288.057C48.3915 290.54 62.9739 295.816 70.2224 298.144C82.1612 300.73 107.83 305.437 114.993 303.575C123.947 301.247 133.754 295.04 137.165 290.385C140.576 285.73 145.692 277.195 147.824 270.988L140.576 267.884C67.87 239.975 42.3196 224.54 42.3196 224.54Z"/>
+  </svg>
+);
+
+function LoginScreen({ onGoogleSignIn }: { onGoogleSignIn: () => void }) {
+  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setIsLoading(true);
+
+    try {
+      if (mode === "login") {
+        await signInWithEmail(email, password);
+      } else {
+        await signUpWithEmail(email, password, displayName);
+      }
+    } catch (err: unknown) {
+      const error = err as { code?: string; message?: string };
+      if (error.code === "auth/user-not-found") {
+        setError("No account found with this email");
+      } else if (error.code === "auth/wrong-password") {
+        setError("Incorrect password");
+      } else if (error.code === "auth/email-already-in-use") {
+        setError("An account already exists with this email");
+      } else if (error.code === "auth/weak-password") {
+        setError("Password should be at least 6 characters");
+      } else if (error.code === "auth/invalid-email") {
+        setError("Invalid email address");
+      } else {
+        setError(error.message || "Authentication failed");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[--background] flex flex-col items-center justify-center px-4">
+      <div className="w-full max-w-sm">
+        {/* Logo */}
+        <div className="flex flex-col items-center mb-8">
+          <HindenburgLogo className="w-24 h-auto text-[--foreground] mb-4" />
+          <h1 className="text-2xl font-bold text-[--foreground]">Dirigible</h1>
+        </div>
+
+        {/* Mode toggle */}
+        <div className="flex mb-6 border-b border-[--border]">
+          <button
+            type="button"
+            onClick={() => { setMode("login"); setError(""); }}
+            className={`flex-1 py-2 text-sm font-medium transition-colors ${
+              mode === "login"
+                ? "text-[--foreground] border-b-2 border-[--foreground]"
+                : "text-[--muted] hover:text-[--foreground]"
+            }`}
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMode("signup"); setError(""); }}
+            className={`flex-1 py-2 text-sm font-medium transition-colors ${
+              mode === "signup"
+                ? "text-[--foreground] border-b-2 border-[--foreground]"
+                : "text-[--muted] hover:text-[--foreground]"
+            }`}
+          >
+            Sign Up
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleEmailAuth} className="space-y-4">
+          {mode === "signup" && (
+            <input
+              type="text"
+              placeholder="Display name"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              className="w-full px-3 py-2 bg-[--background] border border-[--border] rounded text-[--foreground] placeholder:text-[--muted] focus:outline-none focus:border-[--accent]"
+            />
+          )}
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            className="w-full px-3 py-2 bg-[--background] border border-[--border] rounded text-[--foreground] placeholder:text-[--muted] focus:outline-none focus:border-[--accent]"
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            className="w-full px-3 py-2 bg-[--background] border border-[--border] rounded text-[--foreground] placeholder:text-[--muted] focus:outline-none focus:border-[--accent]"
+          />
+
+          {error && (
+            <p className="text-red-500 text-sm">{error}</p>
+          )}
+
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full py-2 bg-[--foreground] text-[--background] rounded font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            {isLoading ? "..." : mode === "login" ? "Sign In" : "Create Account"}
+          </button>
+        </form>
+
+        {/* Divider */}
+        <div className="flex items-center my-6">
+          <div className="flex-1 border-t border-[--border]" />
+          <span className="px-3 text-xs text-[--muted]">or</span>
+          <div className="flex-1 border-t border-[--border]" />
+        </div>
+
+        {/* Google sign in */}
+        <button
+          type="button"
+          onClick={onGoogleSignIn}
+          className="w-full py-2 border border-[--border] rounded text-[--foreground] hover:bg-[--hover] flex items-center justify-center gap-2"
+        >
+          <svg className="w-4 h-4" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+          </svg>
+          Continue with Google
+        </button>
+
+        {/* Back link */}
+        <Link
+          href="/"
+          className="block mt-8 text-center text-[--muted] hover:text-[--accent] text-sm"
+        >
+          &larr; back to site
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 export default function NotesPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -936,36 +1094,7 @@ ${content}`;
 
   // Auth gate
   if (!user) {
-    return (
-      <div className="min-h-screen bg-[--background] flex flex-col items-center justify-center">
-        <div className="flex items-center gap-3 mb-8">
-          {/* Dirigible logo */}
-          <svg className="w-10 h-10 text-[--foreground]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <g transform="scale(-1,1) translate(-24,0)">
-              <ellipse cx="11" cy="9" rx="8" ry="4.5" />
-              <path d="M18 6.5 L21 4.5 L21 8" />
-              <path d="M18 11.5 L21 13.5 L21 10" />
-              <rect x="7" y="16" width="8" height="2.5" rx="0.75" />
-              <path d="M8.5 13.5 L8 16" />
-              <path d="M13.5 13.5 L14 16" />
-            </g>
-          </svg>
-          <h1 className="text-2xl font-bold text-[--foreground]">Dirigible</h1>
-        </div>
-        <button
-          onClick={handleSignIn}
-          className="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700"
-        >
-          Sign in with Google
-        </button>
-        <Link
-          href="/"
-          className="mt-8 text-[--muted] hover:text-[--accent] text-sm"
-        >
-          &larr; back to site
-        </Link>
-      </div>
-    );
+    return <LoginScreen onGoogleSignIn={handleSignIn} />;
   }
 
   return (

@@ -444,21 +444,23 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
         {/* Header row with back button and controls */}
         <div className="flex items-center justify-between mb-6">
           {/* Back button */}
-          {parentFolder ? (
-            <button
-              type="button"
-              onClick={onBack}
-              className="flex items-center gap-2 text-sm text-[--muted] hover:text-[--foreground]"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              <span className="hidden sm:inline">Back to {parentFolder.title}</span>
-              <span className="sm:hidden">Back</span>
-            </button>
-          ) : (
-            <div />
-          )}
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex items-center gap-2 text-sm text-[--muted] hover:text-[--foreground]"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            {parentFolder ? (
+              <>
+                <span className="hidden sm:inline">Back to {parentFolder.title}</span>
+                <span className="sm:hidden">Back</span>
+              </>
+            ) : (
+              <span>Back</span>
+            )}
+          </button>
 
           {/* Action buttons and controls */}
           <div className="flex items-center gap-2">

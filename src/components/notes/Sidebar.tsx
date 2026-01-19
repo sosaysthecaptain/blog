@@ -133,8 +133,9 @@ export default function Sidebar({
           return false;
         })
       : items;
-    return sortItems(result, sortOption);
-  }, [items, searchQuery, sortOption]);
+    // Sidebar tree always uses manual order - sortOption only affects FolderView
+    return sortItems(result, "manual");
+  }, [items, searchQuery]);
 
   // Auto-expand parent folders when an item is selected
   useEffect(() => {

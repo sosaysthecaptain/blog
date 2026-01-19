@@ -570,14 +570,14 @@ export default function TiptapEditor({
         }
         .tiptap-editor .ProseMirror ul[data-type="taskList"] li > label {
           flex-shrink: 0;
-          margin-top: 0.3rem;
+          margin-top: 0.175rem;
         }
         .tiptap-editor .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"] {
           -webkit-appearance: none;
           appearance: none;
           width: 1rem;
           height: 1rem;
-          border: 1.5px solid var(--border);
+          border: 2px solid var(--muted);
           border-radius: 3px;
           background: var(--background);
           cursor: pointer;
@@ -668,6 +668,17 @@ export default function TiptapEditor({
         /* Dark mode adjustments */
         :root.dark .tiptap-editor .ProseMirror code {
           background: rgba(255, 255, 255, 0.1);
+        }
+        :root.dark .tiptap-editor .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"] {
+          border-color: var(--foreground);
+          background: transparent;
+        }
+        :root.dark .tiptap-editor .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"]:checked {
+          background: var(--foreground);
+          border-color: var(--foreground);
+        }
+        :root.dark .tiptap-editor .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"]:checked::after {
+          border-color: var(--background);
         }
       `}</style>
     </div>

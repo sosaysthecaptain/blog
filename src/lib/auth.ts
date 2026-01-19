@@ -1,5 +1,7 @@
 import {
   signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   GoogleAuthProvider,
   onAuthStateChanged,
@@ -47,6 +49,42 @@ export async function signInWithGoogle(): Promise<User | null> {
     return result.user;
   } catch (error) {
     console.error("Sign in error:", error);
+    throw error;
+  }
+}
+
+export async function signInWithEmail(email: string, password: string): Promise<User | null> {
+  try {
+    const result = await signInWithEmailAndPassword(auth, email, password);
+
+    // Update last login in Firestore
+    const existingUser = await getUserByEmail(email);
+    if (existingUser?.id) {
+      await updateUser(existingUser.id, { lastLogin: Timestamp.now() });
+    }
+
+    return result.user;
+  } catch (error) {
+    console.error("Email sign in error:", error);
+    throw error;
+  }
+}
+
+export async function signUpWithEmail(email: string, password: string, displayName?: string): Promise<User | null> {
+  try {
+    const result = await createUserWithEmailAndPassword(auth, email, password);
+
+    // Create user profile in Firestore
+    await createUser({
+      email,
+      displayName: displayName || email.split("@")[0],
+      role: isAdminEmail(email) ? "admin" : "user",
+      lastLogin: Timestamp.now(),
+    });
+
+    return result.user;
+  } catch (error) {
+    console.error("Email sign up error:", error);
     throw error;
   }
 }
