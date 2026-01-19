@@ -71,59 +71,54 @@ export default function AccountModal({ userEmail, items, onExport, onClose }: Ac
 
       {/* Modal */}
       <div
-        className="relative w-full max-w-xs border border-[--border]"
+        className="relative w-full max-w-sm border border-[--border]"
         style={{ backgroundColor: 'var(--background)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-[--border]">
-          <span className="text-xs font-medium text-[--foreground] uppercase tracking-wide">Account</span>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[--border]">
+          <span className="text-sm font-medium text-[--foreground]">Account</span>
           <button
             type="button"
             onClick={onClose}
-            className="p-0.5 text-[--muted] hover:text-[--foreground]"
+            className="p-1 text-[--muted] hover:text-[--foreground]"
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
         {/* Content */}
-        <div className="px-3 py-2">
-          <div className="flex py-1 text-xs">
-            <span className="w-20 flex-shrink-0 text-[--muted]">Email</span>
-            <span className="text-[--foreground] break-words min-w-0">{userEmail || "—"}</span>
+        <div className="px-4 py-3 space-y-3">
+          <div className="space-y-2">
+            <div className="flex text-sm">
+              <span className="w-16 flex-shrink-0 text-[--muted]">Email</span>
+              <span className="text-[--foreground] break-words min-w-0">{userEmail || "—"}</span>
+            </div>
+            <div className="flex text-sm">
+              <span className="w-16 flex-shrink-0 text-[--muted]">Plan</span>
+              <span className="text-[--foreground]">Free</span>
+            </div>
+            <div className="flex text-sm">
+              <span className="w-16 flex-shrink-0 text-[--muted]">Items</span>
+              <span className="text-[--foreground]">{stats.totalItems}</span>
+            </div>
+            <div className="flex text-sm">
+              <span className="w-16 flex-shrink-0 text-[--muted]">Usage</span>
+              <span className="text-[--foreground]">{stats.storage}</span>
+            </div>
           </div>
-          <div className="flex py-1 text-xs">
-            <span className="w-20 flex-shrink-0 text-[--muted]">Plan</span>
-            <span className="text-[--foreground]">Free</span>
-          </div>
-          <div className="flex py-1 text-xs">
-            <span className="w-20 flex-shrink-0 text-[--muted]">Items</span>
-            <span className="text-[--foreground]">{stats.totalItems}</span>
-          </div>
-          <div className="flex py-1 text-xs">
-            <span className="w-20 flex-shrink-0 text-[--muted]">Usage</span>
-            <span className="text-[--foreground]">{stats.storage}</span>
-          </div>
-        </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-[--border]">
           <button
             type="button"
             onClick={() => { onExport(); onClose(); }}
-            className="dialog-btn dialog-btn-secondary"
+            className="flex items-center gap-2 text-sm text-[--muted] hover:text-[--foreground]"
           >
-            Export
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="dialog-btn dialog-btn-primary"
-          >
-            Done
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            Export all data
           </button>
         </div>
       </div>
