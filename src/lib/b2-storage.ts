@@ -18,11 +18,14 @@ export interface B2UploadResult {
 }
 
 /**
- * Get the URL for a file in B2 via our proxy endpoint
+ * Get the public URL for a file in B2
+ * Requires bucket to be configured with "allPublic" access
  */
 export function getB2PublicUrl(path: string): string {
-  // Use our API proxy to serve files from private B2 bucket
-  return `/api/files/${path}`;
+  // Direct B2 public URL - bucket must be set to public
+  // Format: https://f{region-code}.backblazeb2.com/file/{bucket-name}/{path}
+  // For us-west-004, region code is 005
+  return `https://f005.backblazeb2.com/file/${B2_BUCKET}/${path}`;
 }
 
 /**

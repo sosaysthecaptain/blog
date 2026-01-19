@@ -1,8 +1,9 @@
 import { onObjectFinalized } from "firebase-functions/v2/storage";
-import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import sharp from "sharp";
 import * as path from "path";
+import * as crypto from "crypto";
 
 admin.initializeApp();
 
@@ -310,6 +311,279 @@ export const identifyAudio = onCall(
         throw error;
       }
       throw new HttpsError("internal", "Failed to identify audio");
+    }
+  }
+);
+
+// B2 configuration from environment
+const B2_KEY_ID = process.env.B2_KEY_ID || "";
+const B2_APP_KEY = process.env.B2_APPLICATION_KEY || "";
+const B2_BUCKET = process.env.B2_BUCKET_NAME || "dirigible-content";
+
+// Cache B2 auth token
+let b2AuthCache: {
+  apiUrl: string;
+  authorizationToken: string;
+  downloadUrl: string;
+  bucketId: string;
+  expiresAt: number;
+} | null = null;
+
+async function getB2Auth() {
+  if (b2AuthCache && Date.now() < b2AuthCache.expiresAt - 5 * 60 * 1000) {
+    return b2AuthCache;
+  }
+
+  const authResponse = await fetch(
+    "https://api.backblazeb2.com/b2api/v2/b2_authorize_account",
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${B2_KEY_ID}:${B2_APP_KEY}`).toString("base64")}`,
+      },
+    }
+  );
+
+  if (!authResponse.ok) {
+    throw new Error(`B2 auth failed: ${authResponse.statusText}`);
+  }
+
+  const authData = await authResponse.json();
+  let bucketId = authData.allowed?.bucketId;
+
+  // If no bucketId (master key), list buckets to find it
+  if (!bucketId) {
+    const listResponse = await fetch(
+      `${authData.apiUrl}/b2api/v2/b2_list_buckets`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: authData.authorizationToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ accountId: authData.accountId, bucketName: B2_BUCKET }),
+      }
+    );
+    const bucketsData = await listResponse.json();
+    const bucket = bucketsData.buckets?.find((b: { bucketName: string }) => b.bucketName === B2_BUCKET);
+    if (bucket) bucketId = bucket.bucketId;
+  }
+
+  b2AuthCache = {
+    apiUrl: authData.apiUrl,
+    authorizationToken: authData.authorizationToken,
+    downloadUrl: authData.downloadUrl,
+    bucketId,
+    expiresAt: Date.now() + 23 * 60 * 60 * 1000,
+  };
+
+  return b2AuthCache;
+}
+
+/**
+ * HTTP endpoint for uploading files to B2.
+ * Accepts multipart form data with 'file' and 'path' fields.
+ */
+export const uploadToB2 = onRequest(
+  {
+    memory: "512MiB",
+    timeoutSeconds: 120,
+    cors: true,
+  },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).json({ error: "Method not allowed" });
+      return;
+    }
+
+    if (!B2_KEY_ID || !B2_APP_KEY) {
+      res.status(500).json({ error: "B2 credentials not configured" });
+      return;
+    }
+
+    try {
+      // Parse multipart form data
+      const busboy = await import("busboy");
+      const bb = busboy.default({ headers: req.headers });
+
+      let fileBuffer: Buffer | null = null;
+      let filePath = "";
+      let contentType = "application/octet-stream";
+
+      const parsePromise = new Promise<void>((resolve, reject) => {
+        bb.on("file", (name: string, file: NodeJS.ReadableStream, info: { filename: string; mimeType: string }) => {
+          const chunks: Buffer[] = [];
+          file.on("data", (chunk: Buffer) => chunks.push(chunk));
+          file.on("end", () => {
+            fileBuffer = Buffer.concat(chunks);
+            contentType = info.mimeType || "application/octet-stream";
+          });
+        });
+        bb.on("field", (name: string, val: string) => {
+          if (name === "path") filePath = val;
+        });
+        bb.on("finish", resolve);
+        bb.on("error", reject);
+      });
+
+      req.pipe(bb);
+      await parsePromise;
+
+      if (!fileBuffer || !filePath) {
+        res.status(400).json({ error: "Missing file or path" });
+        return;
+      }
+
+      // Type assertion after null check
+      const buffer = fileBuffer as Buffer;
+
+      // Get B2 auth
+      const auth = await getB2Auth();
+
+      // Get upload URL
+      const uploadUrlResponse = await fetch(
+        `${auth.apiUrl}/b2api/v2/b2_get_upload_url`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: auth.authorizationToken,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ bucketId: auth.bucketId }),
+        }
+      );
+
+      if (!uploadUrlResponse.ok) {
+        throw new Error(`Failed to get upload URL: ${uploadUrlResponse.statusText}`);
+      }
+
+      const uploadData = await uploadUrlResponse.json();
+
+      // Compute SHA1 hash
+      const sha1 = crypto.createHash("sha1").update(buffer).digest("hex");
+
+      // Upload file
+      const uploadResponse = await fetch(uploadData.uploadUrl, {
+        method: "POST",
+        headers: {
+          Authorization: uploadData.authorizationToken,
+          "Content-Type": contentType,
+          "Content-Length": buffer.length.toString(),
+          "X-Bz-File-Name": encodeURIComponent(filePath),
+          "X-Bz-Content-Sha1": sha1,
+        },
+        body: new Uint8Array(buffer),
+      });
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        throw new Error(`Upload failed: ${uploadResponse.statusText} - ${errorText}`);
+      }
+
+      const result = await uploadResponse.json();
+
+      // Return public URL
+      const publicUrl = `https://f005.backblazeb2.com/file/${B2_BUCKET}/${filePath}`;
+
+      res.json({
+        url: publicUrl,
+        path: filePath,
+        size: result.contentLength,
+      });
+    } catch (error) {
+      console.error("Upload error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Upload failed",
+      });
+    }
+  }
+);
+
+/**
+ * Delete a file from B2
+ */
+export const deleteFromB2 = onRequest(
+  {
+    memory: "256MiB",
+    timeoutSeconds: 30,
+    cors: true,
+  },
+  async (req, res) => {
+    if (req.method !== "DELETE" && req.method !== "POST") {
+      res.status(405).json({ error: "Method not allowed" });
+      return;
+    }
+
+    if (!B2_KEY_ID || !B2_APP_KEY) {
+      res.status(500).json({ error: "B2 credentials not configured" });
+      return;
+    }
+
+    try {
+      const { path: filePath } = req.body;
+
+      if (!filePath) {
+        res.status(400).json({ error: "Missing path parameter" });
+        return;
+      }
+
+      const auth = await getB2Auth();
+
+      // List file versions to get fileId
+      const listResponse = await fetch(
+        `${auth.apiUrl}/b2api/v2/b2_list_file_names`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: auth.authorizationToken,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            bucketId: auth.bucketId,
+            prefix: filePath,
+            maxFileCount: 1,
+          }),
+        }
+      );
+
+      if (!listResponse.ok) {
+        throw new Error(`Failed to list files: ${listResponse.statusText}`);
+      }
+
+      const listData = await listResponse.json();
+      const file = listData.files.find((f: { fileName: string }) => f.fileName === filePath);
+
+      if (!file) {
+        res.json({ success: true, message: "File not found" });
+        return;
+      }
+
+      // Delete file
+      const deleteResponse = await fetch(
+        `${auth.apiUrl}/b2api/v2/b2_delete_file_version`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: auth.authorizationToken,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            fileName: filePath,
+            fileId: file.fileId,
+          }),
+        }
+      );
+
+      if (!deleteResponse.ok) {
+        throw new Error(`Delete failed: ${deleteResponse.statusText}`);
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Delete failed",
+      });
     }
   }
 );
