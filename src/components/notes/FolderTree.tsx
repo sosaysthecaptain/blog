@@ -196,8 +196,7 @@ export default function FolderTree({
               {isDropBefore && (
                 <div className="absolute left-0 right-0 top-0 h-0.5 bg-blue-500 z-10" style={{ marginLeft: `${level * 12 + 8}px` }} />
               )}
-              <button
-                type="button"
+              <div
                 draggable={!isRenaming}
                 onDragStart={(e) => {
                   if (isRenaming) return;
@@ -214,7 +213,7 @@ export default function FolderTree({
                 onDrop={(e) => handleDrop(e, item.id!, item)}
                 onClick={() => !isRenaming && onSelect(item)}
                 onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, item, parentId); }}
-                className={`w-full flex items-center gap-1 px-2 py-0.5 text-[11px] text-left transition-colors ${
+                className={`w-full flex items-center gap-1 px-2 py-0.5 text-[11px] text-left transition-colors cursor-pointer ${
                   !isSelected && !isDropInside ? "hover:bg-[--hover]" : ""
                 } ${isDragging ? "opacity-50" : ""}`}
                 style={{
@@ -255,7 +254,7 @@ export default function FolderTree({
                 ) : (
                   <span className="truncate text-[11px]">{item.title || "Untitled"}</span>
                 )}
-              </button>
+              </div>
               {/* Drop indicator - after */}
               {isDropAfter && (
                 <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-blue-500 z-10" style={{ marginLeft: `${level * 12 + 8}px` }} />

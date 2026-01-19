@@ -6,6 +6,10 @@ import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
+import { Table } from "@tiptap/extension-table";
+import { TableRow } from "@tiptap/extension-table-row";
+import { TableHeader } from "@tiptap/extension-table-header";
+import { TableCell } from "@tiptap/extension-table-cell";
 import { Extension, InputRule } from "@tiptap/core";
 
 // Custom input rules for "- []" and "- [x]" syntax
@@ -38,7 +42,7 @@ const TaskListInputRules = Extension.create({
     ];
   },
 });
-import { useEffect, useCallback, useRef, useState } from "react";
+import { useEffect, useCallback, useRef } from "react";
 import { uploadNoteImage, uploadNoteFile } from "@/lib/notes-storage";
 import { ImagePlaceholder } from "./ImagePlaceholder";
 import { ImageWithCaption } from "./ImageWithCaption";
@@ -105,6 +109,12 @@ export default function TiptapEditor({
         nested: true,
       }),
       TaskListInputRules,
+      Table.configure({
+        resizable: true,
+      }),
+      TableRow,
+      TableHeader,
+      TableCell,
     ],
     content,
     onUpdate: ({ editor }) => {
@@ -295,6 +305,46 @@ export default function TiptapEditor({
     [editor, noteId, onMediaAdded]
   );
 
+  // Parse markdown table to TipTap table JSON
+  const parseMarkdownTable = useCallback((text: string) => {
+    const lines = text.trim().split('\n');
+    if (lines.length < 2) return null;
+
+    // Check if it looks like a markdown table
+    const isTableLine = (line: string) => line.trim().startsWith('|') && line.trim().endsWith('|');
+    const isSeparatorLine = (line: string) => /^\|[\s\-:|]+\|$/.test(line.trim());
+
+    if (!lines.every((line, i) => i === 1 ? isSeparatorLine(line) : isTableLine(line))) {
+      return null;
+    }
+
+    // Parse rows (skip separator line at index 1)
+    const rows = lines
+      .filter((_, i) => i !== 1)
+      .map(line => {
+        return line
+          .split('|')
+          .slice(1, -1) // Remove empty strings from leading/trailing |
+          .map(cell => cell.trim());
+      });
+
+    if (rows.length === 0 || rows[0].length === 0) return null;
+
+    // Build TipTap table structure
+    const tableContent = rows.map((row, rowIndex) => ({
+      type: rowIndex === 0 ? 'tableRow' : 'tableRow',
+      content: row.map(cell => ({
+        type: rowIndex === 0 ? 'tableHeader' : 'tableCell',
+        content: [{ type: 'paragraph', content: cell ? [{ type: 'text', text: cell }] : [] }],
+      })),
+    }));
+
+    return {
+      type: 'table',
+      content: tableContent,
+    };
+  }, []);
+
   // Handle file paste/drop events (images and other files)
   useEffect(() => {
     if (!editor) return;
@@ -302,6 +352,7 @@ export default function TiptapEditor({
     const editorElement = editor.view.dom;
 
     const handlePaste = (event: ClipboardEvent) => {
+      // First check for files
       const files = event.clipboardData?.files;
       if (files && files.length > 0) {
         for (let i = 0; i < files.length; i++) {
@@ -312,6 +363,17 @@ export default function TiptapEditor({
           } else {
             handleFileUpload(file);
           }
+          return;
+        }
+      }
+
+      // Check for markdown table in pasted text
+      const text = event.clipboardData?.getData('text/plain');
+      if (text) {
+        const table = parseMarkdownTable(text);
+        if (table) {
+          event.preventDefault();
+          editor.chain().focus().insertContent(table).run();
           return;
         }
       }
@@ -339,7 +401,7 @@ export default function TiptapEditor({
       editorElement.removeEventListener("paste", handlePaste);
       editorElement.removeEventListener("drop", handleDrop);
     };
-  }, [editor, handleImageUpload, handleFileUpload]);
+  }, [editor, handleImageUpload, handleFileUpload, parseMarkdownTable]);
 
   // Update content when it changes externally
   useEffect(() => {
@@ -370,26 +432,6 @@ export default function TiptapEditor({
     return () => editorElement.removeEventListener("dblclick", handleDoubleClick);
   }, [editor, onImageClick]);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [showUploadMenu, setShowUploadMenu] = useState(false);
-
-  const handleFileInputChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (files && files.length > 0) {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (file.type.startsWith("image/")) {
-          handleImageUpload(file);
-        } else {
-          handleFileUpload(file);
-        }
-      }
-    }
-    // Reset input so same file can be selected again
-    event.target.value = "";
-    setShowUploadMenu(false);
-  }, [handleImageUpload, handleFileUpload]);
-
   if (!editor) {
     return (
       <div className="min-h-[400px]">
@@ -402,74 +444,6 @@ export default function TiptapEditor({
     <div className="tiptap-editor font-serif relative">
       <EditorContent editor={editor} />
 
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept="*/*"
-        onChange={handleFileInputChange}
-        style={{ display: "none" }}
-      />
-
-      {/* Upload button - floating action button */}
-      <div className="fixed bottom-6 right-6 sm:absolute sm:bottom-4 sm:right-4 z-50">
-        <button
-          type="button"
-          onClick={() => setShowUploadMenu(!showUploadMenu)}
-          className="w-12 h-12 sm:w-10 sm:h-10 rounded-full bg-[--accent] text-white shadow-lg hover:opacity-90 transition-all flex items-center justify-center"
-          title="Add image or file"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6 sm:w-5 sm:h-5">
-            <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
-          </svg>
-        </button>
-
-        {/* Upload menu dropdown */}
-        {showUploadMenu && (
-          <>
-            <div
-              className="fixed inset-0 z-40"
-              onClick={() => setShowUploadMenu(false)}
-            />
-            <div className="absolute bottom-14 sm:bottom-12 right-0 bg-[--background] border border-[--border] rounded-lg shadow-xl overflow-hidden z-50 min-w-[160px]">
-              <button
-                type="button"
-                onClick={() => {
-                  if (fileInputRef.current) {
-                    fileInputRef.current.accept = "image/*";
-                    fileInputRef.current.click();
-                  }
-                }}
-                className="w-full px-4 py-3 text-left text-sm hover:bg-[--hover] flex items-center gap-3 transition-colors"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 text-[--accent]">
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                  <circle cx="8.5" cy="8.5" r="1.5" />
-                  <path d="M21 15l-5-5L5 21" />
-                </svg>
-                <span>Add Image</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (fileInputRef.current) {
-                    fileInputRef.current.accept = "*/*";
-                    fileInputRef.current.click();
-                  }
-                }}
-                className="w-full px-4 py-3 text-left text-sm hover:bg-[--hover] flex items-center gap-3 transition-colors border-t border-[--border]"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 text-[--accent]">
-                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                  <path d="M14 2v6h6M12 18v-6M9 15l3-3 3 3" />
-                </svg>
-                <span>Add File</span>
-              </button>
-            </div>
-          </>
-        )}
-      </div>
 
       <style jsx global>{`
         .tiptap-editor .ProseMirror {
@@ -596,13 +570,37 @@ export default function TiptapEditor({
         }
         .tiptap-editor .ProseMirror ul[data-type="taskList"] li > label {
           flex-shrink: 0;
-          margin-top: 0.2rem;
+          margin-top: 0.3rem;
         }
         .tiptap-editor .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"] {
+          -webkit-appearance: none;
+          appearance: none;
           width: 1rem;
           height: 1rem;
+          border: 1.5px solid var(--border);
+          border-radius: 3px;
+          background: var(--background);
           cursor: pointer;
-          accent-color: var(--accent);
+          position: relative;
+          transition: all 0.15s ease;
+        }
+        .tiptap-editor .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"]:hover {
+          border-color: var(--foreground);
+        }
+        .tiptap-editor .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"]:checked {
+          background: var(--foreground);
+          border-color: var(--foreground);
+        }
+        .tiptap-editor .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"]:checked::after {
+          content: '';
+          position: absolute;
+          left: 50%;
+          top: 45%;
+          width: 5px;
+          height: 9px;
+          border: solid white;
+          border-width: 0 2px 2px 0;
+          transform: translate(-50%, -50%) rotate(45deg);
         }
         .tiptap-editor .ProseMirror ul[data-type="taskList"] li > div {
           flex: 1;
@@ -618,6 +616,53 @@ export default function TiptapEditor({
         /* Task list nested under regular list */
         .tiptap-editor .ProseMirror li > ul[data-type="taskList"] {
           margin: 0.125rem 0;
+        }
+
+        /* Table styles */
+        .tiptap-editor .ProseMirror table {
+          border-collapse: collapse;
+          margin: 1rem 0;
+          overflow: hidden;
+          table-layout: fixed;
+          width: 100%;
+        }
+        .tiptap-editor .ProseMirror table td,
+        .tiptap-editor .ProseMirror table th {
+          border: 1px solid var(--border);
+          box-sizing: border-box;
+          min-width: 1em;
+          padding: 0.5rem 0.75rem;
+          position: relative;
+          vertical-align: top;
+        }
+        .tiptap-editor .ProseMirror table th {
+          background: var(--hover);
+          font-weight: 600;
+          text-align: left;
+        }
+        .tiptap-editor .ProseMirror table .selectedCell:after {
+          background: rgba(var(--accent-rgb, 59, 130, 246), 0.15);
+          content: "";
+          left: 0;
+          right: 0;
+          top: 0;
+          bottom: 0;
+          pointer-events: none;
+          position: absolute;
+          z-index: 2;
+        }
+        .tiptap-editor .ProseMirror table .column-resize-handle {
+          background-color: var(--accent);
+          bottom: -2px;
+          pointer-events: none;
+          position: absolute;
+          right: -2px;
+          top: 0;
+          width: 4px;
+        }
+        .tiptap-editor .ProseMirror .tableWrapper {
+          overflow-x: auto;
+          margin: 1rem 0;
         }
 
         /* Dark mode adjustments */

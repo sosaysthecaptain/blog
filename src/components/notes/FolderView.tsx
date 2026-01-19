@@ -18,6 +18,8 @@ export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 
 export function sortItems(items: NoteItem[], sortOption: SortOption): NoteItem[] {
   return [...items].sort((a, b) => {
+    const aTitle = a.title || "";
+    const bTitle = b.title || "";
     switch (sortOption) {
       case "manual":
         // Sort by sortOrder (lower = earlier), then by createdAt for items without sortOrder
@@ -34,9 +36,9 @@ export function sortItems(items: NoteItem[], sortOption: SortOption): NoteItem[]
       case "date-asc":
         return (a.date || "").localeCompare(b.date || "");
       case "title-asc":
-        return a.title.localeCompare(b.title);
+        return aTitle.localeCompare(bTitle);
       case "title-desc":
-        return b.title.localeCompare(a.title);
+        return bTitle.localeCompare(aTitle);
       case "updated-desc":
         const aTime = a.updatedAt?.toMillis?.() || 0;
         const bTime = b.updatedAt?.toMillis?.() || 0;

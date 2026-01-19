@@ -450,9 +450,6 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
                 style={{ fontFamily: "'Lucida Grande', 'Lucida Sans Unicode', sans-serif" }}
               />
             </div>
-            {isSaving && (
-              <span className="text-xs text-[--muted]">Saving...</span>
-            )}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
