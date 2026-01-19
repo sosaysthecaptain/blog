@@ -125,7 +125,7 @@ function LoginScreen({ onGoogleSignIn }: { onGoogleSignIn: () => void }) {
               placeholder="Display name"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full px-3 py-2 bg-[--background] border border-[--border] rounded text-[--foreground] placeholder:text-[--muted] focus:outline-none focus:border-[--accent]"
+              className="w-full px-3 py-2 bg-transparent border border-[--border] rounded text-[--foreground] placeholder:text-[--muted] focus:outline-none focus:border-[--foreground]"
             />
           )}
           <input
@@ -134,7 +134,7 @@ function LoginScreen({ onGoogleSignIn }: { onGoogleSignIn: () => void }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            className="w-full px-3 py-2 bg-[--background] border border-[--border] rounded text-[--foreground] placeholder:text-[--muted] focus:outline-none focus:border-[--accent]"
+            className="w-full px-3 py-2 bg-transparent border border-[--border] rounded text-[--foreground] placeholder:text-[--muted] focus:outline-none focus:border-[--foreground]"
           />
           <input
             type="password"
@@ -142,7 +142,7 @@ function LoginScreen({ onGoogleSignIn }: { onGoogleSignIn: () => void }) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            className="w-full px-3 py-2 bg-[--background] border border-[--border] rounded text-[--foreground] placeholder:text-[--muted] focus:outline-none focus:border-[--accent]"
+            className="w-full px-3 py-2 bg-transparent border border-[--border] rounded text-[--foreground] placeholder:text-[--muted] focus:outline-none focus:border-[--foreground]"
           />
 
           {error && (
