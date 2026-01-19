@@ -1127,6 +1127,7 @@ ${content}`;
           currentFolderId={currentFolderId}
           isDark={isDark}
           sortOption={sortOption}
+          userEmail={user?.email || undefined}
           onSelect={(item) => {
             handleSelect(item);
             setMobileSidebarOpen(false);
@@ -1154,7 +1155,6 @@ ${content}`;
           onExport={handleExport}
           onExportFolder={handleExportFolder}
           onExportArchivable={handleExportArchivable}
-          onImportBlogPosts={handleImportBlogPosts}
           onToggleDarkMode={toggleDarkMode}
           onSignOut={handleSignOut}
           isFullWidth={isFullWidth}

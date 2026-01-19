@@ -16,6 +16,7 @@ interface SidebarProps {
   isFullWidth: boolean;
   renamingId: string | null;
   sortOption: SortOption;
+  userEmail?: string;
   onSelect: (item: NoteItem) => void;
   onToggleCollapse: () => void;
   onCreateNote: (parentId: string | null) => void;
@@ -32,7 +33,6 @@ interface SidebarProps {
   onExport: () => void;
   onExportFolder: (folderId: string) => void;
   onExportArchivable: (folderId: string) => void;
-  onImportBlogPosts: () => void;
   onToggleDarkMode: () => void;
   onToggleFullWidth: () => void;
   onSignOut: () => void;
@@ -50,6 +50,7 @@ export default function Sidebar({
   isFullWidth,
   renamingId,
   sortOption,
+  userEmail,
   onSelect,
   onToggleCollapse,
   onCreateNote,
@@ -66,7 +67,6 @@ export default function Sidebar({
   onExport,
   onExportFolder,
   onExportArchivable,
-  onImportBlogPosts,
   onToggleDarkMode,
   onToggleFullWidth,
   onSignOut,
@@ -82,7 +82,7 @@ export default function Sidebar({
     item: NoteItem | null;
     parentId: string | null;
   } | null>(null);
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNewMenu, setShowNewMenu] = useState(false);
   const [localSearchInput, setLocalSearchInput] = useState("");
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -190,9 +190,12 @@ export default function Sidebar({
     onSearch(value);
   };
 
-  // Collapsed new menu state
+  // Collapsed menu states
   const [collapsedNewMenu, setCollapsedNewMenu] = useState(false);
-  const [collapsedMoreMenu, setCollapsedMoreMenu] = useState(false);
+  const [collapsedUserMenu, setCollapsedUserMenu] = useState(false);
+
+  // Get user initials from email
+  const userInitials = userEmail ? userEmail.charAt(0).toUpperCase() : "?";
 
   if (collapsed) {
     return (
@@ -213,7 +216,7 @@ export default function Sidebar({
         <div className="relative">
           <button
             type="button"
-            onClick={() => { setCollapsedNewMenu(!collapsedNewMenu); setCollapsedMoreMenu(false); }}
+            onClick={() => { setCollapsedNewMenu(!collapsedNewMenu); setCollapsedUserMenu(false); }}
             className="p-3 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] w-full"
             title="Create new..."
           >
@@ -261,58 +264,76 @@ export default function Sidebar({
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* More menu at bottom */}
-        <div className="relative">
+        {/* User menu at bottom */}
+        <div className="relative p-2">
           <button
             type="button"
-            onClick={() => { setCollapsedMoreMenu(!collapsedMoreMenu); setCollapsedNewMenu(false); }}
-            className="p-3 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] w-full"
-            title="More options"
+            onClick={() => { setCollapsedUserMenu(!collapsedUserMenu); setCollapsedNewMenu(false); }}
+            className="w-8 h-8 rounded-full bg-[--accent] text-white flex items-center justify-center text-sm font-medium hover:opacity-90"
+            title={userEmail || "Account"}
           >
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z" />
-            </svg>
+            {userInitials}
           </button>
-          {collapsedMoreMenu && (
+          {collapsedUserMenu && (
             <div
-              className="absolute left-full bottom-0 ml-1 rounded shadow-lg py-1 z-50 min-w-[160px]"
+              className="absolute left-full bottom-0 ml-1 rounded shadow-lg py-1 z-50 min-w-[200px]"
               style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)' }}
             >
+              {/* User email header */}
+              <div className="px-3 py-2 border-b border-[--border]">
+                <p className="text-xs text-[--muted] truncate">{userEmail}</p>
+              </div>
               <button
                 type="button"
-                onClick={() => { onToggleDarkMode(); setCollapsedMoreMenu(false); }}
+                onClick={() => { onToggleDarkMode(); setCollapsedUserMenu(false); }}
                 className="context-menu-item flex items-center gap-2"
               >
+                {isDark ? (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+                  </svg>
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+                  </svg>
+                )}
                 {isDark ? "Light mode" : "Dark mode"}
               </button>
               <button
                 type="button"
-                onClick={() => { onToggleFullWidth(); setCollapsedMoreMenu(false); }}
+                onClick={() => { onToggleFullWidth(); setCollapsedUserMenu(false); }}
                 className="context-menu-item flex items-center gap-2"
               >
+                {isFullWidth ? (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+                  </svg>
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                  </svg>
+                )}
                 {isFullWidth ? "Constrain width" : "Full width"}
               </button>
-              <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
               <button
                 type="button"
-                onClick={() => { window.location.href = '/admin'; }}
-                className="context-menu-item"
+                onClick={() => { onExport(); setCollapsedUserMenu(false); }}
+                className="context-menu-item flex items-center gap-2"
               >
-                Admin
-              </button>
-              <button
-                type="button"
-                onClick={() => { window.location.href = '/'; }}
-                className="context-menu-item"
-              >
-                Home
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+                Export all notes
               </button>
               <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
               <button
                 type="button"
-                onClick={() => { onSignOut(); setCollapsedMoreMenu(false); }}
-                className="context-menu-item danger"
+                onClick={() => { onSignOut(); setCollapsedUserMenu(false); }}
+                className="context-menu-item danger flex items-center gap-2"
               >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+                </svg>
                 Sign out
               </button>
             </div>
@@ -325,7 +346,7 @@ export default function Sidebar({
   return (
     <div
       className="w-72 bg-[--sidebar-bg] border-r border-[--border] flex flex-col h-full"
-      onClick={() => { closeContextMenu(); setShowMoreMenu(false); setShowNewMenu(false); }}
+      onClick={() => { closeContextMenu(); setShowUserMenu(false); setShowNewMenu(false); }}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-1 border-b border-[--border]">
@@ -359,7 +380,7 @@ export default function Sidebar({
           <div className="relative">
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); setShowNewMenu(!showNewMenu); setShowMoreMenu(false); }}
+              onClick={(e) => { e.stopPropagation(); setShowNewMenu(!showNewMenu); setShowUserMenu(false); }}
               className="p-1.5 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded"
               title="Create new..."
             >
@@ -497,34 +518,26 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* Footer with more menu */}
-      <div className="px-3 py-1 border-t border-[--border] relative">
-        <div className="flex items-center justify-between">
-          <button
-            type="button"
-            onClick={onExport}
-            className="flex items-center gap-1.5 text-xs text-[--muted] hover:text-[--foreground]"
-            title="Export all notes"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            Export
-          </button>
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setShowMoreMenu(!showMoreMenu); }}
-            className="p-1 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded"
-            title="More options"
-          >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z" />
-            </svg>
-          </button>
-        </div>
+      {/* User menu at bottom */}
+      <div className="px-3 py-2 border-t border-[--border] relative">
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setShowUserMenu(!showUserMenu); }}
+          className="w-full flex items-center gap-2 p-1.5 rounded hover:bg-[--hover] transition-colors"
+        >
+          <div className="w-7 h-7 rounded-full bg-[--accent] text-white flex items-center justify-center text-xs font-medium flex-shrink-0">
+            {userInitials}
+          </div>
+          <span className="text-xs text-[--foreground] truncate flex-1 text-left">
+            {userEmail || "Account"}
+          </span>
+          <svg className="w-3 h-3 text-[--muted] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" />
+          </svg>
+        </button>
 
-        {/* More menu dropdown */}
-        {showMoreMenu && (
+        {/* User menu dropdown */}
+        {showUserMenu && (
           <div
             className="absolute bottom-full left-2 right-2 mb-1 rounded shadow-lg py-1 z-50"
             style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)' }}
@@ -532,7 +545,7 @@ export default function Sidebar({
           >
             <button
               type="button"
-              onClick={() => { onToggleDarkMode(); setShowMoreMenu(false); }}
+              onClick={() => { onToggleDarkMode(); setShowUserMenu(false); }}
               className="context-menu-item flex items-center gap-2"
             >
               {isDark ? (
@@ -548,7 +561,7 @@ export default function Sidebar({
             </button>
             <button
               type="button"
-              onClick={() => { onToggleFullWidth(); setShowMoreMenu(false); }}
+              onClick={() => { onToggleFullWidth(); setShowUserMenu(false); }}
               className="context-menu-item flex items-center gap-2"
             >
               {isFullWidth ? (
@@ -564,40 +577,18 @@ export default function Sidebar({
             </button>
             <button
               type="button"
-              onClick={() => { onImportBlogPosts(); setShowMoreMenu(false); }}
+              onClick={() => { onExport(); setShowUserMenu(false); }}
               className="context-menu-item flex items-center gap-2"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
               </svg>
-              Import blog posts
+              Export all notes
             </button>
             <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
             <button
               type="button"
-              onClick={() => { window.location.href = '/admin'; }}
-              className="context-menu-item flex items-center gap-2"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              Admin
-            </button>
-            <button
-              type="button"
-              onClick={() => { window.location.href = '/'; }}
-              className="context-menu-item flex items-center gap-2"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
-              </svg>
-              Home
-            </button>
-            <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
-            <button
-              type="button"
-              onClick={() => { onSignOut(); setShowMoreMenu(false); }}
+              onClick={() => { onSignOut(); setShowUserMenu(false); }}
               className="context-menu-item danger flex items-center gap-2"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
