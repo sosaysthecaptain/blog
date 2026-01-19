@@ -5,6 +5,7 @@ import { NoteItem } from "@/lib/notes";
 import FolderTree from "./FolderTree";
 import { SortOption, sortItems } from "./FolderView";
 import PropertiesModal from "./PropertiesModal";
+import AccountModal from "./AccountModal";
 
 interface SidebarProps {
   items: NoteItem[];
@@ -84,6 +85,7 @@ export default function Sidebar({
   } | null>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNewMenu, setShowNewMenu] = useState(false);
+  const [showAccountModal, setShowAccountModal] = useState(false);
   const [localSearchInput, setLocalSearchInput] = useState("");
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [propertiesItem, setPropertiesItem] = useState<NoteItem | null>(null);
@@ -280,13 +282,19 @@ export default function Sidebar({
           </button>
           {collapsedUserMenu && (
             <div
-              className="absolute left-full bottom-0 ml-1 rounded shadow-lg py-1 z-50 min-w-[200px]"
+              className="absolute left-full bottom-0 ml-1 rounded shadow-lg py-1 z-50 min-w-[220px]"
               style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)' }}
             >
-              {/* User email header */}
-              <div className="px-3 py-2 border-b border-[--border]">
-                <p className="text-xs text-[--muted] truncate">{userEmail}</p>
-              </div>
+              {/* Account section */}
+              <button
+                type="button"
+                onClick={() => { setShowAccountModal(true); setCollapsedUserMenu(false); }}
+                className="context-menu-item flex items-center gap-2"
+              >
+                <UserIcon className="w-3.5 h-3.5" />
+                Account
+              </button>
+              <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
               <button
                 type="button"
                 onClick={() => { onToggleDarkMode(); setCollapsedUserMenu(false); }}
@@ -319,16 +327,6 @@ export default function Sidebar({
                 )}
                 {isFullWidth ? "Constrain width" : "Full width"}
               </button>
-              <button
-                type="button"
-                onClick={() => { onExport(); setCollapsedUserMenu(false); }}
-                className="context-menu-item flex items-center gap-2"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                </svg>
-                Export all notes
-              </button>
               <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
               <button
                 type="button"
@@ -343,6 +341,16 @@ export default function Sidebar({
             </div>
           )}
         </div>
+
+        {/* Account Modal (collapsed) */}
+        {showAccountModal && (
+          <AccountModal
+            userEmail={userEmail}
+            items={items}
+            onExport={onExport}
+            onClose={() => setShowAccountModal(false)}
+          />
+        )}
       </div>
     );
   }
@@ -523,30 +531,33 @@ export default function Sidebar({
       </div>
 
       {/* User menu at bottom */}
-      <div className="px-3 py-2 border-t border-[--border] relative">
+      <div className="px-4 py-2 border-t border-[--border] relative">
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setShowUserMenu(!showUserMenu); }}
-          className="w-full flex items-center gap-2 p-1.5 rounded hover:bg-[--hover] transition-colors"
+          className="w-7 h-7 rounded-full bg-[--hover] flex items-center justify-center hover:bg-[--border] transition-colors"
+          title={userEmail || "Account"}
         >
-          <div className="w-7 h-7 rounded-full bg-[--hover] flex items-center justify-center flex-shrink-0">
-            <UserIcon className="w-4 h-4 text-[--foreground]" />
-          </div>
-          <span className="text-xs text-[--foreground] truncate flex-1 text-left">
-            {userEmail || "Account"}
-          </span>
-          <svg className="w-3 h-3 text-[--muted] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" />
-          </svg>
+          <UserIcon className="w-4 h-4 text-[--foreground]" />
         </button>
 
         {/* User menu dropdown */}
         {showUserMenu && (
           <div
-            className="absolute bottom-full left-2 right-2 mb-1 rounded shadow-lg py-1 z-50"
+            className="absolute bottom-full left-0 mb-1 rounded shadow-lg py-1 z-50 min-w-[220px]"
             style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)' }}
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Account section */}
+            <button
+              type="button"
+              onClick={() => { setShowAccountModal(true); setShowUserMenu(false); }}
+              className="context-menu-item flex items-center gap-2"
+            >
+              <UserIcon className="w-3.5 h-3.5" />
+              Account
+            </button>
+            <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
             <button
               type="button"
               onClick={() => { onToggleDarkMode(); setShowUserMenu(false); }}
@@ -578,16 +589,6 @@ export default function Sidebar({
                 </svg>
               )}
               {isFullWidth ? "Constrain width" : "Full width"}
-            </button>
-            <button
-              type="button"
-              onClick={() => { onExport(); setShowUserMenu(false); }}
-              className="context-menu-item flex items-center gap-2"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-              </svg>
-              Export all notes
             </button>
             <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
             <button
@@ -732,6 +733,16 @@ export default function Sidebar({
         <PropertiesModal
           item={propertiesItem}
           onClose={() => setPropertiesItem(null)}
+        />
+      )}
+
+      {/* Account Modal */}
+      {showAccountModal && (
+        <AccountModal
+          userEmail={userEmail}
+          items={items}
+          onExport={onExport}
+          onClose={() => setShowAccountModal(false)}
         />
       )}
     </div>
