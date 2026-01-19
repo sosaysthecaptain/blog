@@ -535,10 +535,10 @@ export default function Sidebar({
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setShowUserMenu(!showUserMenu); }}
-          className="w-7 h-7 rounded-full bg-[--hover] flex items-center justify-center hover:bg-[--border] transition-colors"
-          title={userEmail || "Account"}
+          className="flex items-center gap-2 text-xs text-[--muted] hover:text-[--foreground]"
         >
-          <UserIcon className="w-4 h-4 text-[--foreground]" />
+          <UserIcon className="w-3.5 h-3.5" />
+          <span className="truncate">{userEmail || "Account"}</span>
         </button>
 
         {/* User menu dropdown */}

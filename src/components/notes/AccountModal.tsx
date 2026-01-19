@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { NoteItem } from "@/lib/notes";
 
 interface AccountModalProps {
@@ -11,96 +12,125 @@ interface AccountModalProps {
 }
 
 export default function AccountModal({ userEmail, items, onExport, onClose }: AccountModalProps) {
-  const [stats, setStats] = useState({
-    notes: 0,
-    folders: 0,
-    albums: 0,
-    musicLibraries: 0,
-  });
-
+  // Handle escape key
   useEffect(() => {
-    // Calculate stats
-    const notes = items.filter(i => i.type === "note").length;
-    const folders = items.filter(i => i.type === "folder").length;
-    const albums = items.filter(i => i.type === "moodboard").length;
-    const musicLibraries = items.filter(i => i.type === "music").length;
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleEsc);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", handleEsc);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
 
-    setStats({ notes, folders, albums, musicLibraries });
+  // Format file size
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  };
+
+  // Calculate stats
+  const stats = useMemo(() => {
+    let totalBytes = 0;
+
+    items.forEach(item => {
+      // Moodboard images
+      if (item.type === "moodboard" && item.images) {
+        totalBytes += item.images.reduce((sum, img) => sum + (img.fileSize || 0), 0);
+      }
+      // Note content and embedded media
+      if (item.type === "note") {
+        if (item.content) {
+          totalBytes += new Blob([item.content]).size;
+        }
+        if (item.embeddedMedia) {
+          totalBytes += item.embeddedMedia.reduce((sum, m) => sum + (m.fileSize || 0), 0);
+        }
+      }
+    });
+
+    return {
+      totalItems: items.length,
+      storage: formatSize(totalBytes),
+    };
   }, [items]);
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+  const modalContent = (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      {/* Backdrop */}
       <div
-        className="bg-[--background] rounded-lg shadow-xl w-full max-w-md mx-4"
+        className="absolute inset-0 bg-black/50"
+        onClick={onClose}
+      />
+
+      {/* Modal */}
+      <div
+        className="relative w-full max-w-xs border border-[--border]"
+        style={{ backgroundColor: 'var(--background)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[--border]">
-          <h2 className="text-lg font-semibold text-[--foreground]">Account</h2>
+        <div className="flex items-center justify-between px-3 py-2 border-b border-[--border]">
+          <span className="text-xs font-medium text-[--foreground] uppercase tracking-wide">Account</span>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded"
+            className="p-0.5 text-[--muted] hover:text-[--foreground]"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6">
-          {/* User info */}
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-[--hover] flex items-center justify-center">
-              <svg className="w-6 h-6 text-[--foreground]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-[--foreground]">{userEmail || "User"}</p>
-              <p className="text-xs text-[--muted]">Free plan</p>
-            </div>
+        <div className="px-3 py-2">
+          <div className="flex py-1 text-xs">
+            <span className="w-20 flex-shrink-0 text-[--muted]">Email</span>
+            <span className="text-[--foreground] break-words min-w-0">{userEmail || "—"}</span>
           </div>
+          <div className="flex py-1 text-xs">
+            <span className="w-20 flex-shrink-0 text-[--muted]">Plan</span>
+            <span className="text-[--foreground]">Free</span>
+          </div>
+          <div className="flex py-1 text-xs">
+            <span className="w-20 flex-shrink-0 text-[--muted]">Items</span>
+            <span className="text-[--foreground]">{stats.totalItems}</span>
+          </div>
+          <div className="flex py-1 text-xs">
+            <span className="w-20 flex-shrink-0 text-[--muted]">Usage</span>
+            <span className="text-[--foreground]">{stats.storage}</span>
+          </div>
+        </div>
 
-          {/* Usage stats */}
-          <div>
-            <h3 className="text-sm font-medium text-[--foreground] mb-3">Usage</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 bg-[--sidebar-bg] rounded-lg">
-                <p className="text-2xl font-semibold text-[--foreground]">{stats.notes}</p>
-                <p className="text-xs text-[--muted]">Notes</p>
-              </div>
-              <div className="p-3 bg-[--sidebar-bg] rounded-lg">
-                <p className="text-2xl font-semibold text-[--foreground]">{stats.folders}</p>
-                <p className="text-xs text-[--muted]">Folders</p>
-              </div>
-              <div className="p-3 bg-[--sidebar-bg] rounded-lg">
-                <p className="text-2xl font-semibold text-[--foreground]">{stats.albums}</p>
-                <p className="text-xs text-[--muted]">Albums</p>
-              </div>
-              <div className="p-3 bg-[--sidebar-bg] rounded-lg">
-                <p className="text-2xl font-semibold text-[--foreground]">{stats.musicLibraries}</p>
-                <p className="text-xs text-[--muted]">Music Libraries</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => { onExport(); onClose(); }}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[--sidebar-bg] hover:bg-[--hover] rounded-lg text-sm text-[--foreground] transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-              </svg>
-              Export all data
-            </button>
-          </div>
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-[--border]">
+          <button
+            type="button"
+            onClick={() => { onExport(); onClose(); }}
+            className="dialog-btn dialog-btn-secondary"
+          >
+            Export
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="dialog-btn dialog-btn-primary"
+          >
+            Done
+          </button>
         </div>
       </div>
     </div>
   );
+
+  // Use portal to render at document body level
+  if (typeof document === "undefined") return null;
+  return createPortal(modalContent, document.body);
 }
