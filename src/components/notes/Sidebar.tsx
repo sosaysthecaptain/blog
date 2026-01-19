@@ -194,8 +194,12 @@ export default function Sidebar({
   const [collapsedNewMenu, setCollapsedNewMenu] = useState(false);
   const [collapsedUserMenu, setCollapsedUserMenu] = useState(false);
 
-  // Get user initials from email
-  const userInitials = userEmail ? userEmail.charAt(0).toUpperCase() : "?";
+  // User icon component
+  const UserIcon = ({ className }: { className?: string }) => (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+    </svg>
+  );
 
   if (collapsed) {
     return (
@@ -269,10 +273,10 @@ export default function Sidebar({
           <button
             type="button"
             onClick={() => { setCollapsedUserMenu(!collapsedUserMenu); setCollapsedNewMenu(false); }}
-            className="w-8 h-8 rounded-full bg-[--accent] text-white flex items-center justify-center text-sm font-medium hover:opacity-90"
+            className="w-8 h-8 rounded-full bg-[--hover] flex items-center justify-center hover:bg-[--border] transition-colors"
             title={userEmail || "Account"}
           >
-            {userInitials}
+            <UserIcon className="w-5 h-5 text-[--foreground]" />
           </button>
           {collapsedUserMenu && (
             <div
@@ -525,8 +529,8 @@ export default function Sidebar({
           onClick={(e) => { e.stopPropagation(); setShowUserMenu(!showUserMenu); }}
           className="w-full flex items-center gap-2 p-1.5 rounded hover:bg-[--hover] transition-colors"
         >
-          <div className="w-7 h-7 rounded-full bg-[--accent] text-white flex items-center justify-center text-xs font-medium flex-shrink-0">
-            {userInitials}
+          <div className="w-7 h-7 rounded-full bg-[--hover] flex items-center justify-center flex-shrink-0">
+            <UserIcon className="w-4 h-4 text-[--foreground]" />
           </div>
           <span className="text-xs text-[--foreground] truncate flex-1 text-left">
             {userEmail || "Account"}
