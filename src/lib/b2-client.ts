@@ -67,8 +67,8 @@ export async function uploadMultipleToB2(
  * Delete a file from B2 via the API route
  */
 export async function deleteFromB2(path: string): Promise<void> {
-  const response = await fetch("/api/upload", {
-    method: "DELETE",
+  const response = await fetch("/api/delete", {
+    method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
