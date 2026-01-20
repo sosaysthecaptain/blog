@@ -280,6 +280,67 @@ struct DirigibleTag: View {
     }
 }
 
+// MARK: - Custom Icons
+
+/// Moodboard icon - masonry grid layout matching web app
+struct MoodboardIcon: View {
+    var body: some View {
+        Canvas { context, size in
+            let scale = min(size.width, size.height) / 24
+
+            // Top-left rectangle (wider, shorter)
+            let rect1 = CGRect(x: 2 * scale, y: 2 * scale, width: 9 * scale, height: 6 * scale)
+            context.fill(RoundedRectangle(cornerRadius: 1 * scale).path(in: rect1), with: .foreground)
+
+            // Top-right rectangle (taller)
+            let rect2 = CGRect(x: 13 * scale, y: 2 * scale, width: 9 * scale, height: 9 * scale)
+            context.fill(RoundedRectangle(cornerRadius: 1 * scale).path(in: rect2), with: .foreground)
+
+            // Bottom-left rectangle (tallest)
+            let rect3 = CGRect(x: 2 * scale, y: 10 * scale, width: 9 * scale, height: 12 * scale)
+            context.fill(RoundedRectangle(cornerRadius: 1 * scale).path(in: rect3), with: .foreground)
+
+            // Bottom-right rectangle
+            let rect4 = CGRect(x: 13 * scale, y: 13 * scale, width: 9 * scale, height: 9 * scale)
+            context.fill(RoundedRectangle(cornerRadius: 1 * scale).path(in: rect4), with: .foreground)
+        }
+        .aspectRatio(1, contentMode: .fit)
+    }
+}
+
+/// Music icon - double music note matching web app (Heroicons style)
+struct MusicIcon: View {
+    var body: some View {
+        Image(systemName: "music.note")
+    }
+}
+
+/// Helper to get the right icon view for a note type
+struct NoteTypeIcon: View {
+    let type: NoteType
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            switch type {
+            case .folder:
+                Image(systemName: "folder")
+                    .font(.system(size: size))
+            case .note:
+                Image(systemName: "doc")
+                    .font(.system(size: size))
+            case .moodboard:
+                MoodboardIcon()
+                    .frame(width: size, height: size)
+            case .music:
+                Image(systemName: "music.note")
+                    .font(.system(size: size))
+            }
+        }
+        .foregroundColor(DirigibleStyle.Colors.muted)
+    }
+}
+
 // MARK: - Preview
 
 #Preview("Button Styles") {

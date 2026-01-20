@@ -21,10 +21,10 @@ struct MainView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .createNewNote)) { _ in
-            viewModel.createNote(parentId: viewModel.selectedId)
+            viewModel.createNote(parentId: viewModel.effectiveParentId)
         }
         .onReceive(NotificationCenter.default.publisher(for: .createNewFolder)) { _ in
-            viewModel.createFolder(parentId: viewModel.selectedId)
+            viewModel.createFolder(parentId: viewModel.effectiveParentId)
         }
     }
 }
@@ -39,6 +39,14 @@ class MainViewModel: ObservableObject {
 
     var rootItems: [NoteItem] {
         items.filter { $0.parentId == nil }.sorted(by: sortItems)
+    }
+
+    /// If a folder is selected, return its ID; if a note is selected, return its parent; otherwise nil (root)
+    var effectiveParentId: String? {
+        guard let selectedId, let selected = getItem(id: selectedId) else {
+            return nil
+        }
+        return selected.type == .folder ? selectedId : selected.parentId
     }
 
     func getItem(id: String) -> NoteItem? {
@@ -87,6 +95,7 @@ class MainViewModel: ObservableObject {
         let note = NoteItem.newNote(title: "Untitled", parentId: parentId)
         items.append(note)
         selectedId = note.id
+        print("[MainView] Creating note: \(note.id) with parentId: \(parentId ?? "nil")")
 
         // Expand parent if creating inside a folder
         if let parentId {
@@ -94,7 +103,12 @@ class MainViewModel: ObservableObject {
         }
 
         Task {
-            try? await FirebaseSync.shared.createNote(note)
+            do {
+                try await FirebaseSync.shared.createNote(note)
+                print("[MainView] Note created successfully in Firebase")
+            } catch {
+                print("[MainView] Failed to create note: \(error)")
+            }
         }
     }
 
@@ -102,6 +116,7 @@ class MainViewModel: ObservableObject {
         let folder = NoteItem.newFolder(title: "New Folder", parentId: parentId)
         items.append(folder)
         selectedId = folder.id
+        print("[MainView] Creating folder: \(folder.id) with parentId: \(parentId ?? "nil")")
 
         // Expand parent if creating inside a folder
         if let parentId {
@@ -109,7 +124,12 @@ class MainViewModel: ObservableObject {
         }
 
         Task {
-            try? await FirebaseSync.shared.createNote(folder)
+            do {
+                try await FirebaseSync.shared.createNote(folder)
+                print("[MainView] Folder created successfully in Firebase")
+            } catch {
+                print("[MainView] Failed to create folder: \(error)")
+            }
         }
     }
 
@@ -236,10 +256,9 @@ struct ItemRowView: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: iconName)
-                .foregroundColor(isSelected ? .white : iconColor)
-                .font(.system(size: DirigibleStyle.IconSize.sm))
-                .frame(width: 16)
+            itemIcon
+                .foregroundColor(isSelected ? .white : DirigibleStyle.Colors.muted)
+                .frame(width: 16, height: 14)
 
             Text(item.title.isEmpty ? "Untitled" : item.title)
                 .font(DirigibleStyle.Typography.body)
@@ -271,18 +290,21 @@ struct ItemRowView: View {
         }
     }
 
-    private var iconName: String {
+    @ViewBuilder
+    private var itemIcon: some View {
         switch item.type {
-        case .folder: return "folder"
-        case .note: return "doc"
-        case .moodboard: return "square.grid.2x2"
-        case .music: return "music.note"
+        case .folder:
+            Image(systemName: "folder")
+                .font(.system(size: DirigibleStyle.IconSize.sm))
+        case .note:
+            Image(systemName: "doc")
+                .font(.system(size: DirigibleStyle.IconSize.sm))
+        case .moodboard:
+            MoodboardIcon()
+        case .music:
+            Image(systemName: "music.note")
+                .font(.system(size: DirigibleStyle.IconSize.sm))
         }
-    }
-
-    private var iconColor: Color {
-        // All icons are muted gray, matching web app's Heroicons style
-        DirigibleStyle.Colors.muted
     }
 }
 
@@ -317,54 +339,76 @@ struct NoteDetailView: View {
     let onUpdate: (NoteItem) -> Void
 
     @State private var title: String = ""
-    @State private var content: String = ""
+    @State private var isEditing: Bool = false
+    @State private var editContent: String = ""
     @FocusState private var isTitleFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Title
-            TextField("Title", text: $title)
-                .font(DirigibleStyle.Typography.title)
-                .foregroundColor(DirigibleStyle.Colors.foreground)
-                .textFieldStyle(.plain)
-                .focused($isTitleFocused)
-                .padding(.horizontal, DirigibleStyle.Spacing.xl)
-                .padding(.top, DirigibleStyle.Spacing.xl)
-                .padding(.bottom, DirigibleStyle.Spacing.lg)
+            // Header with title and edit toggle
+            HStack {
+                TextField("Title", text: $title)
+                    .font(DirigibleStyle.Typography.title)
+                    .foregroundColor(DirigibleStyle.Colors.foreground)
+                    .textFieldStyle(.plain)
+                    .focused($isTitleFocused)
+
+                Spacer()
+
+                Button(isEditing ? "Done" : "Edit") {
+                    if isEditing {
+                        // Save changes
+                        saveContentChanges()
+                    } else {
+                        // Enter edit mode
+                        editContent = item.content ?? ""
+                    }
+                    isEditing.toggle()
+                }
+                .buttonStyle(DirigibleSecondaryButtonStyle())
+            }
+            .padding(.horizontal, DirigibleStyle.Spacing.xl)
+            .padding(.top, DirigibleStyle.Spacing.xl)
+            .padding(.bottom, DirigibleStyle.Spacing.lg)
 
             Divider()
                 .background(DirigibleStyle.Colors.border)
-                .padding(.horizontal, DirigibleStyle.Spacing.xl)
 
-            // Content
-            TextEditor(text: $content)
-                .font(DirigibleStyle.Typography.bodySerif)
-                .foregroundColor(DirigibleStyle.Colors.foreground)
-                .scrollContentBackground(.hidden)
-                .padding(.horizontal, 20)
-                .padding(.top, DirigibleStyle.Spacing.lg)
+            // Content - either rendered HTML or editable text
+            if isEditing {
+                TextEditor(text: $editContent)
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(DirigibleStyle.Colors.foreground)
+                    .scrollContentBackground(.hidden)
+                    .padding(DirigibleStyle.Spacing.lg)
+            } else {
+                HTMLContentView(html: item.content ?? "")
+                    .padding(.horizontal, DirigibleStyle.Spacing.lg)
+            }
         }
         .background(DirigibleStyle.Colors.background)
         .onAppear {
             title = item.title
-            content = item.content ?? ""
         }
         .onChange(of: item.id) {
             title = item.title
-            content = item.content ?? ""
+            isEditing = false
         }
         .onChange(of: title) {
-            saveChanges()
-        }
-        .onChange(of: content) {
-            saveChanges()
+            saveTitleChange()
         }
     }
 
-    private func saveChanges() {
+    private func saveTitleChange() {
         var updated = item
         updated.title = title
-        updated.content = content.isEmpty ? nil : content
+        updated.updatedAt = Date()
+        onUpdate(updated)
+    }
+
+    private func saveContentChanges() {
+        var updated = item
+        updated.content = editContent.isEmpty ? nil : editContent
         updated.updatedAt = Date()
         onUpdate(updated)
     }
@@ -463,10 +507,9 @@ struct FolderTableRow: View {
         HStack(spacing: 0) {
             // Title column with icon
             HStack(spacing: 6) {
-                Image(systemName: iconName)
-                    .font(.system(size: 12))
+                itemIcon
                     .foregroundColor(DirigibleStyle.Colors.muted)
-                    .frame(width: 14)
+                    .frame(width: 14, height: 12)
                 Text(item.title.isEmpty ? "Untitled" : item.title)
                     .font(.system(size: 13))
                     .foregroundColor(DirigibleStyle.Colors.foreground)
@@ -502,12 +545,20 @@ struct FolderTableRow: View {
         .onTapGesture(perform: onTap)
     }
 
-    private var iconName: String {
+    @ViewBuilder
+    private var itemIcon: some View {
         switch item.type {
-        case .folder: return "folder"
-        case .note: return "doc"
-        case .moodboard: return "square.grid.2x2"
-        case .music: return "music.note"
+        case .folder:
+            Image(systemName: "folder")
+                .font(.system(size: 12))
+        case .note:
+            Image(systemName: "doc")
+                .font(.system(size: 12))
+        case .moodboard:
+            MoodboardIcon()
+        case .music:
+            Image(systemName: "music.note")
+                .font(.system(size: 12))
         }
     }
 }
@@ -520,9 +571,9 @@ struct MoodboardDetailView: View {
 
     var body: some View {
         VStack(spacing: DirigibleStyle.Spacing.md) {
-            Image(systemName: "square.grid.2x2")
-                .font(.system(size: 48))
-                .foregroundColor(.purple.opacity(0.5))
+            MoodboardIcon()
+                .frame(width: 48, height: 48)
+                .foregroundColor(DirigibleStyle.Colors.muted.opacity(0.5))
 
             Text(item.title)
                 .font(DirigibleStyle.Typography.heading)
@@ -551,9 +602,9 @@ struct MusicLibraryDetailView: View {
 
     var body: some View {
         VStack(spacing: DirigibleStyle.Spacing.md) {
-            Image(systemName: "music.note.list")
+            Image(systemName: "music.note")
                 .font(.system(size: 48))
-                .foregroundColor(.pink.opacity(0.5))
+                .foregroundColor(DirigibleStyle.Colors.muted.opacity(0.5))
 
             Text(item.title)
                 .font(DirigibleStyle.Typography.heading)

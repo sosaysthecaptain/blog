@@ -16,6 +16,7 @@
 		A1000007 /* DirigibleCore in Frameworks */ = {isa = PBXBuildFile; productRef = A3000001 /* DirigibleCore */; };
 		A1000008 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = A2000009 /* GoogleService-Info.plist */; };
 		A1000009 /* DirigibleStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000B /* DirigibleStyle.swift */; };
+		A100000A /* HTMLContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C /* HTMLContentView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +31,7 @@
 		A2000009 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		A200000A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A200000B /* DirigibleStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirigibleStyle.swift; sourceTree = "<group>"; };
+		A200000C /* HTMLContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLContentView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -81,6 +83,7 @@
 				A2000003 /* OnboardingView.swift */,
 				A2000004 /* LoginView.swift */,
 				A2000005 /* SettingsView.swift */,
+				A200000C /* HTMLContentView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -167,6 +170,7 @@
 				A1000003 /* OnboardingView.swift in Sources */,
 				A1000004 /* LoginView.swift in Sources */,
 				A1000005 /* SettingsView.swift in Sources */,
+				A100000A /* HTMLContentView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

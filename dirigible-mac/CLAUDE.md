@@ -406,5 +406,16 @@ npm run dev
 
 ---
 
+### Sprint 4: Look & Feel Fixes (Current)
+**Goal:** Match the web app's visual appearance
+
+- [x] **4.1 Fix sidebar icons** - Use outline SF Symbols (folder, doc, music.note)
+- [x] **4.2 Fix folder view** - Table with Title/Date/Tags columns, hover states
+- [ ] **4.3 Markdown rendering** - Currently shows raw HTML/markdown
+
+**Status:** In progress
+
+---
+
 ### Completed
 _(Items move here when done)_
