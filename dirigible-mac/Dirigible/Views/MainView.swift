@@ -273,20 +273,16 @@ struct ItemRowView: View {
 
     private var iconName: String {
         switch item.type {
-        case .folder: return "folder.fill"
-        case .note: return "doc.text"
+        case .folder: return "folder"
+        case .note: return "doc"
         case .moodboard: return "square.grid.2x2"
-        case .music: return "music.note.list"
+        case .music: return "music.note"
         }
     }
 
     private var iconColor: Color {
-        switch item.type {
-        case .folder: return .yellow
-        case .note: return DirigibleStyle.Colors.muted
-        case .moodboard: return .purple
-        case .music: return .pink
-        }
+        // All icons are muted gray, matching web app's Heroicons style
+        DirigibleStyle.Colors.muted
     }
 }
 
@@ -379,6 +375,7 @@ struct NoteDetailView: View {
 struct FolderDetailView: View {
     let item: NoteItem
     @ObservedObject var viewModel: MainViewModel
+    @State private var hoveredId: String?
 
     private var children: [NoteItem] {
         viewModel.getChildren(of: item.id)
@@ -386,84 +383,131 @@ struct FolderDetailView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header
+            // Header bar (matches web's folder view header)
             HStack(spacing: DirigibleStyle.Spacing.sm) {
-                Image(systemName: "folder.fill")
-                    .font(.system(size: DirigibleStyle.IconSize.xl))
-                    .foregroundColor(.yellow)
+                Image(systemName: "folder")
+                    .font(.system(size: DirigibleStyle.IconSize.md))
+                    .foregroundColor(DirigibleStyle.Colors.muted)
                 Text(item.title)
-                    .font(DirigibleStyle.Typography.title)
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(DirigibleStyle.Colors.foreground)
                 Spacer()
             }
-            .padding(.horizontal, DirigibleStyle.Spacing.xl)
-            .padding(.top, DirigibleStyle.Spacing.xl)
-            .padding(.bottom, DirigibleStyle.Spacing.lg)
+            .padding(.horizontal, DirigibleStyle.Spacing.lg)
+            .padding(.vertical, DirigibleStyle.Spacing.sm)
+            .background(DirigibleStyle.Colors.sidebarBg)
 
             Divider()
                 .background(DirigibleStyle.Colors.border)
-                .padding(.horizontal, DirigibleStyle.Spacing.xl)
 
-            // Children list
+            // Table header
+            HStack(spacing: 0) {
+                Text("Title")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("Date")
+                    .frame(width: 100, alignment: .leading)
+                Text("Tags")
+                    .frame(width: 200, alignment: .leading)
+            }
+            .font(.system(size: 11, weight: .medium))
+            .foregroundColor(DirigibleStyle.Colors.muted)
+            .padding(.horizontal, DirigibleStyle.Spacing.lg)
+            .padding(.vertical, 6)
+            .background(DirigibleStyle.Colors.sidebarBg)
+
+            Divider()
+                .background(DirigibleStyle.Colors.border)
+
+            // Table content
             if children.isEmpty {
                 VStack(spacing: DirigibleStyle.Spacing.md) {
                     Spacer()
-                    Text("Empty folder")
-                        .font(DirigibleStyle.Typography.subheading)
+                    Text("Right-click to create")
+                        .font(DirigibleStyle.Typography.body)
                         .foregroundColor(DirigibleStyle.Colors.muted)
-                    Text("Press ⌘N to create a note")
-                        .font(DirigibleStyle.Typography.caption)
-                        .foregroundColor(DirigibleStyle.Colors.muted.opacity(0.7))
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)
             } else {
-                List {
-                    ForEach(children) { child in
-                        HStack(spacing: DirigibleStyle.Spacing.sm) {
-                            Image(systemName: iconName(for: child))
-                                .font(.system(size: DirigibleStyle.IconSize.md))
-                                .foregroundColor(iconColor(for: child))
-                            Text(child.title)
-                                .font(DirigibleStyle.Typography.body)
-                                .foregroundColor(DirigibleStyle.Colors.foreground)
-                            Spacer()
-                            if child.published == true {
-                                Circle()
-                                    .fill(DirigibleStyle.Colors.success)
-                                    .frame(width: 6, height: 6)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            viewModel.selectedId = child.id
-                            if child.type == .folder {
-                                viewModel.expandedFolders.insert(item.id)
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(children) { child in
+                            FolderTableRow(
+                                item: child,
+                                isHovered: hoveredId == child.id,
+                                onTap: {
+                                    viewModel.selectedId = child.id
+                                    if child.type == .folder {
+                                        viewModel.expandedFolders.insert(item.id)
+                                    }
+                                }
+                            )
+                            .onHover { isHovered in
+                                hoveredId = isHovered ? child.id : nil
                             }
                         }
                     }
                 }
-                .listStyle(.plain)
             }
         }
         .background(DirigibleStyle.Colors.background)
     }
+}
 
-    private func iconName(for item: NoteItem) -> String {
-        switch item.type {
-        case .folder: return "folder.fill"
-        case .note: return "doc.text"
-        case .moodboard: return "square.grid.2x2"
-        case .music: return "music.note.list"
+struct FolderTableRow: View {
+    let item: NoteItem
+    let isHovered: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            // Title column with icon
+            HStack(spacing: 6) {
+                Image(systemName: iconName)
+                    .font(.system(size: 12))
+                    .foregroundColor(DirigibleStyle.Colors.muted)
+                    .frame(width: 14)
+                Text(item.title.isEmpty ? "Untitled" : item.title)
+                    .font(.system(size: 13))
+                    .foregroundColor(DirigibleStyle.Colors.foreground)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Date column
+            Text(item.date ?? "—")
+                .font(.system(size: 12).monospacedDigit())
+                .foregroundColor(DirigibleStyle.Colors.muted)
+                .frame(width: 100, alignment: .leading)
+
+            // Tags column
+            HStack(spacing: 4) {
+                if let tags = item.tags, !tags.isEmpty {
+                    ForEach(tags.prefix(3), id: \.self) { tag in
+                        DirigibleTag(text: tag)
+                    }
+                    if tags.count > 3 {
+                        Text("+\(tags.count - 3)")
+                            .font(.system(size: 10))
+                            .foregroundColor(DirigibleStyle.Colors.muted)
+                    }
+                }
+            }
+            .frame(width: 200, alignment: .leading)
         }
+        .padding(.horizontal, DirigibleStyle.Spacing.lg)
+        .padding(.vertical, 6)
+        .background(isHovered ? DirigibleStyle.Colors.hover : Color.clear)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onTap)
     }
 
-    private func iconColor(for item: NoteItem) -> Color {
+    private var iconName: String {
         switch item.type {
-        case .folder: return .yellow
-        case .note: return DirigibleStyle.Colors.muted
-        case .moodboard: return .purple
-        case .music: return .pink
+        case .folder: return "folder"
+        case .note: return "doc"
+        case .moodboard: return "square.grid.2x2"
+        case .music: return "music.note"
         }
     }
 }
