@@ -31,21 +31,59 @@ public class FirebaseSync: ObservableObject {
 
     private var notesListener: ListenerRegistration?
     private var songsListener: ListenerRegistration?
+    private var currentFirebaseUser: FirebaseUser?
 
     private init() {
-        // Listen for auth state changes
-        Auth.auth().addStateDidChangeListener { [weak self] _, user in
-            Task { @MainActor in
-                self?.isAuthenticated = user != nil
-                self?.userEmail = user?.email
-
-                if user != nil {
-                    await self?.startSync()
-                } else {
-                    self?.stopSync()
-                }
-            }
+        // Restore saved auth state
+        Task { @MainActor in
+            await restoreAuthState()
         }
+    }
+
+    /// Restore auth state from UserDefaults
+    private func restoreAuthState() async {
+        guard let savedEmail = UserDefaults.standard.string(forKey: "firebase_user_email"),
+              let savedUid = UserDefaults.standard.string(forKey: "firebase_user_uid"),
+              let savedIdToken = UserDefaults.standard.string(forKey: "firebase_id_token"),
+              let savedRefreshToken = UserDefaults.standard.string(forKey: "firebase_refresh_token")
+        else {
+            print("[AUTH] No saved auth state found")
+            return
+        }
+
+        print("[AUTH] Restoring saved auth state for: \(savedEmail)")
+
+        currentFirebaseUser = FirebaseUser(
+            uid: savedUid,
+            email: savedEmail,
+            displayName: nil,
+            idToken: savedIdToken,
+            refreshToken: savedRefreshToken
+        )
+
+        isAuthenticated = true
+        userEmail = savedEmail
+
+        // Start sync
+        await startSync()
+    }
+
+    /// Save auth state to UserDefaults
+    private func saveAuthState(_ user: FirebaseUser) {
+        UserDefaults.standard.set(user.email, forKey: "firebase_user_email")
+        UserDefaults.standard.set(user.uid, forKey: "firebase_user_uid")
+        UserDefaults.standard.set(user.idToken, forKey: "firebase_id_token")
+        UserDefaults.standard.set(user.refreshToken, forKey: "firebase_refresh_token")
+        print("[AUTH] Saved auth state to UserDefaults")
+    }
+
+    /// Clear auth state from UserDefaults
+    private func clearAuthState() {
+        UserDefaults.standard.removeObject(forKey: "firebase_user_email")
+        UserDefaults.standard.removeObject(forKey: "firebase_user_uid")
+        UserDefaults.standard.removeObject(forKey: "firebase_id_token")
+        UserDefaults.standard.removeObject(forKey: "firebase_refresh_token")
+        print("[AUTH] Cleared auth state from UserDefaults")
     }
 
     // MARK: - Authentication
@@ -98,13 +136,20 @@ public class FirebaseSync: ObservableObject {
             let firebaseUser = try await signInWithFirebaseREST(idToken: tokens.idToken, accessToken: tokens.accessToken)
             print("[AUTH] Step 8: SUCCESS - Got Firebase user: \(firebaseUser.email ?? "no email")")
 
-            // Now sign in to the SDK using the custom token approach
-            // Actually, we'll manage auth state manually since SDK has keychain issues
+            // Store tokens for future use and persist
+            self.currentFirebaseUser = firebaseUser
+            saveAuthState(firebaseUser)
+
+            // Update auth state manually since SDK has keychain issues
             await MainActor.run {
                 self.isAuthenticated = true
                 self.userEmail = firebaseUser.email
             }
             print("[AUTH] Step 9: Auth state updated, user is signed in!")
+
+            // Start Firestore sync (notes are public read, so this should work)
+            print("[AUTH] Step 10: Starting Firestore sync...")
+            await startSync()
         } catch {
             print("[AUTH] Step 7 FAILED: Firebase REST API error: \(error)")
             throw error
@@ -324,7 +369,12 @@ public class FirebaseSync: ObservableObject {
     #endif
 
     public func signOut() throws {
-        try Auth.auth().signOut()
+        clearAuthState()
+        stopSync()
+        currentFirebaseUser = nil
+        isAuthenticated = false
+        userEmail = nil
+        try? Auth.auth().signOut()
     }
 
     public enum AuthError: Error, LocalizedError {
@@ -373,6 +423,7 @@ public class FirebaseSync: ObservableObject {
         }
 
         // Start notes listener
+        print("[FirebaseSync] Starting notes listener...")
         let notesRef = Firestore.firestore().collection("notes")
         notesListener = notesRef.addSnapshotListener { [weak self] snapshot, error in
             Task { @MainActor in
@@ -382,7 +433,12 @@ public class FirebaseSync: ObservableObject {
                     return
                 }
 
-                guard let snapshot else { return }
+                guard let snapshot else {
+                    print("[FirebaseSync] Notes snapshot is nil")
+                    return
+                }
+
+                print("[FirebaseSync] Notes snapshot received: \(snapshot.documents.count) documents, \(snapshot.documentChanges.count) changes")
                 await self?.handleNotesSnapshot(snapshot)
             }
         }
@@ -416,15 +472,35 @@ public class FirebaseSync: ObservableObject {
     }
 
     private func handleNotesSnapshot(_ snapshot: QuerySnapshot) async {
+        var addedCount = 0
+        var modifiedCount = 0
+        var removedCount = 0
+        var skippedCount = 0
+
         for change in snapshot.documentChanges {
             let doc = change.document
             let id = doc.documentID
 
             // Skip special documents like _tagColors
-            if id.hasPrefix("_") { continue }
+            if id.hasPrefix("_") {
+                skippedCount += 1
+                continue
+            }
 
             switch change.type {
-            case .added, .modified:
+            case .added:
+                addedCount += 1
+                if let note = parseNoteDocument(doc) {
+                    do {
+                        try await LocalCache.shared.upsertNote(note)
+                    } catch {
+                        print("[FirebaseSync] Failed to upsert note \(id): \(error)")
+                    }
+                } else {
+                    print("[FirebaseSync] Failed to parse note: \(id)")
+                }
+            case .modified:
+                modifiedCount += 1
                 if let note = parseNoteDocument(doc) {
                     do {
                         try await LocalCache.shared.upsertNote(note)
@@ -433,6 +509,7 @@ public class FirebaseSync: ObservableObject {
                     }
                 }
             case .removed:
+                removedCount += 1
                 do {
                     try await LocalCache.shared.deleteNote(id)
                 } catch {
@@ -441,6 +518,7 @@ public class FirebaseSync: ObservableObject {
             }
         }
 
+        print("[FirebaseSync] Notes processed: \(addedCount) added, \(modifiedCount) modified, \(removedCount) removed, \(skippedCount) skipped")
         lastSyncTime = Date()
     }
 

@@ -25,6 +25,12 @@ struct MainView: View {
         .task {
             await viewModel.loadNotes()
         }
+        .onChange(of: firebaseSync.lastSyncTime) {
+            // Reload when sync completes
+            Task {
+                await viewModel.loadNotes()
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .createNewNote)) { _ in
             viewModel.createNote(parentId: viewModel.selectedId)
         }
@@ -56,8 +62,10 @@ class MainViewModel: ObservableObject {
     func loadNotes() async {
         do {
             items = try await LocalCache.shared.getAllNotes()
+            print("[MainView] Loaded \(items.count) notes from cache")
+            print("[MainView] Root items: \(rootItems.count)")
         } catch {
-            print("Failed to load notes: \(error)")
+            print("[MainView] Failed to load notes: \(error)")
         }
     }
 
