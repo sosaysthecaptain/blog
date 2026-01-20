@@ -82,10 +82,26 @@ export async function deleteFromB2(path: string): Promise<void> {
 }
 
 /**
- * Get the URL for a B2 file via our proxy endpoint
- * This keeps files private while allowing authenticated access
+ * Get the public URL for a B2 file
  */
 export function getB2Url(path: string): string {
-  // Use our API proxy to serve files from private B2 bucket
-  return `/api/files/${path}`;
+  const bucket = process.env.NEXT_PUBLIC_B2_BUCKET_NAME || "dirigible-content";
+  return `https://f005.backblazeb2.com/file/${bucket}/${path}`;
+}
+
+/**
+ * Normalize a URL that may be an old /api/files/ proxy URL to a direct B2 URL.
+ * Returns the URL unchanged if it's already a direct URL.
+ */
+export function normalizeB2Url(url: string): string {
+  if (!url) return url;
+
+  // Convert old proxy URLs to direct B2 URLs
+  if (url.startsWith("/api/files/")) {
+    const path = url.replace("/api/files/", "");
+    return getB2Url(path);
+  }
+
+  // Already a direct URL
+  return url;
 }

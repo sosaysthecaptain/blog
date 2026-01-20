@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react";
 import { ConfirmDialog, AlertDialog, ProgressDialog } from "@/components/ui/Dialog";
 
-type Category = "colors" | "typography" | "buttons" | "inputs" | "sidebar" | "tags" | "icons" | "layouts" | "dialogs";
+type Category = "principles" | "colors" | "typography" | "buttons" | "inputs" | "sidebar" | "tags" | "icons" | "layouts" | "dialogs" | "platforms" | "export";
 
 const CATEGORIES: { id: Category; label: string }[] = [
+  { id: "principles", label: "Principles" },
   { id: "colors", label: "Colors" },
   { id: "typography", label: "Typography" },
   { id: "buttons", label: "Buttons" },
@@ -15,10 +16,12 @@ const CATEGORIES: { id: Category; label: string }[] = [
   { id: "icons", label: "Icons" },
   { id: "layouts", label: "Layouts" },
   { id: "dialogs", label: "Dialogs" },
+  { id: "platforms", label: "Platforms" },
+  { id: "export", label: "Swift Export" },
 ];
 
 export default function StyleGuidePage() {
-  const [selectedCategory, setSelectedCategory] = useState<Category>("colors");
+  const [selectedCategory, setSelectedCategory] = useState<Category>("principles");
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
@@ -75,6 +78,7 @@ export default function StyleGuidePage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-8">
+        {selectedCategory === "principles" && <PrinciplesSection />}
         {selectedCategory === "colors" && <ColorsSection />}
         {selectedCategory === "typography" && <TypographySection />}
         {selectedCategory === "buttons" && <ButtonsSection />}
@@ -84,6 +88,8 @@ export default function StyleGuidePage() {
         {selectedCategory === "icons" && <IconsSection />}
         {selectedCategory === "layouts" && <LayoutsSection />}
         {selectedCategory === "dialogs" && <DialogsSection />}
+        {selectedCategory === "platforms" && <PlatformsSection />}
+        {selectedCategory === "export" && <ExportSection isDark={isDark} />}
       </div>
     </div>
   );
@@ -818,6 +824,711 @@ function DialogsSection() {
         />
       </ComponentBlock>
 
+    </div>
+  );
+}
+
+// ============================================
+// PRINCIPLES SECTION
+// ============================================
+
+function PrinciplesSection() {
+  return (
+    <div>
+      <SectionTitle>Design Principles</SectionTitle>
+      <p className="text-[--muted] mb-8">
+        Core design rules that apply across all platforms. These principles ensure visual consistency
+        whether building for web, macOS, or iOS.
+      </p>
+
+      <ComponentBlock title="Density & Spacing" description="Compact, information-dense interface">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <h4 className="font-medium text-sm mb-2">Spacing Scale (Tailwind)</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-1 h-4 bg-[--accent]" />
+                  <code className="text-xs bg-[--hover] px-1 rounded">p-1</code>
+                  <span className="text-[--muted]">4px - icon buttons</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-4 bg-[--accent]" />
+                  <code className="text-xs bg-[--hover] px-1 rounded">p-2</code>
+                  <span className="text-[--muted]">8px - compact padding</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-4 bg-[--accent]" />
+                  <code className="text-xs bg-[--hover] px-1 rounded">p-3</code>
+                  <span className="text-[--muted]">12px - standard padding</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-[--accent]" />
+                  <code className="text-xs bg-[--hover] px-1 rounded">p-4</code>
+                  <span className="text-[--muted]">16px - section padding</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h4 className="font-medium text-sm mb-2">Gap Scale</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <code className="text-xs bg-[--hover] px-1 rounded">gap-1</code>
+                  <span className="text-[--muted]">4px - inline elements</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <code className="text-xs bg-[--hover] px-1 rounded">gap-2</code>
+                  <span className="text-[--muted]">8px - list items, buttons</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <code className="text-xs bg-[--hover] px-1 rounded">gap-3</code>
+                  <span className="text-[--muted]">12px - card grids</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <code className="text-xs bg-[--hover] px-1 rounded">gap-4</code>
+                  <span className="text-[--muted]">16px - sections</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded text-sm">
+            <strong>Rule:</strong> Prefer tighter spacing. The app should feel dense and efficient, not airy and wasteful.
+          </div>
+        </div>
+      </ComponentBlock>
+
+      <ComponentBlock title="Modal Patterns" description="Consistent dialog behavior">
+        <div className="space-y-4 text-sm">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-3 border border-[--border] rounded">
+              <h4 className="font-medium mb-2">Structure</h4>
+              <ul className="space-y-1 text-[--muted]">
+                <li>• Use <code className="text-xs bg-[--hover] px-1 rounded">createPortal</code> to document.body</li>
+                <li>• Z-index: <code className="text-xs bg-[--hover] px-1 rounded">z-[100]</code></li>
+                <li>• Backdrop: <code className="text-xs bg-[--hover] px-1 rounded">bg-black/50</code></li>
+                <li>• Background: <code className="text-xs bg-[--hover] px-1 rounded">var(--background)</code></li>
+              </ul>
+            </div>
+            <div className="p-3 border border-[--border] rounded">
+              <h4 className="font-medium mb-2">Behavior</h4>
+              <ul className="space-y-1 text-[--muted]">
+                <li>• Escape key closes</li>
+                <li>• Click backdrop closes</li>
+                <li>• Prevent body scroll when open</li>
+                <li>• Stop propagation on modal content</li>
+              </ul>
+            </div>
+          </div>
+          <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
+            <strong>Reference:</strong> See <code className="text-xs bg-[--hover] px-1 rounded">PropertiesModal.tsx</code> for the canonical implementation.
+          </div>
+        </div>
+      </ComponentBlock>
+
+      <ComponentBlock title="Icon Sizing" description="Standard icon sizes by context">
+        <div className="space-y-4">
+          <div className="flex items-end gap-8">
+            <div className="text-center">
+              <svg className="w-3 h-3 mx-auto mb-2 text-[--foreground]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              <code className="text-xs bg-[--hover] px-1 rounded">w-3</code>
+              <p className="text-xs text-[--muted] mt-1">12px</p>
+              <p className="text-xs text-[--muted]">chevrons</p>
+            </div>
+            <div className="text-center">
+              <svg className="w-3.5 h-3.5 mx-auto mb-2 text-[--foreground]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              <code className="text-xs bg-[--hover] px-1 rounded">w-3.5</code>
+              <p className="text-xs text-[--muted] mt-1">14px</p>
+              <p className="text-xs text-[--muted]">search, small UI</p>
+            </div>
+            <div className="text-center">
+              <svg className="w-4 h-4 mx-auto mb-2 text-[--foreground]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              <code className="text-xs bg-[--hover] px-1 rounded">w-4</code>
+              <p className="text-xs text-[--muted] mt-1">16px</p>
+              <p className="text-xs text-[--muted]">sidebar items</p>
+            </div>
+            <div className="text-center">
+              <svg className="w-5 h-5 mx-auto mb-2 text-[--foreground]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              <code className="text-xs bg-[--hover] px-1 rounded">w-5</code>
+              <p className="text-xs text-[--muted] mt-1">20px</p>
+              <p className="text-xs text-[--muted]">standard buttons</p>
+            </div>
+          </div>
+        </div>
+      </ComponentBlock>
+
+      <ComponentBlock title="Text Hierarchy" description="When to use which text styles">
+        <div className="space-y-3 text-sm">
+          <div className="flex items-baseline gap-4">
+            <span className="w-32 text-[--muted]">Page titles</span>
+            <span className="font-serif text-2xl font-bold">Serif, bold, 2xl</span>
+          </div>
+          <div className="flex items-baseline gap-4">
+            <span className="w-32 text-[--muted]">Section headers</span>
+            <span className="font-medium">Sans, medium, base</span>
+          </div>
+          <div className="flex items-baseline gap-4">
+            <span className="w-32 text-[--muted]">Body (content)</span>
+            <span className="font-serif">Serif, regular, base</span>
+          </div>
+          <div className="flex items-baseline gap-4">
+            <span className="w-32 text-[--muted]">Body (UI)</span>
+            <span className="text-sm">Sans, regular, sm</span>
+          </div>
+          <div className="flex items-baseline gap-4">
+            <span className="w-32 text-[--muted]">Labels</span>
+            <span className="text-xs text-[--muted]">Sans, muted, xs</span>
+          </div>
+        </div>
+      </ComponentBlock>
+
+      <ComponentBlock title="Color Usage" description="Semantic color application">
+        <div className="space-y-3 text-sm">
+          <div className="flex items-center gap-4">
+            <div className="w-8 h-8 rounded" style={{ backgroundColor: 'var(--foreground)' }} />
+            <span className="w-32 font-medium">Foreground</span>
+            <span className="text-[--muted]">Primary text, icons in active state</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="w-8 h-8 rounded" style={{ backgroundColor: 'var(--muted)' }} />
+            <span className="w-32 font-medium">Muted</span>
+            <span className="text-[--muted]">Secondary text, inactive icons, labels</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="w-8 h-8 rounded" style={{ backgroundColor: 'var(--accent)' }} />
+            <span className="w-32 font-medium">Accent</span>
+            <span className="text-[--muted]">Links, focus states, selected items</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="w-8 h-8 rounded border border-[--border]" style={{ backgroundColor: 'var(--hover)' }} />
+            <span className="w-32 font-medium">Hover</span>
+            <span className="text-[--muted]">Hover backgrounds, subtle fills</span>
+          </div>
+        </div>
+      </ComponentBlock>
+
+      <ComponentBlock title="Interactive States" description="Consistent interaction feedback">
+        <div className="space-y-4 text-sm">
+          <div className="grid grid-cols-3 gap-4">
+            <div className="text-center p-4 border border-[--border] rounded">
+              <div className="w-10 h-10 mx-auto mb-2 rounded flex items-center justify-center text-[--muted]">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </div>
+              <p className="font-medium">Default</p>
+              <p className="text-xs text-[--muted]">text-[--muted]</p>
+            </div>
+            <div className="text-center p-4 border border-[--border] rounded bg-[--hover]">
+              <div className="w-10 h-10 mx-auto mb-2 rounded flex items-center justify-center text-[--foreground] bg-[--hover]">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </div>
+              <p className="font-medium">Hover</p>
+              <p className="text-xs text-[--muted]">text-[--foreground] bg-[--hover]</p>
+            </div>
+            <div className="text-center p-4 border border-[--border] rounded">
+              <div className="w-10 h-10 mx-auto mb-2 rounded flex items-center justify-center text-white" style={{ backgroundColor: 'var(--accent-muted)' }}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </div>
+              <p className="font-medium">Selected</p>
+              <p className="text-xs text-[--muted]">text-white bg-[--accent-muted]</p>
+            </div>
+          </div>
+        </div>
+      </ComponentBlock>
+
+      <ComponentBlock title="Don'ts" description="Common mistakes to avoid">
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="p-3 border border-red-200 dark:border-red-800 rounded bg-red-50 dark:bg-red-900/20">
+            <h4 className="font-medium text-red-700 dark:text-red-400 mb-2">Avoid</h4>
+            <ul className="space-y-1 text-red-600 dark:text-red-400">
+              <li>• Rounded corners on modals (use sharp)</li>
+              <li>• Large padding (keep it tight)</li>
+              <li>• Colored/blue primary buttons</li>
+              <li>• Multiple font weights in one context</li>
+              <li>• Shadows (except mobile drawers)</li>
+            </ul>
+          </div>
+          <div className="p-3 border border-green-200 dark:border-green-800 rounded bg-green-50 dark:bg-green-900/20">
+            <h4 className="font-medium text-green-700 dark:text-green-400 mb-2">Prefer</h4>
+            <ul className="space-y-1 text-green-600 dark:text-green-400">
+              <li>• Sharp corners, 1px borders</li>
+              <li>• Compact, dense layouts</li>
+              <li>• Monochrome buttons with invert</li>
+              <li>• Consistent text hierarchy</li>
+              <li>• Flat design, border separation</li>
+            </ul>
+          </div>
+        </div>
+      </ComponentBlock>
+    </div>
+  );
+}
+
+// ============================================
+// PLATFORMS SECTION
+// ============================================
+
+function PlatformsSection() {
+  const [platform, setPlatform] = useState<"web" | "macos" | "ios">("web");
+
+  return (
+    <div>
+      <SectionTitle>Platform Guidelines</SectionTitle>
+      <p className="text-[--muted] mb-6">
+        Platform-specific adaptations while maintaining visual consistency.
+      </p>
+
+      {/* Platform Tabs */}
+      <div className="flex gap-1 mb-8 p-1 bg-[--hover] rounded-lg w-fit">
+        {(["web", "macos", "ios"] as const).map((p) => (
+          <button
+            key={p}
+            onClick={() => setPlatform(p)}
+            className={`px-4 py-2 text-sm rounded-md transition-colors ${
+              platform === p
+                ? "bg-[--background] text-[--foreground] shadow-sm"
+                : "text-[--muted] hover:text-[--foreground]"
+            }`}
+          >
+            {p === "web" ? "Web" : p === "macos" ? "macOS" : "iOS"}
+          </button>
+        ))}
+      </div>
+
+      {platform === "web" && (
+        <div className="space-y-6">
+          <ComponentBlock title="Framework" description="Next.js + React">
+            <div className="text-sm space-y-2">
+              <p>• <strong>CSS:</strong> Tailwind with CSS custom properties</p>
+              <p>• <strong>Components:</strong> Functional React with hooks</p>
+              <p>• <strong>State:</strong> Local state, Firestore for persistence</p>
+              <p>• <strong>Icons:</strong> Heroicons (outline style)</p>
+            </div>
+          </ComponentBlock>
+
+          <ComponentBlock title="Responsive Behavior" description="Mobile-first with breakpoints">
+            <div className="text-sm space-y-3">
+              <div className="flex items-center gap-4">
+                <code className="text-xs bg-[--hover] px-2 py-1 rounded">sm: 640px</code>
+                <span className="text-[--muted]">Sidebar becomes drawer overlay</span>
+              </div>
+              <div className="flex items-center gap-4">
+                <code className="text-xs bg-[--hover] px-2 py-1 rounded">md: 768px</code>
+                <span className="text-[--muted]">Two-column layouts activate</span>
+              </div>
+              <div className="flex items-center gap-4">
+                <code className="text-xs bg-[--hover] px-2 py-1 rounded">lg: 1024px</code>
+                <span className="text-[--muted]">Three-column layouts</span>
+              </div>
+            </div>
+          </ComponentBlock>
+
+          <ComponentBlock title="CSS Variables" description="Theme tokens in globals.css">
+            <pre className="text-xs bg-[--hover] p-4 rounded overflow-x-auto">{`:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --muted: #737373;
+  --border: #e5e5e5;
+  --hover: #f5f5f5;
+  --sidebar-bg: #fafafa;
+  --accent: #2563eb;
+  --accent-muted: #3b82f6;
+}
+
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --muted: #a3a3a3;
+  --border: #262626;
+  --hover: #171717;
+  --sidebar-bg: #0f0f0f;
+  --accent: #3b82f6;
+  --accent-muted: #2563eb;
+}`}</pre>
+          </ComponentBlock>
+        </div>
+      )}
+
+      {platform === "macos" && (
+        <div className="space-y-6">
+          <ComponentBlock title="Framework" description="SwiftUI (native)">
+            <div className="text-sm space-y-2">
+              <p>• <strong>UI:</strong> SwiftUI with AppKit interop where needed</p>
+              <p>• <strong>Architecture:</strong> MVVM with Combine</p>
+              <p>• <strong>Data:</strong> Firebase SDK + local SQLite cache</p>
+              <p>• <strong>Icons:</strong> SF Symbols (matching Heroicons style)</p>
+            </div>
+          </ComponentBlock>
+
+          <ComponentBlock title="macOS Adaptations" description="Platform conventions to follow">
+            <div className="text-sm space-y-3">
+              <div className="p-3 border border-[--border] rounded">
+                <h4 className="font-medium mb-2">Window Chrome</h4>
+                <p className="text-[--muted]">Use toolbar style with sidebar. Traffic lights in standard position. Title bar can be transparent with content underneath.</p>
+              </div>
+              <div className="p-3 border border-[--border] rounded">
+                <h4 className="font-medium mb-2">Keyboard Shortcuts</h4>
+                <p className="text-[--muted]">Cmd+N new note, Cmd+Shift+N new folder, Cmd+, preferences, Cmd+F search. Standard macOS conventions.</p>
+              </div>
+              <div className="p-3 border border-[--border] rounded">
+                <h4 className="font-medium mb-2">Context Menus</h4>
+                <p className="text-[--muted]">Right-click for actions. Use Menu/MenuItem SwiftUI components. Match system appearance.</p>
+              </div>
+            </div>
+          </ComponentBlock>
+
+          <ComponentBlock title="Color Mapping" description="CSS vars → SwiftUI colors">
+            <div className="text-sm space-y-2">
+              <p><code className="bg-[--hover] px-1 rounded">--foreground</code> → <code className="bg-[--hover] px-1 rounded">Color.primary</code></p>
+              <p><code className="bg-[--hover] px-1 rounded">--muted</code> → <code className="bg-[--hover] px-1 rounded">Color.secondary</code></p>
+              <p><code className="bg-[--hover] px-1 rounded">--background</code> → <code className="bg-[--hover] px-1 rounded">Color(.windowBackgroundColor)</code></p>
+              <p><code className="bg-[--hover] px-1 rounded">--sidebar-bg</code> → <code className="bg-[--hover] px-1 rounded">Color(.controlBackgroundColor)</code></p>
+              <p><code className="bg-[--hover] px-1 rounded">--accent</code> → <code className="bg-[--hover] px-1 rounded">Color.accentColor</code></p>
+            </div>
+          </ComponentBlock>
+        </div>
+      )}
+
+      {platform === "ios" && (
+        <div className="space-y-6">
+          <ComponentBlock title="Framework" description="SwiftUI (shared code with macOS)">
+            <div className="text-sm space-y-2">
+              <p>• <strong>UI:</strong> SwiftUI with iOS-specific layouts</p>
+              <p>• <strong>Navigation:</strong> NavigationStack, sheets, popovers</p>
+              <p>• <strong>Data:</strong> Same Firebase + SQLite stack as macOS</p>
+              <p>• <strong>Icons:</strong> SF Symbols</p>
+            </div>
+          </ComponentBlock>
+
+          <ComponentBlock title="iOS Adaptations" description="Mobile-specific patterns">
+            <div className="text-sm space-y-3">
+              <div className="p-3 border border-[--border] rounded">
+                <h4 className="font-medium mb-2">Navigation</h4>
+                <p className="text-[--muted]">Push navigation for drill-down. Master-detail on iPad. Sheets for modals. Swipe gestures for back.</p>
+              </div>
+              <div className="p-3 border border-[--border] rounded">
+                <h4 className="font-medium mb-2">Touch Targets</h4>
+                <p className="text-[--muted]">Minimum 44pt tap targets. Larger spacing than web/mac. Bottom-anchored actions for thumb reach.</p>
+              </div>
+              <div className="p-3 border border-[--border] rounded">
+                <h4 className="font-medium mb-2">Gestures</h4>
+                <p className="text-[--muted]">Swipe to delete, long press for context menu, pull to refresh. Standard iOS patterns.</p>
+              </div>
+            </div>
+          </ComponentBlock>
+
+          <ComponentBlock title="Layout Differences" description="How iOS differs from web">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="p-3 border border-[--border] rounded">
+                <h4 className="font-medium mb-2">Web</h4>
+                <ul className="space-y-1 text-[--muted]">
+                  <li>• Persistent sidebar</li>
+                  <li>• Hover states</li>
+                  <li>• Dense padding (p-2, p-3)</li>
+                  <li>• Sharp corners</li>
+                </ul>
+              </div>
+              <div className="p-3 border border-[--border] rounded">
+                <h4 className="font-medium mb-2">iOS</h4>
+                <ul className="space-y-1 text-[--muted]">
+                  <li>• Full-screen navigation</li>
+                  <li>• Touch feedback</li>
+                  <li>• Generous padding (16pt+)</li>
+                  <li>• Rounded corners (system)</li>
+                </ul>
+              </div>
+            </div>
+          </ComponentBlock>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================
+// EXPORT SECTION
+// ============================================
+
+function ExportSection({ isDark }: { isDark: boolean }) {
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(id);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const swiftColors = `import SwiftUI
+
+// Dirigible Design System Colors
+// Generated from style guide
+
+extension Color {
+    // Core Colors
+    static let dirigibleBackground = Color("background")
+    static let dirigibleForeground = Color("foreground")
+    static let dirigibleMuted = Color("muted")
+    static let dirigibleBorder = Color("border")
+    static let dirigibleHover = Color("hover")
+    static let dirigibleSidebarBg = Color("sidebarBg")
+    static let dirigibleAccent = Color("accent")
+    static let dirigibleAccentMuted = Color("accentMuted")
+}
+
+// Color values for Asset Catalog
+// Light Mode:
+//   background: #FFFFFF
+//   foreground: #171717
+//   muted: #737373
+//   border: #E5E5E5
+//   hover: #F5F5F5
+//   sidebarBg: #FAFAFA
+//   accent: #2563EB
+//   accentMuted: #3B82F6
+//
+// Dark Mode:
+//   background: #0A0A0A
+//   foreground: #EDEDED
+//   muted: #A3A3A3
+//   border: #262626
+//   hover: #171717
+//   sidebarBg: #0F0F0F
+//   accent: #3B82F6
+//   accentMuted: #2563EB`;
+
+  const swiftTypography = `import SwiftUI
+
+// Dirigible Design System Typography
+// Generated from style guide
+
+extension Font {
+    // Headings
+    static let dirigibleTitle = Font.system(size: 24, weight: .bold, design: .serif)
+    static let dirigibleHeading = Font.system(size: 18, weight: .semibold)
+    static let dirigibleSubheading = Font.system(size: 16, weight: .medium)
+
+    // Body
+    static let dirigibleBody = Font.system(size: 14)
+    static let dirigibleBodySerif = Font.system(size: 14, design: .serif)
+    static let dirigibleCaption = Font.system(size: 12)
+    static let dirigibleSmall = Font.system(size: 11)
+
+    // Labels
+    static let dirigibleLabel = Font.system(size: 12, weight: .medium)
+    static let dirigibleLabelSmall = Font.system(size: 10, weight: .medium)
+}
+
+extension View {
+    func dirigibleTextStyle(_ style: DirigibleTextStyle) -> some View {
+        switch style {
+        case .title:
+            return self.font(.dirigibleTitle).foregroundColor(.dirigibleForeground)
+        case .heading:
+            return self.font(.dirigibleHeading).foregroundColor(.dirigibleForeground)
+        case .body:
+            return self.font(.dirigibleBody).foregroundColor(.dirigibleForeground)
+        case .bodySerif:
+            return self.font(.dirigibleBodySerif).foregroundColor(.dirigibleForeground)
+        case .caption:
+            return self.font(.dirigibleCaption).foregroundColor(.dirigibleMuted)
+        case .label:
+            return self.font(.dirigibleLabel).foregroundColor(.dirigibleMuted)
+        }
+    }
+}
+
+enum DirigibleTextStyle {
+    case title, heading, body, bodySerif, caption, label
+}`;
+
+  const swiftComponents = `import SwiftUI
+
+// Dirigible Design System Components
+// Generated from style guide
+
+// MARK: - Buttons
+
+struct DirigibleButton: View {
+    let title: String
+    let style: ButtonStyle
+    let action: () -> Void
+
+    enum ButtonStyle {
+        case primary, secondary, danger
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+        }
+        .buttonStyle(DirigibleButtonStyle(style: style))
+    }
+}
+
+struct DirigibleButtonStyle: SwiftUI.ButtonStyle {
+    let style: DirigibleButton.ButtonStyle
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(backgroundColor(pressed: configuration.isPressed))
+            .foregroundColor(foregroundColor(pressed: configuration.isPressed))
+            .overlay(
+                RoundedRectangle(cornerRadius: 0)
+                    .stroke(borderColor, lineWidth: 1)
+            )
+    }
+
+    private func backgroundColor(pressed: Bool) -> Color {
+        switch style {
+        case .primary:
+            return pressed ? .dirigibleForeground : .dirigibleBackground
+        case .secondary:
+            return pressed ? .dirigibleMuted : .dirigibleBackground
+        case .danger:
+            return pressed ? .red : .dirigibleBackground
+        }
+    }
+
+    private func foregroundColor(pressed: Bool) -> Color {
+        switch style {
+        case .primary:
+            return pressed ? .dirigibleBackground : .dirigibleForeground
+        case .secondary:
+            return pressed ? .dirigibleBackground : .dirigibleMuted
+        case .danger:
+            return pressed ? .white : .red
+        }
+    }
+
+    private var borderColor: Color {
+        switch style {
+        case .primary: return .dirigibleForeground
+        case .secondary: return .dirigibleBorder
+        case .danger: return .red
+        }
+    }
+}
+
+// MARK: - Sidebar Item
+
+struct DirigibleSidebarItem: View {
+    let icon: String
+    let title: String
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+            Text(title)
+                .font(.system(size: 13))
+            Spacer()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(isSelected ? Color.dirigibleAccentMuted : Color.clear)
+        .foregroundColor(isSelected ? .white : .dirigibleForeground)
+    }
+}
+
+// MARK: - Tag
+
+struct DirigibleTag: View {
+    let text: String
+
+    private var tagColor: Color {
+        var hash = 0
+        for char in text.unicodeScalars {
+            hash = Int(char.value) &+ ((hash << 5) &- hash)
+        }
+        let hue = Double(abs(hash) % 360) / 360.0
+        return Color(hue: hue, saturation: 0.7, brightness: 0.85)
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 11, weight: .medium))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .background(tagColor)
+            .foregroundColor(.black.opacity(0.8))
+    }
+}`;
+
+  return (
+    <div>
+      <SectionTitle>Swift Export</SectionTitle>
+      <p className="text-[--muted] mb-8">
+        Copy these Swift extensions into your Xcode project to maintain design consistency across platforms.
+        Create an Asset Catalog with the color values below.
+      </p>
+
+      <ComponentBlock title="Colors" description="SwiftUI color extensions">
+        <div className="relative">
+          <button
+            onClick={() => copyToClipboard(swiftColors, "colors")}
+            className="absolute top-2 right-2 px-3 py-1 text-xs bg-[--background] border border-[--border] rounded hover:bg-[--hover]"
+          >
+            {copied === "colors" ? "Copied!" : "Copy"}
+          </button>
+          <pre className="text-xs bg-[--hover] p-4 rounded overflow-x-auto max-h-64">{swiftColors}</pre>
+        </div>
+      </ComponentBlock>
+
+      <ComponentBlock title="Typography" description="SwiftUI font extensions">
+        <div className="relative">
+          <button
+            onClick={() => copyToClipboard(swiftTypography, "typography")}
+            className="absolute top-2 right-2 px-3 py-1 text-xs bg-[--background] border border-[--border] rounded hover:bg-[--hover]"
+          >
+            {copied === "typography" ? "Copied!" : "Copy"}
+          </button>
+          <pre className="text-xs bg-[--hover] p-4 rounded overflow-x-auto max-h-64">{swiftTypography}</pre>
+        </div>
+      </ComponentBlock>
+
+      <ComponentBlock title="Components" description="Basic SwiftUI components">
+        <div className="relative">
+          <button
+            onClick={() => copyToClipboard(swiftComponents, "components")}
+            className="absolute top-2 right-2 px-3 py-1 text-xs bg-[--background] border border-[--border] rounded hover:bg-[--hover]"
+          >
+            {copied === "components" ? "Copied!" : "Copy"}
+          </button>
+          <pre className="text-xs bg-[--hover] p-4 rounded overflow-x-auto max-h-64">{swiftComponents}</pre>
+        </div>
+      </ComponentBlock>
+
+      <ComponentBlock title="Asset Catalog Setup" description="How to set up colors in Xcode">
+        <div className="text-sm space-y-3">
+          <ol className="list-decimal list-inside space-y-2 text-[--muted]">
+            <li>In Xcode, open your Asset Catalog (Assets.xcassets)</li>
+            <li>Right-click → New Color Set for each color</li>
+            <li>Name it exactly as shown (background, foreground, etc.)</li>
+            <li>Set &ldquo;Any Appearance&rdquo; to light mode value</li>
+            <li>Set &ldquo;Dark&rdquo; appearance to dark mode value</li>
+            <li>Import the Color extensions file</li>
+          </ol>
+          <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
+            <strong>Tip:</strong> The Color(&ldquo;name&rdquo;) initializer automatically handles light/dark mode switching when colors are defined in the Asset Catalog.
+          </div>
+        </div>
+      </ComponentBlock>
     </div>
   );
 }

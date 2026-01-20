@@ -6,6 +6,7 @@ import { useAutosave } from "@/hooks/useAutosave";
 import { useFocusSync } from "@/hooks/useFocusSync";
 import { ConfirmDialog } from "@/components/ui/Dialog";
 import { uploadMoodboardImages, deleteMoodboardImage, getImageIdFromUrl, getExtensionFromUrl } from "@/lib/moodboard-storage";
+import { normalizeB2Url } from "@/lib/b2-client";
 import JSZip from "jszip";
 import TagInput from "./TagInput";
 import MoodboardCarousel from "./MoodboardCarousel";
@@ -370,11 +371,12 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
       for (let i = 0; i < images.length; i++) {
         const image = images[i];
         try {
-          const response = await fetch(image.url);
+          const url = normalizeB2Url(image.url);
+          const response = await fetch(url);
           const blob = await response.blob();
 
           // Get extension from URL or default to jpg
-          const ext = getExtensionFromUrl(image.url);
+          const ext = getExtensionFromUrl(url);
           const fileName = `${String(i + 1).padStart(3, "0")}_${image.id}.${ext}`;
 
           zip.file(fileName, blob);

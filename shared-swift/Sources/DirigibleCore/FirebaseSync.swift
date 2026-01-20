@@ -1,0 +1,694 @@
+import Foundation
+import FirebaseAuth
+import FirebaseCore
+import FirebaseFirestore
+import AuthenticationServices
+import CommonCrypto
+
+#if os(macOS)
+import AppKit
+
+// Context provider for ASWebAuthenticationSession
+class WebAuthContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
+    static let shared = WebAuthContextProvider()
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        return NSApplication.shared.keyWindow ?? ASPresentationAnchor()
+    }
+}
+#endif
+
+/// FirebaseSync - Syncs Firestore data to local SQLite cache
+@MainActor
+public class FirebaseSync: ObservableObject {
+    public static let shared = FirebaseSync()
+
+    @Published public private(set) var isAuthenticated = false
+    @Published public private(set) var userEmail: String?
+    @Published public private(set) var isSyncing = false
+    @Published public private(set) var lastSyncTime: Date?
+    @Published public private(set) var syncError: Error?
+
+    private var notesListener: ListenerRegistration?
+    private var songsListener: ListenerRegistration?
+
+    private init() {
+        // Listen for auth state changes
+        Auth.auth().addStateDidChangeListener { [weak self] _, user in
+            Task { @MainActor in
+                self?.isAuthenticated = user != nil
+                self?.userEmail = user?.email
+
+                if user != nil {
+                    await self?.startSync()
+                } else {
+                    self?.stopSync()
+                }
+            }
+        }
+    }
+
+    // MARK: - Authentication
+
+    public func signIn(email: String, password: String) async throws {
+        try await Auth.auth().signIn(withEmail: email, password: password)
+    }
+
+    // iOS OAuth client (supports custom URL schemes with PKCE)
+    private let iOSClientID = "341793197828-gii5rq2g1vf6kjr2fdthstivvol3kjic.apps.googleusercontent.com"
+
+    public func signInWithGoogle() async throws {
+        #if os(macOS)
+        print("[AUTH] Step 1: Starting Google Sign-In")
+
+        // Generate PKCE code verifier and challenge
+        let codeVerifier = generateCodeVerifier()
+        let codeChallenge = generateCodeChallenge(from: codeVerifier)
+        print("[AUTH] Step 2: Generated PKCE codes")
+
+        // Get auth code via browser
+        print("[AUTH] Step 3: Opening browser for OAuth...")
+        let authCode: String
+        do {
+            authCode = try await getGoogleAuthCode(codeChallenge: codeChallenge)
+            print("[AUTH] Step 4: Got auth code from Google (length: \(authCode.count))")
+        } catch {
+            print("[AUTH] Step 4 FAILED: Browser auth error: \(error)")
+            print("[AUTH] Error type: \(type(of: error))")
+            print("[AUTH] Error localizedDescription: \(error.localizedDescription)")
+            throw error
+        }
+
+        // Exchange code for tokens using PKCE
+        print("[AUTH] Step 5: Exchanging code for tokens...")
+        let tokens: Tokens
+        do {
+            tokens = try await exchangeCodeForTokens(authCode, codeVerifier: codeVerifier)
+            print("[AUTH] Step 6: Got tokens - idToken length: \(tokens.idToken.count), accessToken length: \(tokens.accessToken.count)")
+        } catch {
+            print("[AUTH] Step 6 FAILED: Token exchange error: \(error)")
+            print("[AUTH] Error type: \(type(of: error))")
+            print("[AUTH] Error localizedDescription: \(error.localizedDescription)")
+            throw error
+        }
+
+        // Use Firebase Auth REST API to avoid SDK keychain issues
+        print("[AUTH] Step 7: Signing in via Firebase REST API...")
+        do {
+            let firebaseUser = try await signInWithFirebaseREST(idToken: tokens.idToken, accessToken: tokens.accessToken)
+            print("[AUTH] Step 8: SUCCESS - Got Firebase user: \(firebaseUser.email ?? "no email")")
+
+            // Now sign in to the SDK using the custom token approach
+            // Actually, we'll manage auth state manually since SDK has keychain issues
+            await MainActor.run {
+                self.isAuthenticated = true
+                self.userEmail = firebaseUser.email
+            }
+            print("[AUTH] Step 9: Auth state updated, user is signed in!")
+        } catch {
+            print("[AUTH] Step 7 FAILED: Firebase REST API error: \(error)")
+            throw error
+        }
+        #endif
+    }
+
+    // Firebase Auth REST API response
+    private struct FirebaseAuthResponse: Codable {
+        let localId: String
+        let email: String?
+        let displayName: String?
+        let idToken: String
+        let refreshToken: String
+        let expiresIn: String
+    }
+
+    private struct FirebaseUser {
+        let uid: String
+        let email: String?
+        let displayName: String?
+        let idToken: String
+        let refreshToken: String
+    }
+
+    private func signInWithFirebaseREST(idToken: String, accessToken: String) async throws -> FirebaseUser {
+        // Get API key from Firebase config
+        guard let apiKey = FirebaseApp.app()?.options.apiKey else {
+            print("[AUTH] REST API: No Firebase API key found")
+            throw AuthError.missingClientID
+        }
+        print("[AUTH] REST API: Using API key: \(apiKey.prefix(10))...")
+
+        let url = URL(string: "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=\(apiKey)")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "postBody": "id_token=\(idToken)&providerId=google.com",
+            "requestUri": "http://localhost",
+            "returnIdpCredential": true,
+            "returnSecureToken": true
+        ]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        print("[AUTH] REST API: Making request to Firebase...")
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.tokenExchangeFailed
+        }
+
+        print("[AUTH] REST API: HTTP status = \(httpResponse.statusCode)")
+        let responseBody = String(data: data, encoding: .utf8) ?? "Unable to decode"
+        print("[AUTH] REST API: Response = \(responseBody.prefix(500))...")
+
+        guard httpResponse.statusCode == 200 else {
+            throw AuthError.tokenExchangeFailed
+        }
+
+        let authResponse = try JSONDecoder().decode(FirebaseAuthResponse.self, from: data)
+
+        return FirebaseUser(
+            uid: authResponse.localId,
+            email: authResponse.email,
+            displayName: authResponse.displayName,
+            idToken: authResponse.idToken,
+            refreshToken: authResponse.refreshToken
+        )
+    }
+
+    #if os(macOS)
+    private func generateCodeVerifier() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        return Data(bytes).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    private func generateCodeChallenge(from verifier: String) -> String {
+        let data = Data(verifier.utf8)
+        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+        data.withUnsafeBytes { bytes in
+            _ = CC_SHA256(bytes.baseAddress, CC_LONG(data.count), &hash)
+        }
+        return Data(hash).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    private func getGoogleAuthCode(codeChallenge: String) async throws -> String {
+        // Use the reversed client ID as the redirect scheme (standard for iOS OAuth)
+        let redirectURI = "com.googleusercontent.apps.341793197828-gii5rq2g1vf6kjr2fdthstivvol3kjic:/oauth2callback"
+        let scope = "openid email profile"
+
+        var components = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
+        components.queryItems = [
+            URLQueryItem(name: "client_id", value: iOSClientID),
+            URLQueryItem(name: "redirect_uri", value: redirectURI),
+            URLQueryItem(name: "response_type", value: "code"),
+            URLQueryItem(name: "scope", value: scope),
+            URLQueryItem(name: "code_challenge", value: codeChallenge),
+            URLQueryItem(name: "code_challenge_method", value: "S256"),
+        ]
+
+        guard let authURL = components.url else {
+            throw AuthError.invalidURL
+        }
+
+        print("[AUTH] Browser: Opening ASWebAuthenticationSession...")
+        print("[AUTH] Browser: Auth URL = \(authURL)")
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let session = ASWebAuthenticationSession(
+                url: authURL,
+                callbackURLScheme: "com.googleusercontent.apps.341793197828-gii5rq2g1vf6kjr2fdthstivvol3kjic"
+            ) { callbackURL, error in
+                print("[AUTH] Browser: Callback received")
+
+                if let error = error {
+                    print("[AUTH] Browser: ERROR from callback: \(error)")
+                    print("[AUTH] Browser: Error type: \(type(of: error))")
+                    print("[AUTH] Browser: Error localizedDescription: \(error.localizedDescription)")
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                print("[AUTH] Browser: Callback URL = \(callbackURL?.absoluteString ?? "nil")")
+
+                guard let callbackURL = callbackURL,
+                      let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
+                      let code = components.queryItems?.first(where: { $0.name == "code" })?.value
+                else {
+                    print("[AUTH] Browser: Failed to extract auth code from callback URL")
+                    if let url = callbackURL {
+                        print("[AUTH] Browser: Query items = \(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? [])")
+                    }
+                    continuation.resume(throwing: AuthError.missingAuthCode)
+                    return
+                }
+
+                print("[AUTH] Browser: Successfully extracted auth code (length: \(code.count))")
+                continuation.resume(returning: code)
+            }
+
+            session.presentationContextProvider = WebAuthContextProvider.shared
+            session.prefersEphemeralWebBrowserSession = false
+            print("[AUTH] Browser: Starting session...")
+            session.start()
+        }
+    }
+
+    private struct TokenResponse: Codable {
+        let access_token: String
+        let id_token: String
+        let refresh_token: String?
+        let expires_in: Int
+        let token_type: String
+    }
+
+    private struct Tokens {
+        let accessToken: String
+        let idToken: String
+    }
+
+    private func exchangeCodeForTokens(_ code: String, codeVerifier: String) async throws -> Tokens {
+        let redirectURI = "com.googleusercontent.apps.341793197828-gii5rq2g1vf6kjr2fdthstivvol3kjic:/oauth2callback"
+        print("[AUTH] Token exchange: redirect_uri = \(redirectURI)")
+        print("[AUTH] Token exchange: client_id = \(iOSClientID)")
+        print("[AUTH] Token exchange: code length = \(code.count)")
+        print("[AUTH] Token exchange: code_verifier length = \(codeVerifier.count)")
+
+        var request = URLRequest(url: URL(string: "https://oauth2.googleapis.com/token")!)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+
+        let body = [
+            "client_id": iOSClientID,
+            "code": code,
+            "grant_type": "authorization_code",
+            "redirect_uri": redirectURI,
+            "code_verifier": codeVerifier
+        ]
+
+        request.httpBody = body
+            .map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }
+            .joined(separator: "&")
+            .data(using: .utf8)
+
+        print("[AUTH] Token exchange: Making HTTP request...")
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            print("[AUTH] Token exchange: Response is not HTTPURLResponse")
+            throw AuthError.tokenExchangeFailed
+        }
+
+        print("[AUTH] Token exchange: HTTP status = \(httpResponse.statusCode)")
+        let responseBody = String(data: data, encoding: .utf8) ?? "Unable to decode response"
+        print("[AUTH] Token exchange: Response body = \(responseBody)")
+
+        guard httpResponse.statusCode == 200 else {
+            print("[AUTH] Token exchange: FAILED with status \(httpResponse.statusCode)")
+            throw AuthError.tokenExchangeFailed
+        }
+
+        let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
+        print("[AUTH] Token exchange: Successfully decoded tokens")
+        return Tokens(accessToken: tokenResponse.access_token, idToken: tokenResponse.id_token)
+    }
+    #endif
+
+    public func signOut() throws {
+        try Auth.auth().signOut()
+    }
+
+    public enum AuthError: Error, LocalizedError {
+        case noWindow
+        case missingToken
+        case missingClientID
+        case invalidURL
+        case missingAuthCode
+        case tokenExchangeFailed
+
+        public var errorDescription: String? {
+            switch self {
+            case .noWindow:
+                return "No window available for sign-in"
+            case .missingToken:
+                return "Failed to get authentication token"
+            case .missingClientID:
+                return "Missing Google client ID in configuration"
+            case .invalidURL:
+                return "Failed to construct authentication URL"
+            case .missingAuthCode:
+                return "Failed to get authorization code from Google"
+            case .tokenExchangeFailed:
+                return "Failed to exchange authorization code for tokens"
+            }
+        }
+    }
+
+    // MARK: - Sync
+
+    /// Start listening to Firestore changes
+    public func startSync() async {
+        guard isAuthenticated else { return }
+
+        isSyncing = true
+        syncError = nil
+
+        // Initialize local cache
+        do {
+            try await LocalCache.shared.initialize()
+        } catch {
+            syncError = error
+            isSyncing = false
+            print("[FirebaseSync] Failed to initialize cache: \(error)")
+            return
+        }
+
+        // Start notes listener
+        let notesRef = Firestore.firestore().collection("notes")
+        notesListener = notesRef.addSnapshotListener { [weak self] snapshot, error in
+            Task { @MainActor in
+                if let error {
+                    self?.syncError = error
+                    print("[FirebaseSync] Notes listener error: \(error)")
+                    return
+                }
+
+                guard let snapshot else { return }
+                await self?.handleNotesSnapshot(snapshot)
+            }
+        }
+
+        // Start songs listener
+        let songsRef = Firestore.firestore().collection("songs")
+        songsListener = songsRef.addSnapshotListener { [weak self] snapshot, error in
+            Task { @MainActor in
+                if let error {
+                    self?.syncError = error
+                    print("[FirebaseSync] Songs listener error: \(error)")
+                    return
+                }
+
+                guard let snapshot else { return }
+                await self?.handleSongsSnapshot(snapshot)
+            }
+        }
+
+        print("[FirebaseSync] Started sync listeners")
+    }
+
+    /// Stop listening to Firestore changes
+    public func stopSync() {
+        notesListener?.remove()
+        songsListener?.remove()
+        notesListener = nil
+        songsListener = nil
+        isSyncing = false
+        print("[FirebaseSync] Stopped sync listeners")
+    }
+
+    private func handleNotesSnapshot(_ snapshot: QuerySnapshot) async {
+        for change in snapshot.documentChanges {
+            let doc = change.document
+            let id = doc.documentID
+
+            // Skip special documents like _tagColors
+            if id.hasPrefix("_") { continue }
+
+            switch change.type {
+            case .added, .modified:
+                if let note = parseNoteDocument(doc) {
+                    do {
+                        try await LocalCache.shared.upsertNote(note)
+                    } catch {
+                        print("[FirebaseSync] Failed to upsert note \(id): \(error)")
+                    }
+                }
+            case .removed:
+                do {
+                    try await LocalCache.shared.deleteNote(id)
+                } catch {
+                    print("[FirebaseSync] Failed to delete note \(id): \(error)")
+                }
+            }
+        }
+
+        lastSyncTime = Date()
+    }
+
+    private func handleSongsSnapshot(_ snapshot: QuerySnapshot) async {
+        for change in snapshot.documentChanges {
+            let doc = change.document
+            let id = doc.documentID
+
+            switch change.type {
+            case .added, .modified:
+                if let song = parseSongDocument(doc) {
+                    do {
+                        try await LocalCache.shared.upsertSong(song)
+                    } catch {
+                        print("[FirebaseSync] Failed to upsert song \(id): \(error)")
+                    }
+                }
+            case .removed:
+                do {
+                    try await LocalCache.shared.deleteSong(id)
+                } catch {
+                    print("[FirebaseSync] Failed to delete song \(id): \(error)")
+                }
+            }
+        }
+
+        lastSyncTime = Date()
+    }
+
+    // MARK: - Parsing
+
+    private func parseNoteDocument(_ doc: QueryDocumentSnapshot) -> NoteItem? {
+        let data = doc.data()
+        let id = doc.documentID
+
+        guard let typeStr = data["type"] as? String,
+              let type = NoteType(rawValue: typeStr),
+              let title = data["title"] as? String
+        else {
+            print("[FirebaseSync] Invalid note document: \(id)")
+            return nil
+        }
+
+        let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+        let updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() ?? Date()
+
+        // Parse tags
+        var tags: [String]?
+        if let tagsArray = data["tags"] as? [String] {
+            tags = tagsArray
+        }
+
+        // Parse images (moodboard)
+        var images: [MoodboardImage]?
+        if let imagesArray = data["images"] as? [[String: Any]] {
+            images = imagesArray.compactMap { parseImage($0) }
+        }
+
+        // Parse embedded media
+        var embeddedMedia: [EmbeddedMedia]?
+        if let mediaArray = data["embeddedMedia"] as? [[String: Any]] {
+            embeddedMedia = mediaArray.compactMap { parseEmbeddedMedia($0) }
+        }
+
+        return NoteItem(
+            id: id,
+            type: type,
+            title: title,
+            parentId: data["parentId"] as? String,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            content: data["content"] as? String,
+            date: data["date"] as? String,
+            time: data["time"] as? String,
+            tags: tags,
+            embeddedMedia: embeddedMedia,
+            images: images,
+            gridSize: (data["gridSize"] as? String).flatMap { GridSize(rawValue: $0) },
+            sortMode: (data["sortMode"] as? String).flatMap { SortMode(rawValue: $0) },
+            musicSortColumn: (data["musicSortColumn"] as? String).flatMap { MusicSortColumn(rawValue: $0) },
+            musicSortDirection: (data["musicSortDirection"] as? String).flatMap { SortDirection(rawValue: $0) },
+            published: data["published"] as? Bool,
+            slug: data["slug"] as? String,
+            sortOrder: data["sortOrder"] as? Int
+        )
+    }
+
+    private func parseImage(_ data: [String: Any]) -> MoodboardImage? {
+        guard let id = data["id"] as? String,
+              let url = data["url"] as? String,
+              let width = data["width"] as? Int,
+              let height = data["height"] as? Int
+        else { return nil }
+
+        return MoodboardImage(
+            id: id,
+            url: url,
+            thumbnailUrl: data["thumbnailUrl"] as? String,
+            caption: data["caption"] as? String,
+            source: data["source"] as? String,
+            width: width,
+            height: height,
+            fileSize: data["fileSize"] as? Int ?? 0,
+            order: data["order"] as? Int ?? 0,
+            createdAt: (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+        )
+    }
+
+    private func parseEmbeddedMedia(_ data: [String: Any]) -> EmbeddedMedia? {
+        guard let id = data["id"] as? String,
+              let url = data["url"] as? String,
+              let path = data["path"] as? String,
+              let typeStr = data["type"] as? String,
+              let type = MediaType(rawValue: typeStr)
+        else { return nil }
+
+        return EmbeddedMedia(
+            id: id,
+            url: url,
+            path: path,
+            type: type,
+            filename: data["filename"] as? String,
+            fileSize: data["fileSize"] as? Int ?? 0
+        )
+    }
+
+    private func parseSongDocument(_ doc: QueryDocumentSnapshot) -> Song? {
+        let data = doc.data()
+        let id = doc.documentID
+
+        guard let libraryId = data["libraryId"] as? String,
+              let title = data["title"] as? String,
+              let artist = data["artist"] as? String,
+              let album = data["album"] as? String,
+              let storageUrl = data["storageUrl"] as? String,
+              let storagePath = data["storagePath"] as? String,
+              let fileName = data["fileName"] as? String,
+              let fileType = data["fileType"] as? String
+        else {
+            print("[FirebaseSync] Invalid song document: \(id)")
+            return nil
+        }
+
+        return Song(
+            id: id,
+            libraryId: libraryId,
+            title: title,
+            artist: artist,
+            album: album,
+            year: data["year"] as? Int,
+            trackNumber: data["trackNumber"] as? Int,
+            discNumber: data["discNumber"] as? Int,
+            originalTrackNumber: data["originalTrackNumber"] as? Int,
+            genre: data["genre"] as? String ?? "",
+            duration: data["duration"] as? Double ?? 0,
+            fileSize: data["fileSize"] as? Int ?? 0,
+            albumArtUrl: data["albumArtUrl"] as? String,
+            albumArtThumbUrl: data["albumArtThumbUrl"] as? String,
+            storageUrl: storageUrl,
+            storagePath: storagePath,
+            fileName: fileName,
+            fileType: fileType,
+            dateAdded: (data["dateAdded"] as? Timestamp)?.dateValue() ?? Date(),
+            createdAt: (data["createdAt"] as? Timestamp)?.dateValue() ?? Date(),
+            updatedAt: (data["updatedAt"] as? Timestamp)?.dateValue() ?? Date()
+        )
+    }
+
+    // MARK: - Write Operations
+
+    /// Create a new note
+    public func createNote(_ note: NoteItem) async throws {
+        let data = noteToFirestoreData(note)
+        try await Firestore.firestore().collection("notes").document(note.id).setData(data)
+    }
+
+    /// Update an existing note
+    public func updateNote(_ note: NoteItem) async throws {
+        var data = noteToFirestoreData(note)
+        data["updatedAt"] = FieldValue.serverTimestamp()
+        try await Firestore.firestore().collection("notes").document(note.id).updateData(data)
+    }
+
+    /// Delete a note
+    public func deleteNote(_ id: String) async throws {
+        try await Firestore.firestore().collection("notes").document(id).delete()
+    }
+
+    private func noteToFirestoreData(_ note: NoteItem) -> [String: Any] {
+        var data: [String: Any] = [
+            "type": note.type.rawValue,
+            "title": note.title,
+            "createdAt": Timestamp(date: note.createdAt),
+            "updatedAt": Timestamp(date: note.updatedAt),
+            "published": note.published ?? false
+        ]
+
+        // Optional fields
+        if let parentId = note.parentId {
+            data["parentId"] = parentId
+        } else {
+            data["parentId"] = NSNull()
+        }
+
+        if let content = note.content { data["content"] = content }
+        if let date = note.date { data["date"] = date }
+        if let time = note.time { data["time"] = time }
+        if let tags = note.tags { data["tags"] = tags }
+        if let gridSize = note.gridSize { data["gridSize"] = gridSize.rawValue }
+        if let sortMode = note.sortMode { data["sortMode"] = sortMode.rawValue }
+        if let column = note.musicSortColumn { data["musicSortColumn"] = column.rawValue }
+        if let direction = note.musicSortDirection { data["musicSortDirection"] = direction.rawValue }
+        if let slug = note.slug { data["slug"] = slug }
+        if let sortOrder = note.sortOrder { data["sortOrder"] = sortOrder }
+
+        // Complex fields
+        if let images = note.images {
+            data["images"] = images.map { image in
+                var imgData: [String: Any] = [
+                    "id": image.id,
+                    "url": image.url,
+                    "width": image.width,
+                    "height": image.height,
+                    "fileSize": image.fileSize,
+                    "order": image.order,
+                    "createdAt": Timestamp(date: image.createdAt)
+                ]
+                if let thumbnailUrl = image.thumbnailUrl { imgData["thumbnailUrl"] = thumbnailUrl }
+                if let caption = image.caption { imgData["caption"] = caption }
+                if let source = image.source { imgData["source"] = source }
+                return imgData
+            }
+        }
+
+        if let embeddedMedia = note.embeddedMedia {
+            data["embeddedMedia"] = embeddedMedia.map { media in
+                var mediaData: [String: Any] = [
+                    "id": media.id,
+                    "url": media.url,
+                    "path": media.path,
+                    "type": media.type.rawValue,
+                    "fileSize": media.fileSize
+                ]
+                if let filename = media.filename { mediaData["filename"] = filename }
+                return mediaData
+            }
+        }
+
+        return data
+    }
+}

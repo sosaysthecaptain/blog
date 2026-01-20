@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { MoodboardImage } from "@/lib/notes";
+import { normalizeB2Url } from "@/lib/b2-client";
 
 interface JustifiedImageGridProps {
   images: MoodboardImage[];
@@ -110,7 +111,7 @@ export default function JustifiedImageGrid({
               onClick={() => onImageClick(images.findIndex(img => img.id === image.id))}
             >
               <img
-                src={image.thumbnailUrl || image.url}
+                src={normalizeB2Url(image.thumbnailUrl || image.url)}
                 alt={image.caption || ""}
                 className="w-full h-full object-cover"
                 draggable={false}
