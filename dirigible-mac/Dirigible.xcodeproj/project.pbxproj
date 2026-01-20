@@ -15,6 +15,7 @@
 		A1000006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000006 /* Assets.xcassets */; };
 		A1000007 /* DirigibleCore in Frameworks */ = {isa = PBXBuildFile; productRef = A3000001 /* DirigibleCore */; };
 		A1000008 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = A2000009 /* GoogleService-Info.plist */; };
+		A1000009 /* DirigibleStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000B /* DirigibleStyle.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +29,7 @@
 		A2000008 /* Dirigible.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Dirigible.entitlements; sourceTree = "<group>"; };
 		A2000009 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		A200000A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A200000B /* DirigibleStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirigibleStyle.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -54,6 +56,7 @@
 			isa = PBXGroup;
 			children = (
 				A2000001 /* DirigibleApp.swift */,
+				A200000B /* DirigibleStyle.swift */,
 				A2000008 /* Dirigible.entitlements */,
 				A200000A /* Info.plist */,
 				A2000009 /* GoogleService-Info.plist */,
@@ -159,6 +162,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1000001 /* DirigibleApp.swift in Sources */,
+				A1000009 /* DirigibleStyle.swift in Sources */,
 				A1000002 /* MainView.swift in Sources */,
 				A1000003 /* OnboardingView.swift in Sources */,
 				A1000004 /* LoginView.swift in Sources */,
