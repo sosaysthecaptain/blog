@@ -340,3 +340,71 @@ xcodebuild -project dirigible-mac/Dirigible.xcodeproj -scheme Dirigible build
 # Run the web app (for reference)
 npm run dev
 ```
+
+---
+
+## Sprint Log
+
+### Sprint 1: Core Functionality (Current)
+**Goal:** Make the app actually work - see nested items, basic usability
+
+- [x] **1.1 Recursive folder tree in sidebar**
+  - Used DisclosureGroup with recursive TreeItemView
+  - Expansion state tracked in viewModel.expandedFolders
+  - Files: `MainView.swift`
+
+- [x] **1.2 Fix detail view for different types**
+  - DetailView switches on item.type
+  - Added: NoteDetailView, FolderDetailView, MoodboardDetailView (placeholder), MusicLibraryDetailView (placeholder)
+
+- [x] **1.3 Create/delete operations**
+  - Context menu on all items (New Note, New Folder, Delete)
+  - Toolbar creates inside selected folder or at root
+  - Delete recursively removes children
+
+**Status:** Code complete - NEEDS TESTING
+
+---
+
+### Sprint 2: Styling (Current)
+**Goal:** Match the web app aesthetic
+
+- [x] **2.1 Design tokens** - Created `DirigibleStyle.swift` with:
+  - Colors (background, foreground, muted, border, hover, accent, etc.)
+  - Typography (title, heading, body, bodySerif, caption)
+  - Spacing scale (xs through xxl)
+  - Icon sizes
+
+- [x] **2.2 Button styles** - Primary, secondary, danger, ghost
+  - All use sharp corners (Rectangle stroke)
+  - Invert colors on press
+
+- [x] **2.3 Sidebar styling** - Applied DirigibleStyle to ItemRowView
+  - Selection turns icons/text white
+
+- [x] **2.4 Editor styling** - NoteDetailView uses:
+  - DirigibleStyle.Typography.title for note title
+  - DirigibleStyle.Typography.bodySerif for content
+  - DirigibleStyle.Spacing for padding
+
+- [x] **2.5 Onboarding styling** - Applied tokens to OnboardingView
+
+**Status:** Code complete - NEEDS TESTING
+
+---
+
+### Sprint 3: Markdown Sync
+**Goal:** Flawless bidirectional sync with local folder
+
+- [ ] **3.1 Folder ID mapping** - `.dirigible.json` per folder
+- [ ] **3.2 Recursive file watching** - FSEvents or per-directory watchers
+- [ ] **3.3 Conflict resolution** - Compare timestamps, last-write-wins
+- [ ] **3.4 Delete propagation** - Sync deletes both directions
+- [ ] **3.5 Initial sync** - Full export on first run
+
+**Status:** Not started
+
+---
+
+### Completed
+_(Items move here when done)_

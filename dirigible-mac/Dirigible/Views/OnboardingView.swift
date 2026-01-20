@@ -17,32 +17,33 @@ struct OnboardingView: View {
             }
         }
         .frame(width: 480, height: 360)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(DirigibleStyle.Colors.background)
     }
 
     private var welcomeView: some View {
         VStack(spacing: 0) {
             Spacer()
 
-            VStack(spacing: 16) {
+            VStack(spacing: DirigibleStyle.Spacing.lg) {
                 HindenburgLogo()
-                    .fill(Color(nsColor: .labelColor))
+                    .fill(DirigibleStyle.Colors.foreground)
                     .frame(width: 100, height: 53)
 
                 Text("dirigible")
                     .font(.system(size: 28, weight: .bold, design: .monospaced))
+                    .foregroundColor(DirigibleStyle.Colors.foreground)
 
                 Text("Portable sovereignty.")
                     .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(DirigibleStyle.Colors.muted)
 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: DirigibleStyle.Spacing.sm) {
                     featureRow(icon: "doc.text", text: "Notes and markdown")
                     featureRow(icon: "photo.stack", text: "Moodboards and photos")
                     featureRow(icon: "music.note", text: "Your music library")
                     featureRow(icon: "lock", text: "Your data, your control")
                 }
-                .padding(.top, 16)
+                .padding(.top, DirigibleStyle.Spacing.lg)
             }
             .frame(maxWidth: 360)
 
@@ -57,22 +58,21 @@ struct OnboardingView: View {
                     }
                 }
                 .buttonStyle(DirigiblePrimaryButtonStyle())
-                .frame(width: 100, height: 32)
-                .font(.system(size: 12, weight: .medium))
             }
-            .padding(24)
+            .padding(DirigibleStyle.Spacing.xl)
         }
     }
 
     private func featureRow(icon: String, text: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
+                .font(.system(size: DirigibleStyle.IconSize.xs))
+                .foregroundColor(DirigibleStyle.Colors.muted)
                 .frame(width: 16)
 
             Text(text)
-                .font(.system(size: 13))
+                .font(DirigibleStyle.Typography.body)
+                .foregroundColor(DirigibleStyle.Colors.foreground)
         }
     }
 
@@ -94,31 +94,33 @@ struct SyncingView: View {
     let onComplete: () -> Void
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: DirigibleStyle.Spacing.xl) {
             Spacer()
 
-            VStack(spacing: 16) {
+            VStack(spacing: DirigibleStyle.Spacing.lg) {
                 if syncComplete {
                     Image(systemName: "checkmark.circle")
                         .font(.system(size: 48))
-                        .foregroundColor(.green)
+                        .foregroundColor(DirigibleStyle.Colors.success)
                 } else {
                     ProgressView()
                         .scaleEffect(1.5)
                 }
 
                 Text(syncComplete ? "Sync complete" : syncStatus)
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(DirigibleStyle.Typography.heading)
+                    .foregroundColor(DirigibleStyle.Colors.foreground)
 
                 if !syncComplete {
-                    VStack(spacing: 8) {
+                    VStack(spacing: DirigibleStyle.Spacing.sm) {
                         ProgressView(value: syncProgress)
                             .progressViewStyle(.linear)
                             .frame(width: 200)
+                            .tint(DirigibleStyle.Colors.foreground)
 
                         Text("\(itemsLoaded) items")
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(DirigibleStyle.Colors.muted)
                     }
                 }
             }
@@ -132,10 +134,8 @@ struct SyncingView: View {
                         onComplete()
                     }
                     .buttonStyle(DirigiblePrimaryButtonStyle())
-                    .frame(width: 100, height: 32)
-                    .font(.system(size: 12, weight: .medium))
                 }
-                .padding(24)
+                .padding(DirigibleStyle.Spacing.xl)
             }
         }
         .task {
@@ -147,14 +147,11 @@ struct SyncingView: View {
         syncStatus = "Syncing notes..."
         syncProgress = 0.2
 
-        // Give Firebase sync a moment to populate local cache
-        // The sync listeners should have started when we authenticated
-        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
 
         syncProgress = 0.4
         syncStatus = "Loading content..."
 
-        // Check how many items are in the local cache
         do {
             let notes = try await LocalCache.shared.getAllNotes()
             itemsLoaded = notes.count
@@ -163,11 +160,11 @@ struct SyncingView: View {
             print("[Sync] Failed to load notes: \(error)")
         }
 
-        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second
+        try? await Task.sleep(nanoseconds: 500_000_000)
         syncProgress = 1.0
         syncStatus = "Complete"
 
-        try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 second
+        try? await Task.sleep(nanoseconds: 300_000_000)
         withAnimation {
             syncComplete = true
         }
