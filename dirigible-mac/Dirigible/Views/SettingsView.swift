@@ -1,6 +1,58 @@
 import SwiftUI
 import DirigibleCore
 
+// MARK: - App Settings Manager
+
+@MainActor
+class AppSettings: ObservableObject {
+    static let shared = AppSettings()
+
+    @AppStorage("appearance") var appearance: Appearance = .system {
+        didSet {
+            applyAppearance()
+        }
+    }
+
+    enum Appearance: String, CaseIterable {
+        case system = "System"
+        case light = "Light"
+        case dark = "Dark"
+
+        var nsAppearance: NSAppearance? {
+            switch self {
+            case .system: return nil
+            case .light: return NSAppearance(named: .aqua)
+            case .dark: return NSAppearance(named: .darkAqua)
+            }
+        }
+    }
+
+    var isDarkMode: Bool {
+        if appearance == .system {
+            return NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        }
+        return appearance == .dark
+    }
+
+    private init() {
+        applyAppearance()
+    }
+
+    func applyAppearance() {
+        NSApp.appearance = appearance.nsAppearance
+    }
+
+    func toggleDarkMode() {
+        if isDarkMode {
+            appearance = .light
+        } else {
+            appearance = .dark
+        }
+    }
+}
+
+// MARK: - Settings View
+
 struct SettingsView: View {
     @EnvironmentObject var firebaseSync: FirebaseSync
     @EnvironmentObject var markdownSync: MarkdownSync
@@ -31,22 +83,22 @@ struct SettingsView: View {
 // MARK: - General Settings
 
 struct GeneralSettingsView: View {
-    @AppStorage("appearance") private var appearance: Appearance = .system
-
-    enum Appearance: String, CaseIterable {
-        case system = "System"
-        case light = "Light"
-        case dark = "Dark"
-    }
+    @ObservedObject private var appSettings = AppSettings.shared
 
     var body: some View {
         Form {
-            Picker("Appearance", selection: $appearance) {
-                ForEach(Appearance.allCases, id: \.self) { option in
-                    Text(option.rawValue).tag(option)
+            Section("Appearance") {
+                Picker("Theme", selection: $appSettings.appearance) {
+                    ForEach(AppSettings.Appearance.allCases, id: \.self) { option in
+                        Text(option.rawValue).tag(option)
+                    }
                 }
+                .pickerStyle(.segmented)
+
+                Text("Changes apply immediately to all windows")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
-            .pickerStyle(.segmented)
         }
         .formStyle(.grouped)
         .padding()

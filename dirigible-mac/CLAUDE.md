@@ -424,15 +424,34 @@ npm run dev
 ### Sprint 5: UX Improvements (Complete)
 **Goal:** Match web app's editing experience and add user controls
 
-- [x] **5.1 Remove raw HTML edit mode** - Notes now display formatted content only
-  - Removed Edit button and raw HTML editing
-  - Content is view-only for now (proper WYSIWYG editing requires TipTap-like solution)
-- [x] **5.2 Note title scrolls with content** - Like web app
-  - Title, date/time/tags, and content all scroll together in ScrollView
-- [x] **5.3 Add user menu to sidebar** - At bottom of sidebar
+- [x] **5.1 Add user menu to sidebar** - At bottom of sidebar
   - Shows user email
   - Settings link
   - Sign out option with confirmation dialog
+- [x] **5.2 Note title in header** - Title and metadata at top, content below
+
+**Status:** Complete
+
+---
+
+### Sprint 6: Inline Editing & Dark Mode (Complete)
+**Goal:** WYSIWYG editing and appearance settings
+
+- [x] **6.1 WYSIWYG editing with contentEditable**
+  - HTMLContentView now supports `isEditable: true`
+  - Uses contentEditable HTML with JavaScript message passing
+  - Debounced content changes sent back to SwiftUI
+  - Keyboard shortcuts: Cmd+B (bold), Cmd+I (italic), Cmd+U (underline)
+  - Paste handling preserves HTML formatting
+  - Focus/blur tracking prevents unwanted reloads during editing
+- [x] **6.2 Dark mode toggle**
+  - AppSettings manager with `@AppStorage` persistence
+  - Applies appearance to all windows via `NSApp.appearance`
+  - Toggle in user menu (sun/moon icon)
+  - Full theme picker in Settings > General
+- [x] **6.3 NoteDetailView uses editable HTML**
+  - Content changes auto-save to Firebase
+  - Title editable in header
 
 **Status:** Complete
 

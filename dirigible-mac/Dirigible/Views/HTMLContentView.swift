@@ -2,6 +2,7 @@ import SwiftUI
 import WebKit
 
 /// Renders HTML content matching the web app's TipTap editor styling
+/// Supports both view-only and editable modes
 struct HTMLContentView: NSViewRepresentable {
     let html: String
     let isEditable: Bool
@@ -19,6 +20,7 @@ struct HTMLContentView: NSViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
+        context.coordinator.webView = webView
 
         // Make background transparent
         webView.setValue(false, forKey: "drawsBackground")
@@ -27,15 +29,27 @@ struct HTMLContentView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        let fullHTML = wrapHTMLWithStyles(html)
+        // Don't reload while user is actively editing
+        if context.coordinator.isEditing {
+            return
+        }
+
+        // Check if content actually changed to avoid unnecessary reloads
+        if context.coordinator.lastLoadedHTML == html && context.coordinator.lastIsEditable == isEditable {
+            return
+        }
+
+        context.coordinator.lastLoadedHTML = html
+        context.coordinator.lastIsEditable = isEditable
+        let fullHTML = wrapHTMLWithStyles(html, isEditable: isEditable)
         webView.loadHTMLString(fullHTML, baseURL: nil)
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onContentChange: onContentChange)
+        Coordinator(onContentChange: onContentChange, isEditable: isEditable)
     }
 
-    private func wrapHTMLWithStyles(_ content: String) -> String {
+    private func wrapHTMLWithStyles(_ content: String, isEditable: Bool) -> String {
         let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
 
         let bgColor = isDark ? "#0A0A0A" : "#FFFFFF"
@@ -45,6 +59,85 @@ struct HTMLContentView: NSViewRepresentable {
         let hoverColor = isDark ? "#171717" : "#F5F5F5"
         let accentColor = isDark ? "#3B82F6" : "#2563EB"
         let codeBg = isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)"
+
+        let editableAttr = isEditable ? "contenteditable=\"true\"" : ""
+        let placeholderContent = isEditable ? "<p class=\"placeholder\">Start typing...</p>" : "<p style='color: \(mutedColor)'>No content</p>"
+
+        let editingJS = isEditable ? """
+            <script>
+                let debounceTimer = null;
+                const editor = document.getElementById('editor');
+
+                // Track focus state
+                editor.addEventListener('focus', function() {
+                    window.webkit.messageHandlers.contentChanged.postMessage({ type: 'focus' });
+                    // Remove placeholder on focus
+                    const placeholder = editor.querySelector('.placeholder');
+                    if (placeholder && editor.children.length === 1) {
+                        placeholder.remove();
+                        // Add empty paragraph for editing
+                        const p = document.createElement('p');
+                        p.innerHTML = '<br>';
+                        editor.appendChild(p);
+                        // Place cursor at start
+                        const range = document.createRange();
+                        range.setStart(p, 0);
+                        range.collapse(true);
+                        const sel = window.getSelection();
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                    }
+                });
+
+                editor.addEventListener('blur', function() {
+                    window.webkit.messageHandlers.contentChanged.postMessage({ type: 'blur' });
+                    // Show placeholder if empty
+                    if (editor.innerHTML.trim() === '' || editor.innerHTML === '<p><br></p>') {
+                        editor.innerHTML = '<p class="placeholder">Start typing...</p>';
+                    }
+                });
+
+                // Send content changes with debouncing
+                editor.addEventListener('input', function() {
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(function() {
+                        let content = editor.innerHTML;
+                        // Don't send placeholder as content
+                        if (content.includes('class="placeholder"')) {
+                            content = '';
+                        }
+                        window.webkit.messageHandlers.contentChanged.postMessage({ type: 'content', html: content });
+                    }, 300);
+                });
+
+                // Handle paste - clean up pasted content
+                editor.addEventListener('paste', function(e) {
+                    e.preventDefault();
+                    const text = e.clipboardData.getData('text/html') || e.clipboardData.getData('text/plain');
+                    document.execCommand('insertHTML', false, text);
+                });
+
+                // Keyboard shortcuts
+                editor.addEventListener('keydown', function(e) {
+                    if (e.metaKey || e.ctrlKey) {
+                        switch(e.key) {
+                            case 'b':
+                                e.preventDefault();
+                                document.execCommand('bold');
+                                break;
+                            case 'i':
+                                e.preventDefault();
+                                document.execCommand('italic');
+                                break;
+                            case 'u':
+                                e.preventDefault();
+                                document.execCommand('underline');
+                                break;
+                        }
+                    }
+                });
+            </script>
+        """ : ""
 
         return """
         <!DOCTYPE html>
@@ -56,15 +149,30 @@ struct HTMLContentView: NSViewRepresentable {
                 * {
                     box-sizing: border-box;
                 }
+                html, body {
+                    height: 100%;
+                    margin: 0;
+                    padding: 0;
+                }
                 body {
                     font-family: Georgia, 'Times New Roman', serif;
                     font-size: 14px;
                     line-height: 1.75;
                     color: \(fgColor);
                     background: \(bgColor);
-                    margin: 0;
-                    padding: 0;
                     -webkit-font-smoothing: antialiased;
+                }
+                #editor {
+                    min-height: 100%;
+                    outline: none;
+                    padding: 0;
+                }
+                #editor:empty::before {
+                    content: "Start typing...";
+                    color: \(mutedColor);
+                }
+                .placeholder {
+                    color: \(mutedColor);
                 }
                 h1 {
                     font-size: 1.75rem;
@@ -247,7 +355,8 @@ struct HTMLContentView: NSViewRepresentable {
             </style>
         </head>
         <body>
-            \(content.isEmpty ? "<p style='color: \(mutedColor)'>No content</p>" : content)
+            <div id="editor" \(editableAttr)>\(content.isEmpty ? placeholderContent : content)</div>
+            \(editingJS)
         </body>
         </html>
         """
@@ -255,19 +364,38 @@ struct HTMLContentView: NSViewRepresentable {
 
     class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         var onContentChange: ((String) -> Void)?
+        var isEditing = false
+        var lastLoadedHTML: String = ""
+        var lastIsEditable: Bool = false
+        weak var webView: WKWebView?
+        private let isEditable: Bool
 
-        init(onContentChange: ((String) -> Void)?) {
+        init(onContentChange: ((String) -> Void)?, isEditable: Bool) {
             self.onContentChange = onContentChange
+            self.isEditable = isEditable
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            if message.name == "contentChanged", let content = message.body as? String {
-                onContentChange?(content)
+            guard message.name == "contentChanged",
+                  let dict = message.body as? [String: Any],
+                  let type = dict["type"] as? String else { return }
+
+            switch type {
+            case "focus":
+                isEditing = true
+            case "blur":
+                isEditing = false
+            case "content":
+                if let html = dict["html"] as? String {
+                    onContentChange?(html)
+                }
+            default:
+                break
             }
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            // Open links in default browser
+            // Open links in default browser (but allow editing clicks)
             if navigationAction.navigationType == .linkActivated, let url = navigationAction.request.url {
                 NSWorkspace.shared.open(url)
                 decisionHandler(.cancel)
@@ -280,7 +408,7 @@ struct HTMLContentView: NSViewRepresentable {
 
 // MARK: - Preview
 
-#Preview {
+#Preview("View Only") {
     HTMLContentView(html: """
         <h1>Heading 1</h1>
         <p>This is a paragraph with <strong>bold</strong>, <em>italic</em>, and <a href="https://example.com">a link</a>.</p>
@@ -302,4 +430,13 @@ struct HTMLContentView: NSViewRepresentable {
         </table>
     """)
     .frame(width: 600, height: 800)
+}
+
+#Preview("Editable") {
+    HTMLContentView(
+        html: "<p>Edit me!</p>",
+        isEditable: true,
+        onContentChange: { print("Content: \($0)") }
+    )
+    .frame(width: 600, height: 400)
 }

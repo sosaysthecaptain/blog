@@ -215,6 +215,7 @@ struct SidebarView: View {
 struct UserMenuButton: View {
     @Binding var showUserMenu: Bool
     @EnvironmentObject var firebaseSync: FirebaseSync
+    @ObservedObject private var appSettings = AppSettings.shared
     @State private var showSignOutConfirm = false
 
     var body: some View {
@@ -253,15 +254,27 @@ struct UserMenuButton: View {
                         Divider()
                     }
 
+                    // Dark mode toggle
+                    Button {
+                        appSettings.toggleDarkMode()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: appSettings.isDarkMode ? "sun.max" : "moon")
+                                .font(.system(size: 12))
+                            Text(appSettings.isDarkMode ? "Light Mode" : "Dark Mode")
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(DirigibleStyle.Colors.foreground)
+
                     // Settings
                     Button {
                         showUserMenu = false
-                        if let url = URL(string: "dirigible://settings") {
-                            NSWorkspace.shared.open(url)
-                        } else {
-                            // Fallback: open settings window via menu
-                            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                        }
+                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "gear")
@@ -455,12 +468,13 @@ struct NoteDetailView: View {
     let onUpdate: (NoteItem) -> Void
 
     @State private var title: String = ""
+    @State private var content: String = ""
     @FocusState private var isTitleFocused: Bool
 
     var body: some View {
-        ScrollView {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header with title
             VStack(alignment: .leading, spacing: 0) {
-                // Title - editable, scrolls with content
                 TextField("Untitled", text: $title)
                     .font(DirigibleStyle.Typography.title)
                     .foregroundColor(DirigibleStyle.Colors.foreground)
@@ -494,20 +508,31 @@ struct NoteDetailView: View {
                     Spacer()
                 }
                 .padding(.horizontal, DirigibleStyle.Spacing.xl)
-                .padding(.bottom, DirigibleStyle.Spacing.lg)
-
-                // Content - rendered HTML
-                HTMLContentView(html: item.content ?? "")
-                    .frame(minHeight: 400)
-                    .padding(.horizontal, DirigibleStyle.Spacing.lg)
+                .padding(.bottom, DirigibleStyle.Spacing.md)
             }
+
+            Divider()
+                .background(DirigibleStyle.Colors.border)
+
+            // Editable content area
+            HTMLContentView(
+                html: content,
+                isEditable: true,
+                onContentChange: { newContent in
+                    saveContentChange(newContent)
+                }
+            )
+            .padding(.horizontal, DirigibleStyle.Spacing.lg)
+            .padding(.top, DirigibleStyle.Spacing.md)
         }
         .background(DirigibleStyle.Colors.background)
         .onAppear {
             title = item.title
+            content = item.content ?? ""
         }
         .onChange(of: item.id) {
             title = item.title
+            content = item.content ?? ""
         }
         .onChange(of: title) {
             saveTitleChange()
@@ -518,6 +543,15 @@ struct NoteDetailView: View {
         guard title != item.title else { return }
         var updated = item
         updated.title = title
+        updated.updatedAt = Date()
+        onUpdate(updated)
+    }
+
+    private func saveContentChange(_ newContent: String) {
+        guard newContent != item.content else { return }
+        content = newContent
+        var updated = item
+        updated.content = newContent.isEmpty ? nil : newContent
         updated.updatedAt = Date()
         onUpdate(updated)
     }
