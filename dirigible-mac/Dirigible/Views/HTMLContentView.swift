@@ -292,8 +292,8 @@ struct HTMLContentView: NSViewRepresentable {
         </ul>
         <h3>Code Block</h3>
         <pre><code>function hello() {
-    console.log("Hello, world!");
-}</code></pre>
+            console.log("Hello, world!");
+        }</code></pre>
         <blockquote>This is a blockquote with some thoughtful text.</blockquote>
         <table>
             <tr><th>Name</th><th>Value</th></tr>
