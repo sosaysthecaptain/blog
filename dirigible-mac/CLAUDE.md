@@ -406,14 +406,19 @@ npm run dev
 
 ---
 
-### Sprint 4: Look & Feel Fixes (Current)
+### Sprint 4: Look & Feel Fixes (Complete)
 **Goal:** Match the web app's visual appearance
 
-- [x] **4.1 Fix sidebar icons** - Use outline SF Symbols (folder, doc, music.note)
+- [x] **4.1 Fix sidebar icons** - Outline SF Symbols + custom MoodboardIcon
 - [x] **4.2 Fix folder view** - Table with Title/Date/Tags columns, hover states
-- [ ] **4.3 Markdown rendering** - Currently shows raw HTML/markdown
+- [x] **4.3 HTML rendering** - WKWebView with TipTap-matching CSS
+  - HTMLContentView.swift renders HTML content
+  - Supports headings, lists, code blocks, blockquotes, tables, images
+  - Light/dark mode aware
+  - NoteDetailView has Edit button to toggle raw HTML editing
+- [x] **4.4 Fix note creation** - effectiveParentId creates in correct folder
 
-**Status:** In progress
+**Status:** Complete
 
 ---
 
