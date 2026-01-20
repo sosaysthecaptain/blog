@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteFromB2 = exports.uploadToB2 = exports.identifyAudio = exports.regenerateMoodboardThumbnails = exports.generateMoodboardThumbnail = void 0;
+exports.getSignedUrls = exports.deleteFromB2 = exports.uploadToB2 = exports.identifyAudio = exports.regenerateMoodboardThumbnails = exports.generateMoodboardThumbnail = void 0;
 const storage_1 = require("firebase-functions/v2/storage");
 const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
@@ -501,6 +501,79 @@ exports.deleteFromB2 = (0, https_1.onRequest)({
         res.status(500).json({
             error: error instanceof Error ? error.message : "Delete failed",
         });
+    }
+});
+/**
+ * Generate signed URLs for B2 files using B2's native download authorization.
+ * Accepts an array of paths and returns authorized URLs valid for 1 hour.
+ * Requires authentication.
+ */
+exports.getSignedUrls = (0, https_1.onCall)({
+    memory: "256MiB",
+    timeoutSeconds: 30,
+}, async (request) => {
+    // Require authentication
+    if (!request.auth) {
+        throw new https_1.HttpsError("unauthenticated", "Must be authenticated to get signed URLs");
+    }
+    const { paths } = request.data;
+    if (!paths || !Array.isArray(paths) || paths.length === 0) {
+        throw new https_1.HttpsError("invalid-argument", "paths array is required");
+    }
+    // Limit batch size to prevent abuse
+    if (paths.length > 100) {
+        throw new https_1.HttpsError("invalid-argument", "Maximum 100 paths per request");
+    }
+    if (!B2_KEY_ID || !B2_APP_KEY) {
+        throw new https_1.HttpsError("internal", "B2 credentials not configured");
+    }
+    try {
+        // Get B2 auth (reuses cached auth if valid)
+        const auth = await getB2Auth();
+        // Get download authorization for the bucket
+        const validDurationInSeconds = 3600; // 1 hour
+        // Generate authorized URLs for all paths
+        const signedUrls = {};
+        // B2 download authorization can be per-prefix, so we'll create one per file
+        // Using the downloadUrl from auth which is the base URL for downloads
+        await Promise.all(paths.map(async (filePath) => {
+            try {
+                // Get download authorization for this specific file
+                const authResponse = await fetch(`${auth.apiUrl}/b2api/v2/b2_get_download_authorization`, {
+                    method: "POST",
+                    headers: {
+                        Authorization: auth.authorizationToken,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        bucketId: auth.bucketId,
+                        fileNamePrefix: filePath,
+                        validDurationInSeconds,
+                    }),
+                });
+                if (!authResponse.ok) {
+                    console.error(`Failed to get download auth for ${filePath}:`, await authResponse.text());
+                    return;
+                }
+                const authData = await authResponse.json();
+                // Construct the authorized download URL
+                // Format: {downloadUrl}/file/{bucketName}/{fileName}?Authorization={token}
+                const downloadUrl = `${auth.downloadUrl}/file/${B2_BUCKET}/${filePath}?Authorization=${authData.authorizationToken}`;
+                signedUrls[filePath] = downloadUrl;
+            }
+            catch (error) {
+                console.error(`Failed to sign URL for ${filePath}:`, error);
+            }
+        }));
+        return {
+            urls: signedUrls,
+            expiresIn: validDurationInSeconds,
+            expiresAt: Date.now() + validDurationInSeconds * 1000,
+        };
+    }
+    catch (error) {
+        console.error("Error generating signed URLs:", error);
+        throw new https_1.HttpsError("internal", "Failed to generate signed URLs");
     }
 });
 //# sourceMappingURL=index.js.map

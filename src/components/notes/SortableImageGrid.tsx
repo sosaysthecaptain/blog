@@ -20,7 +20,6 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { MoodboardImage } from "@/lib/notes";
-import { normalizeB2Url } from "@/lib/b2-client";
 
 interface SortableImageProps {
   image: MoodboardImage;
@@ -59,7 +58,7 @@ function SortableImage({ image, onDelete, onClick, isDragging, showDropIndicator
         }}
       >
         <img
-          src={normalizeB2Url(image.thumbnailUrl || image.url)}
+          src={image.thumbnailUrl || image.url}
           alt={image.caption || ""}
           className="w-full rounded-lg"
           style={{ aspectRatio: `${image.width}/${image.height}` }}
@@ -102,7 +101,7 @@ function SortableImage({ image, onDelete, onClick, isDragging, showDropIndicator
 function DragOverlayImage({ image }: { image: MoodboardImage }) {
   return (
     <img
-      src={normalizeB2Url(image.thumbnailUrl || image.url)}
+      src={image.thumbnailUrl || image.url}
       alt={image.caption || ""}
       className="rounded-lg shadow-2xl"
       style={{

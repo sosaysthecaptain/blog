@@ -587,3 +587,102 @@ export const deleteFromB2 = onRequest(
     }
   }
 );
+
+/**
+ * Generate signed URLs for B2 files using B2's native download authorization.
+ * Accepts an array of paths and returns authorized URLs valid for 1 hour.
+ * Requires authentication.
+ */
+export const getSignedUrls = onCall(
+  {
+    memory: "256MiB",
+    timeoutSeconds: 30,
+  },
+  async (request) => {
+    // Require authentication
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "Must be authenticated to get signed URLs"
+      );
+    }
+
+    const { paths } = request.data as { paths: string[] };
+
+    if (!paths || !Array.isArray(paths) || paths.length === 0) {
+      throw new HttpsError("invalid-argument", "paths array is required");
+    }
+
+    // Limit batch size to prevent abuse
+    if (paths.length > 100) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Maximum 100 paths per request"
+      );
+    }
+
+    if (!B2_KEY_ID || !B2_APP_KEY) {
+      throw new HttpsError("internal", "B2 credentials not configured");
+    }
+
+    try {
+      // Get B2 auth (reuses cached auth if valid)
+      const auth = await getB2Auth();
+
+      // Get download authorization for the bucket
+      const validDurationInSeconds = 3600; // 1 hour
+
+      // Generate authorized URLs for all paths
+      const signedUrls: Record<string, string> = {};
+
+      // B2 download authorization can be per-prefix, so we'll create one per file
+      // Using the downloadUrl from auth which is the base URL for downloads
+      await Promise.all(
+        paths.map(async (filePath) => {
+          try {
+            // Get download authorization for this specific file
+            const authResponse = await fetch(
+              `${auth.apiUrl}/b2api/v2/b2_get_download_authorization`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: auth.authorizationToken,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  bucketId: auth.bucketId,
+                  fileNamePrefix: filePath,
+                  validDurationInSeconds,
+                }),
+              }
+            );
+
+            if (!authResponse.ok) {
+              console.error(`Failed to get download auth for ${filePath}:`, await authResponse.text());
+              return;
+            }
+
+            const authData = await authResponse.json();
+
+            // Construct the authorized download URL
+            // Format: {downloadUrl}/file/{bucketName}/{fileName}?Authorization={token}
+            const downloadUrl = `${auth.downloadUrl}/file/${B2_BUCKET}/${filePath}?Authorization=${authData.authorizationToken}`;
+
+            signedUrls[filePath] = downloadUrl;
+          } catch (error) {
+            console.error(`Failed to sign URL for ${filePath}:`, error);
+          }
+        })
+      );
+
+      return {
+        urls: signedUrls,
+        expiresIn: validDurationInSeconds,
+        expiresAt: Date.now() + validDurationInSeconds * 1000,
+      };
+    } catch (error) {
+      console.error("Error generating signed URLs:", error);
+      throw new HttpsError("internal", "Failed to generate signed URLs");
+    }
+  }
+);

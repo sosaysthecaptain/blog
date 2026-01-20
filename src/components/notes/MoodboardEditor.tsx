@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardR
 import { NoteItem, MoodboardImage, updateNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap } from "@/lib/notes";
 import { useAutosave } from "@/hooks/useAutosave";
 import { useFocusSync } from "@/hooks/useFocusSync";
+import { useSignedUrls } from "@/hooks/useSignedUrls";
 import { ConfirmDialog } from "@/components/ui/Dialog";
 import { uploadMoodboardImages, deleteMoodboardImage, getImageIdFromUrl, getExtensionFromUrl } from "@/lib/moodboard-storage";
-import { normalizeB2Url } from "@/lib/b2-client";
+import { extractPathFromUrl } from "@/lib/signed-url-cache";
 import JSZip from "jszip";
 import TagInput from "./TagInput";
 import MoodboardCarousel from "./MoodboardCarousel";
@@ -85,6 +86,37 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
     gridSize: "small" | "medium" | "large";
     sortMode: "chronological" | "manual";
   } | null>(null);
+
+  // Collect all image paths for signed URL fetching
+  const imagePaths = useMemo(() => {
+    const paths: string[] = [];
+    for (const img of images) {
+      if (img.url) paths.push(extractPathFromUrl(img.url));
+      if (img.thumbnailUrl) paths.push(extractPathFromUrl(img.thumbnailUrl));
+    }
+    return paths;
+  }, [images]);
+
+  // Get signed URLs for all images
+  const { getSignedUrl, isLoading: isLoadingUrls } = useSignedUrls(imagePaths);
+
+  // Transform images to use signed URLs
+  // Don't fall back to /api/files/ URLs as they don't work
+  const imagesWithSignedUrls = useMemo(() => {
+    return images.map((img) => {
+      const signedUrl = getSignedUrl(img.url);
+      const signedThumbUrl = img.thumbnailUrl ? getSignedUrl(img.thumbnailUrl) : undefined;
+
+      // Only use original URL as fallback if it's not a broken /api/files/ URL
+      const isBrokenUrl = (url: string) => url?.startsWith("/api/files/");
+
+      return {
+        ...img,
+        url: signedUrl || (isBrokenUrl(img.url) ? "" : img.url),
+        thumbnailUrl: signedThumbUrl || (img.thumbnailUrl && isBrokenUrl(img.thumbnailUrl) ? "" : img.thumbnailUrl),
+      };
+    });
+  }, [images, getSignedUrl]);
 
   // Load available tags
   useEffect(() => {
@@ -361,22 +393,22 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
 
   // Export moodboard as zip
   const handleExport = useCallback(async () => {
-    if (images.length === 0 || isExporting) return;
+    if (imagesWithSignedUrls.length === 0 || isExporting) return;
 
     setIsExporting(true);
     try {
       const zip = new JSZip();
 
-      // Fetch and add each image to the zip
-      for (let i = 0; i < images.length; i++) {
-        const image = images[i];
+      // Fetch and add each image to the zip (using signed URLs)
+      for (let i = 0; i < imagesWithSignedUrls.length; i++) {
+        const image = imagesWithSignedUrls[i];
         try {
-          const url = normalizeB2Url(image.url);
-          const response = await fetch(url);
+          const response = await fetch(image.url);
           const blob = await response.blob();
 
-          // Get extension from URL or default to jpg
-          const ext = getExtensionFromUrl(url);
+          // Get extension from original path or default to jpg
+          const originalPath = extractPathFromUrl(images[i].url);
+          const ext = getExtensionFromUrl(originalPath);
           const fileName = `${String(i + 1).padStart(3, "0")}_${image.id}.${ext}`;
 
           zip.file(fileName, blob);
@@ -400,7 +432,7 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
     } finally {
       setIsExporting(false);
     }
-  }, [images, isExporting, title]);
+  }, [images, imagesWithSignedUrls, isExporting, title]);
 
   // Handle file drag enter (only for external files, not internal reorder)
   const handleFileDragEnter = useCallback((e: React.DragEvent) => {
@@ -785,7 +817,7 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
           <>
             {sortMode === "chronological" ? (
               <JustifiedImageGrid
-                images={images}
+                images={imagesWithSignedUrls}
                 targetRowHeight={gridSize === "small" ? 120 : gridSize === "medium" ? 180 : 250}
                 gap={8}
                 onDelete={handleDeleteImage}
@@ -793,7 +825,7 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
               />
             ) : (
               <SortableImageGrid
-                images={images}
+                images={imagesWithSignedUrls}
                 gridSize={gridSize}
                 onReorder={handleReorder}
                 onDelete={handleDeleteImage}
@@ -866,9 +898,9 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
       )}
 
       {/* Carousel view */}
-      {carouselOpen && images.length > 0 && (
+      {carouselOpen && imagesWithSignedUrls.length > 0 && (
         <MoodboardCarousel
-          images={images}
+          images={imagesWithSignedUrls}
           initialIndex={carouselInitialIndex}
           onClose={() => setCarouselOpen(false)}
           onUpdateCaption={handleUpdateCaption}

@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { MoodboardImage } from "@/lib/notes";
-import { normalizeB2Url } from "@/lib/b2-client";
 
 interface MoodboardCarouselProps {
   images: MoodboardImage[];
@@ -159,7 +158,7 @@ export default function MoodboardCarousel({
         onTouchEnd={handleTouchEnd}
       >
         <img
-          src={normalizeB2Url(currentImage.url)}
+          src={currentImage.url}
           alt={currentImage.caption || ""}
           className="max-w-full max-h-[80vh] object-contain rounded-lg"
         />
@@ -231,7 +230,7 @@ export default function MoodboardCarousel({
               }`}
             >
               <img
-                src={normalizeB2Url(image.thumbnailUrl || image.url)}
+                src={image.thumbnailUrl || image.url}
                 alt=""
                 className="w-full h-full object-cover"
               />
