@@ -97,49 +97,49 @@ enum DirigibleStyle {
 
 /// Primary button - Black border, inverts on press
 struct DirigiblePrimaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13, weight: .medium))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                configuration.isPressed
-                    ? DirigibleStyle.Colors.foreground
-                    : DirigibleStyle.Colors.background
-            )
             .foregroundColor(
                 configuration.isPressed
                     ? DirigibleStyle.Colors.background
                     : DirigibleStyle.Colors.foreground
             )
+            .background(
+                configuration.isPressed
+                    ? DirigibleStyle.Colors.foreground
+                    : DirigibleStyle.Colors.background
+            )
             .overlay(
                 Rectangle()
                     .stroke(DirigibleStyle.Colors.foreground, lineWidth: 1)
             )
+            .opacity(isEnabled ? 1 : 0.5)
     }
 }
 
 /// Secondary button - Gray border, subtle invert
 struct DirigibleSecondaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13, weight: .medium))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                configuration.isPressed
-                    ? DirigibleStyle.Colors.muted
-                    : Color.clear
-            )
             .foregroundColor(
                 configuration.isPressed
                     ? DirigibleStyle.Colors.background
                     : DirigibleStyle.Colors.muted
             )
+            .background(
+                configuration.isPressed
+                    ? DirigibleStyle.Colors.muted
+                    : DirigibleStyle.Colors.background
+            )
             .overlay(
                 Rectangle()
                     .stroke(DirigibleStyle.Colors.border, lineWidth: 1)
             )
+            .opacity(isEnabled ? 1 : 0.5)
     }
 }
 
@@ -180,6 +180,24 @@ struct DirigibleGhostButtonStyle: ButtonStyle {
                     : Color.clear
             )
             .foregroundColor(DirigibleStyle.Colors.muted)
+    }
+}
+
+// MARK: - Text Field Style
+
+/// Text field with 1px border, no rounded corners
+struct DirigibleTextFieldStyle: TextFieldStyle {
+    func _body(configuration: TextField<Self._Label>) -> some View {
+        configuration
+            .textFieldStyle(.plain)
+            .font(DirigibleStyle.Typography.body)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(DirigibleStyle.Colors.background)
+            .overlay(
+                Rectangle()
+                    .stroke(DirigibleStyle.Colors.border, lineWidth: 1)
+            )
     }
 }
 

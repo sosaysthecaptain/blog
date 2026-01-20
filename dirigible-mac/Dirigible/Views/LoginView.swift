@@ -308,52 +308,7 @@ struct LoginView: View {
     }
 }
 
-// MARK: - Custom Button Styles
-
-struct DirigiblePrimaryButtonStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundColor(configuration.isPressed ? Color(nsColor: .windowBackgroundColor) : Color(nsColor: .labelColor))
-            .background(configuration.isPressed ? Color(nsColor: .labelColor) : Color(nsColor: .windowBackgroundColor))
-            .overlay(
-                Rectangle()
-                    .stroke(Color(nsColor: .labelColor), lineWidth: 1)
-            )
-            .opacity(isEnabled ? 1 : 0.5)
-    }
-}
-
-struct DirigibleSecondaryButtonStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundColor(configuration.isPressed ? Color(nsColor: .windowBackgroundColor) : Color(nsColor: .secondaryLabelColor))
-            .background(configuration.isPressed ? Color(nsColor: .secondaryLabelColor) : Color(nsColor: .windowBackgroundColor))
-            .overlay(
-                Rectangle()
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-            )
-            .opacity(isEnabled ? 1 : 0.5)
-    }
-}
-
-struct DirigibleTextFieldStyle: TextFieldStyle {
-    func _body(configuration: TextField<Self._Label>) -> some View {
-        configuration
-            .textFieldStyle(.plain)
-            .font(.system(size: 13))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(Color(nsColor: .textBackgroundColor))
-            .overlay(
-                Rectangle()
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-            )
-    }
-}
+// Button styles moved to DirigibleStyle.swift
 
 #Preview {
     LoginView()
