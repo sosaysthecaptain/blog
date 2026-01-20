@@ -165,14 +165,26 @@ class MainViewModel: ObservableObject {
 
 struct SidebarView: View {
     @ObservedObject var viewModel: MainViewModel
+    @EnvironmentObject var firebaseSync: FirebaseSync
+    @State private var showUserMenu = false
 
     var body: some View {
-        List(selection: $viewModel.selectedId) {
-            ForEach(viewModel.rootItems) { item in
-                TreeItemView(item: item, viewModel: viewModel, level: 0)
+        VStack(spacing: 0) {
+            // Main list
+            List(selection: $viewModel.selectedId) {
+                ForEach(viewModel.rootItems) { item in
+                    TreeItemView(item: item, viewModel: viewModel, level: 0)
+                }
             }
+            .listStyle(.sidebar)
+
+            // User menu at bottom
+            Divider()
+                .background(DirigibleStyle.Colors.border)
+
+            UserMenuButton(showUserMenu: $showUserMenu)
+                .environmentObject(firebaseSync)
         }
-        .listStyle(.sidebar)
         .toolbar {
             ToolbarItemGroup {
                 Button(action: { viewModel.createFolder(parentId: selectedParentId) }) {
@@ -195,6 +207,110 @@ struct SidebarView: View {
             return nil
         }
         return selected.type == .folder ? selectedId : selected.parentId
+    }
+}
+
+// MARK: - User Menu
+
+struct UserMenuButton: View {
+    @Binding var showUserMenu: Bool
+    @EnvironmentObject var firebaseSync: FirebaseSync
+    @State private var showSignOutConfirm = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button {
+                showUserMenu.toggle()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "person.crop.circle")
+                        .font(.system(size: 12))
+                    Text(firebaseSync.userEmail ?? "Account")
+                        .font(DirigibleStyle.Typography.caption)
+                        .lineLimit(1)
+                    Spacer()
+                }
+                .foregroundColor(DirigibleStyle.Colors.muted)
+                .padding(.horizontal, DirigibleStyle.Spacing.lg)
+                .padding(.vertical, DirigibleStyle.Spacing.sm)
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showUserMenu, arrowEdge: .top) {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Account info
+                    if let email = firebaseSync.userEmail {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Signed in as")
+                                .font(DirigibleStyle.Typography.tiny)
+                                .foregroundColor(DirigibleStyle.Colors.muted)
+                            Text(email)
+                                .font(DirigibleStyle.Typography.bodySmall)
+                                .foregroundColor(DirigibleStyle.Colors.foreground)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+
+                        Divider()
+                    }
+
+                    // Settings
+                    Button {
+                        showUserMenu = false
+                        if let url = URL(string: "dirigible://settings") {
+                            NSWorkspace.shared.open(url)
+                        } else {
+                            // Fallback: open settings window via menu
+                            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "gear")
+                                .font(.system(size: 12))
+                            Text("Settings...")
+                            Spacer()
+                            Text("⌘,")
+                                .font(DirigibleStyle.Typography.tiny)
+                                .foregroundColor(DirigibleStyle.Colors.muted)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(DirigibleStyle.Colors.foreground)
+
+                    Divider()
+
+                    // Sign out
+                    Button {
+                        showUserMenu = false
+                        showSignOutConfirm = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                                .font(.system(size: 12))
+                            Text("Sign Out")
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(DirigibleStyle.Colors.danger)
+                }
+                .frame(width: 220)
+                .padding(.vertical, 4)
+            }
+        }
+        .alert("Sign Out", isPresented: $showSignOutConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Sign Out", role: .destructive) {
+                try? firebaseSync.signOut()
+            }
+        } message: {
+            Text("Your local notes will remain on disk, but you'll need to sign in again to sync.")
+        }
     }
 }
 
@@ -339,50 +455,50 @@ struct NoteDetailView: View {
     let onUpdate: (NoteItem) -> Void
 
     @State private var title: String = ""
-    @State private var isEditing: Bool = false
-    @State private var editContent: String = ""
     @FocusState private var isTitleFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Header with title and edit toggle
-            HStack {
-                TextField("Title", text: $title)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                // Title - editable, scrolls with content
+                TextField("Untitled", text: $title)
                     .font(DirigibleStyle.Typography.title)
                     .foregroundColor(DirigibleStyle.Colors.foreground)
                     .textFieldStyle(.plain)
                     .focused($isTitleFocused)
+                    .padding(.horizontal, DirigibleStyle.Spacing.xl)
+                    .padding(.top, DirigibleStyle.Spacing.xl)
+                    .padding(.bottom, DirigibleStyle.Spacing.sm)
 
-                Spacer()
-
-                Button(isEditing ? "Done" : "Edit") {
-                    if isEditing {
-                        // Save changes
-                        saveContentChanges()
-                    } else {
-                        // Enter edit mode
-                        editContent = item.content ?? ""
+                // Date, time, and tags row (like web app)
+                HStack(spacing: DirigibleStyle.Spacing.md) {
+                    if let date = item.date {
+                        Text(date)
+                            .font(DirigibleStyle.Typography.bodySmall)
+                            .foregroundColor(DirigibleStyle.Colors.muted)
+                            .italic()
                     }
-                    isEditing.toggle()
+                    if let time = item.time {
+                        Text(time)
+                            .font(DirigibleStyle.Typography.bodySmall)
+                            .foregroundColor(DirigibleStyle.Colors.muted)
+                            .italic()
+                    }
+                    if let tags = item.tags, !tags.isEmpty {
+                        HStack(spacing: 4) {
+                            ForEach(tags, id: \.self) { tag in
+                                DirigibleTag(text: tag)
+                            }
+                        }
+                    }
+                    Spacer()
                 }
-                .buttonStyle(DirigibleSecondaryButtonStyle())
-            }
-            .padding(.horizontal, DirigibleStyle.Spacing.xl)
-            .padding(.top, DirigibleStyle.Spacing.xl)
-            .padding(.bottom, DirigibleStyle.Spacing.lg)
+                .padding(.horizontal, DirigibleStyle.Spacing.xl)
+                .padding(.bottom, DirigibleStyle.Spacing.lg)
 
-            Divider()
-                .background(DirigibleStyle.Colors.border)
-
-            // Content - either rendered HTML or editable text
-            if isEditing {
-                TextEditor(text: $editContent)
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(DirigibleStyle.Colors.foreground)
-                    .scrollContentBackground(.hidden)
-                    .padding(DirigibleStyle.Spacing.lg)
-            } else {
+                // Content - rendered HTML
                 HTMLContentView(html: item.content ?? "")
+                    .frame(minHeight: 400)
                     .padding(.horizontal, DirigibleStyle.Spacing.lg)
             }
         }
@@ -392,7 +508,6 @@ struct NoteDetailView: View {
         }
         .onChange(of: item.id) {
             title = item.title
-            isEditing = false
         }
         .onChange(of: title) {
             saveTitleChange()
@@ -400,15 +515,9 @@ struct NoteDetailView: View {
     }
 
     private func saveTitleChange() {
+        guard title != item.title else { return }
         var updated = item
         updated.title = title
-        updated.updatedAt = Date()
-        onUpdate(updated)
-    }
-
-    private func saveContentChanges() {
-        var updated = item
-        updated.content = editContent.isEmpty ? nil : editContent
         updated.updatedAt = Date()
         onUpdate(updated)
     }

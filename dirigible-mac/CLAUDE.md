@@ -415,8 +415,24 @@ npm run dev
   - HTMLContentView.swift renders HTML content
   - Supports headings, lists, code blocks, blockquotes, tables, images
   - Light/dark mode aware
-  - NoteDetailView has Edit button to toggle raw HTML editing
 - [x] **4.4 Fix note creation** - effectiveParentId creates in correct folder
+
+**Status:** Complete
+
+---
+
+### Sprint 5: UX Improvements (Complete)
+**Goal:** Match web app's editing experience and add user controls
+
+- [x] **5.1 Remove raw HTML edit mode** - Notes now display formatted content only
+  - Removed Edit button and raw HTML editing
+  - Content is view-only for now (proper WYSIWYG editing requires TipTap-like solution)
+- [x] **5.2 Note title scrolls with content** - Like web app
+  - Title, date/time/tags, and content all scroll together in ScrollView
+- [x] **5.3 Add user menu to sidebar** - At bottom of sidebar
+  - Shows user email
+  - Settings link
+  - Sign out option with confirmation dialog
 
 **Status:** Complete
 
