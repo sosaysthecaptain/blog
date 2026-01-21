@@ -780,28 +780,131 @@ public class FirebaseSync: ObservableObject {
 
     // MARK: - Write Operations
 
-    /// Create a new note
+    // MARK: - Firestore REST API Constants
+    private let firestoreProjectId = "marcs-blog-6b4e4"
+    private var firestoreBaseUrl: String {
+        "https://firestore.googleapis.com/v1/projects/\(firestoreProjectId)/databases/(default)/documents"
+    }
+
+    /// Create a new note using REST API (bypasses keychain issues)
     public func createNote(_ note: NoteItem) async throws {
-        // Debug: check auth state before write
-        let currentUser = Auth.auth().currentUser
-        print("[WRITE] Creating note \(note.id)")
-        print("[WRITE] Auth.auth().currentUser = \(currentUser?.email ?? "nil")")
-        print("[WRITE] Auth.auth().currentUser.uid = \(currentUser?.uid ?? "nil")")
+        print("[WRITE] Creating note \(note.id) via REST API")
 
-        let data = noteToFirestoreData(note)
-        try await Firestore.firestore().collection("notes").document(note.id).setData(data)
+        guard let idToken = currentFirebaseUser?.idToken, !idToken.isEmpty else {
+            print("[WRITE] ERROR: No Firebase ID token available")
+            throw NSError(domain: "FirebaseSync", code: 401, userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
+        }
+
+        let url = URL(string: "\(firestoreBaseUrl)/notes/\(note.id)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"  // PATCH creates or updates
+        request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body = noteToFirestoreRESTData(note)
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let httpResponse = response as! HTTPURLResponse
+
+        if httpResponse.statusCode != 200 {
+            let errorBody = String(data: data, encoding: .utf8) ?? "unknown"
+            print("[WRITE] REST API error: \(httpResponse.statusCode) - \(errorBody)")
+            throw NSError(domain: "FirebaseSync", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Write failed: \(errorBody)"])
+        }
+
+        print("[WRITE] Note created successfully via REST API")
     }
 
-    /// Update an existing note
+    /// Update an existing note using REST API
     public func updateNote(_ note: NoteItem) async throws {
-        var data = noteToFirestoreData(note)
-        data["updatedAt"] = FieldValue.serverTimestamp()
-        try await Firestore.firestore().collection("notes").document(note.id).updateData(data)
+        print("[WRITE] Updating note \(note.id) via REST API")
+
+        guard let idToken = currentFirebaseUser?.idToken, !idToken.isEmpty else {
+            throw NSError(domain: "FirebaseSync", code: 401, userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
+        }
+
+        let url = URL(string: "\(firestoreBaseUrl)/notes/\(note.id)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var noteWithUpdatedTime = note
+        noteWithUpdatedTime.updatedAt = Date()
+        let body = noteToFirestoreRESTData(noteWithUpdatedTime)
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let httpResponse = response as! HTTPURLResponse
+
+        if httpResponse.statusCode != 200 {
+            let errorBody = String(data: data, encoding: .utf8) ?? "unknown"
+            print("[WRITE] REST API error: \(httpResponse.statusCode) - \(errorBody)")
+            throw NSError(domain: "FirebaseSync", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Update failed: \(errorBody)"])
+        }
+
+        print("[WRITE] Note updated successfully via REST API")
     }
 
-    /// Delete a note
+    /// Delete a note using REST API
     public func deleteNote(_ id: String) async throws {
-        try await Firestore.firestore().collection("notes").document(id).delete()
+        print("[WRITE] Deleting note \(id) via REST API")
+
+        guard let idToken = currentFirebaseUser?.idToken, !idToken.isEmpty else {
+            throw NSError(domain: "FirebaseSync", code: 401, userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
+        }
+
+        let url = URL(string: "\(firestoreBaseUrl)/notes/\(id)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let httpResponse = response as! HTTPURLResponse
+
+        if httpResponse.statusCode != 200 && httpResponse.statusCode != 204 {
+            let errorBody = String(data: data, encoding: .utf8) ?? "unknown"
+            print("[WRITE] REST API error: \(httpResponse.statusCode) - \(errorBody)")
+            throw NSError(domain: "FirebaseSync", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Delete failed: \(errorBody)"])
+        }
+
+        print("[WRITE] Note deleted successfully via REST API")
+    }
+
+    /// Convert note to Firestore REST API format
+    private func noteToFirestoreRESTData(_ note: NoteItem) -> [String: Any] {
+        var fields: [String: Any] = [
+            "type": ["stringValue": note.type.rawValue],
+            "title": ["stringValue": note.title],
+            "createdAt": ["timestampValue": ISO8601DateFormatter().string(from: note.createdAt)],
+            "updatedAt": ["timestampValue": ISO8601DateFormatter().string(from: note.updatedAt)],
+            "published": ["booleanValue": note.published ?? false]
+        ]
+
+        if let parentId = note.parentId {
+            fields["parentId"] = ["stringValue": parentId]
+        } else {
+            fields["parentId"] = ["nullValue": NSNull()]
+        }
+
+        if let content = note.content { fields["content"] = ["stringValue": content] }
+        if let date = note.date { fields["date"] = ["stringValue": date] }
+        if let time = note.time { fields["time"] = ["stringValue": time] }
+        if let slug = note.slug { fields["slug"] = ["stringValue": slug] }
+        if let sortOrder = note.sortOrder { fields["sortOrder"] = ["integerValue": String(sortOrder)] }
+        if let gridSize = note.gridSize { fields["gridSize"] = ["stringValue": gridSize.rawValue] }
+        if let sortMode = note.sortMode { fields["sortMode"] = ["stringValue": sortMode.rawValue] }
+        if let column = note.musicSortColumn { fields["musicSortColumn"] = ["stringValue": column.rawValue] }
+        if let direction = note.musicSortDirection { fields["musicSortDirection"] = ["stringValue": direction.rawValue] }
+
+        if let tags = note.tags {
+            fields["tags"] = ["arrayValue": ["values": tags.map { ["stringValue": $0] }]]
+        }
+
+        // TODO: Add images and embeddedMedia support if needed
+
+        return ["fields": fields]
     }
 
     private func noteToFirestoreData(_ note: NoteItem) -> [String: Any] {
