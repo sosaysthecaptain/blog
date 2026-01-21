@@ -6,12 +6,23 @@ struct MainView: View {
     @StateObject private var viewModel = MainViewModel()
 
     var body: some View {
-        NavigationSplitView {
+        HStack(spacing: 0) {
+            // Sidebar - fixed width like web's w-72 (288px)
             SidebarView(viewModel: viewModel)
-                .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 300)
-        } detail: {
+                .frame(width: 280)
+                .background(DirigibleStyle.Colors.sidebarBg)
+
+            // Border between sidebar and content
+            Rectangle()
+                .fill(DirigibleStyle.Colors.border)
+                .frame(width: 1)
+
+            // Main content area
             DetailView(viewModel: viewModel)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(DirigibleStyle.Colors.background)
         }
+        .background(DirigibleStyle.Colors.background)
         .task {
             await viewModel.loadNotes()
         }
@@ -167,46 +178,101 @@ struct SidebarView: View {
     @ObservedObject var viewModel: MainViewModel
     @EnvironmentObject var firebaseSync: FirebaseSync
     @State private var showUserMenu = false
+    @State private var showNewMenu = false
 
     var body: some View {
         VStack(spacing: 0) {
-            // Main list
-            List(selection: $viewModel.selectedId) {
-                ForEach(viewModel.rootItems) { item in
-                    TreeItemView(item: item, viewModel: viewModel, level: 0)
+            // Header with new button
+            HStack(spacing: 8) {
+                Text("Notes")
+                    .font(DirigibleStyle.Typography.heading)
+                    .foregroundColor(DirigibleStyle.Colors.foreground)
+
+                Spacer()
+
+                // New item menu
+                Button {
+                    showNewMenu.toggle()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(DirigibleStyle.Colors.muted)
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showNewMenu, arrowEdge: .bottom) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        NewMenuButton(title: "New Note", icon: "doc", shortcut: "⌘N") {
+                            showNewMenu = false
+                            viewModel.createNote(parentId: selectedParentId)
+                        }
+                        NewMenuButton(title: "New Folder", icon: "folder", shortcut: "⇧⌘N") {
+                            showNewMenu = false
+                            viewModel.createFolder(parentId: selectedParentId)
+                        }
+                    }
+                    .frame(width: 180)
+                    .padding(.vertical, 4)
                 }
             }
-            .listStyle(.sidebar)
+            .padding(.horizontal, DirigibleStyle.Spacing.lg)
+            .padding(.vertical, DirigibleStyle.Spacing.md)
 
-            // User menu at bottom
             Divider()
                 .background(DirigibleStyle.Colors.border)
 
+            // Tree view
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(viewModel.rootItems) { item in
+                        TreeItemView(item: item, viewModel: viewModel, level: 0)
+                    }
+                }
+                .padding(.vertical, DirigibleStyle.Spacing.xs)
+            }
+
+            Divider()
+                .background(DirigibleStyle.Colors.border)
+
+            // User menu at bottom
             UserMenuButton(showUserMenu: $showUserMenu)
                 .environmentObject(firebaseSync)
         }
-        .toolbar {
-            ToolbarItemGroup {
-                Button(action: { viewModel.createFolder(parentId: selectedParentId) }) {
-                    Image(systemName: "folder.badge.plus")
-                }
-                .help("New Folder (⇧⌘N)")
-
-                Button(action: { viewModel.createNote(parentId: selectedParentId) }) {
-                    Image(systemName: "square.and.pencil")
-                }
-                .help("New Note (⌘N)")
-            }
-        }
     }
 
-    // If a folder is selected, create inside it; otherwise at root
     private var selectedParentId: String? {
         guard let selectedId = viewModel.selectedId,
               let selected = viewModel.getItem(id: selectedId) else {
             return nil
         }
         return selected.type == .folder ? selectedId : selected.parentId
+    }
+}
+
+// New menu button helper
+struct NewMenuButton: View {
+    let title: String
+    let icon: String
+    let shortcut: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 12))
+                    .frame(width: 16)
+                Text(title)
+                Spacer()
+                Text(shortcut)
+                    .font(DirigibleStyle.Typography.tiny)
+                    .foregroundColor(DirigibleStyle.Colors.muted)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(DirigibleStyle.Colors.foreground)
     }
 }
 
@@ -339,7 +405,6 @@ struct TreeItemView: View {
             FolderRowView(item: item, viewModel: viewModel, level: level)
         } else {
             ItemRowView(item: item, viewModel: viewModel, level: level)
-                .tag(item.id)
         }
     }
 }
@@ -348,9 +413,14 @@ struct FolderRowView: View {
     let item: NoteItem
     @ObservedObject var viewModel: MainViewModel
     let level: Int
+    @State private var isHovered = false
 
     private var isExpanded: Bool {
         viewModel.isExpanded(item.id)
+    }
+
+    private var isSelected: Bool {
+        viewModel.selectedId == item.id
     }
 
     private var children: [NoteItem] {
@@ -358,19 +428,67 @@ struct FolderRowView: View {
     }
 
     var body: some View {
-        DisclosureGroup(
-            isExpanded: Binding(
-                get: { isExpanded },
-                set: { _ in viewModel.toggleExpanded(item.id) }
-            )
-        ) {
-            ForEach(children) { child in
-                TreeItemView(item: child, viewModel: viewModel, level: level + 1)
+        VStack(alignment: .leading, spacing: 0) {
+            // Folder row
+            HStack(spacing: 4) {
+                // Indent
+                if level > 0 {
+                    Spacer()
+                        .frame(width: CGFloat(level) * 16)
+                }
+
+                // Chevron
+                Button {
+                    viewModel.toggleExpanded(item.id)
+                } label: {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(isSelected ? .white : DirigibleStyle.Colors.muted)
+                        .frame(width: 14, height: 14)
+                }
+                .buttonStyle(.plain)
+
+                // Folder icon
+                Image(systemName: "folder")
+                    .font(.system(size: DirigibleStyle.IconSize.sm))
+                    .foregroundColor(isSelected ? .white : DirigibleStyle.Colors.muted)
+                    .frame(width: 16)
+
+                // Title
+                Text(item.title.isEmpty ? "Untitled" : item.title)
+                    .font(DirigibleStyle.Typography.body)
+                    .foregroundColor(isSelected ? .white : DirigibleStyle.Colors.foreground)
+                    .lineLimit(1)
+
+                Spacer()
             }
-        } label: {
-            ItemRowView(item: item, viewModel: viewModel, level: level)
+            .padding(.horizontal, DirigibleStyle.Spacing.sm)
+            .padding(.vertical, 6)
+            .background(
+                isSelected ? DirigibleStyle.Colors.accentMuted :
+                isHovered ? DirigibleStyle.Colors.hover : Color.clear
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                viewModel.selectedId = item.id
+            }
+            .onHover { hovering in
+                isHovered = hovering
+            }
+            .contextMenu {
+                Button("New Note") { viewModel.createNote(parentId: item.id) }
+                Button("New Folder") { viewModel.createFolder(parentId: item.id) }
+                Divider()
+                Button("Delete", role: .destructive) { viewModel.deleteNote(item.id) }
+            }
+
+            // Children
+            if isExpanded {
+                ForEach(children) { child in
+                    TreeItemView(item: child, viewModel: viewModel, level: level + 1)
+                }
+            }
         }
-        .tag(item.id)
     }
 }
 
@@ -378,17 +496,24 @@ struct ItemRowView: View {
     let item: NoteItem
     @ObservedObject var viewModel: MainViewModel
     let level: Int
+    @State private var isHovered = false
 
     private var isSelected: Bool {
         viewModel.selectedId == item.id
     }
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
+            // Indent (add extra space for no chevron)
+            Spacer()
+                .frame(width: CGFloat(level) * 16 + 14)
+
+            // Icon
             itemIcon
                 .foregroundColor(isSelected ? .white : DirigibleStyle.Colors.muted)
-                .frame(width: 16, height: 14)
+                .frame(width: 16)
 
+            // Title
             Text(item.title.isEmpty ? "Untitled" : item.title)
                 .font(DirigibleStyle.Typography.body)
                 .foregroundColor(isSelected ? .white : DirigibleStyle.Colors.foreground)
@@ -396,13 +521,26 @@ struct ItemRowView: View {
 
             Spacer()
 
+            // Published indicator
             if item.published == true {
                 Circle()
                     .fill(isSelected ? .white : DirigibleStyle.Colors.success)
                     .frame(width: 6, height: 6)
             }
         }
+        .padding(.horizontal, DirigibleStyle.Spacing.sm)
+        .padding(.vertical, 6)
+        .background(
+            isSelected ? DirigibleStyle.Colors.accentMuted :
+            isHovered ? DirigibleStyle.Colors.hover : Color.clear
+        )
         .contentShape(Rectangle())
+        .onTapGesture {
+            viewModel.selectedId = item.id
+        }
+        .onHover { hovering in
+            isHovered = hovering
+        }
         .contextMenu {
             Button("New Note") {
                 let parentId = item.type == .folder ? item.id : item.parentId

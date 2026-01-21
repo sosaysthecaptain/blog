@@ -457,5 +457,31 @@ npm run dev
 
 ---
 
+### Sprint 7: TipTap-like Editor & Layout Fix (Complete)
+**Goal:** Proper markdown shortcuts and web-matched aesthetic
+
+- [x] **7.1 Window size** - Default 1200x800, minimum constraints for each view state
+- [x] **7.2 Markdown input rules** - Like TipTap's StarterKit:
+  - `# ` → H1, `## ` → H2, `### ` → H3
+  - `- ` or `* ` → bullet list
+  - `1. ` → numbered list
+  - `> ` → blockquote
+  - ``` → code block
+  - `---` → horizontal rule
+  - Double enter to exit list/blockquote
+  - Cmd+B/I/U for bold/italic/underline
+- [x] **7.3 Dark mode in WebView** - Uses CSS custom properties with `prefers-color-scheme`
+  - Colors automatically respond to system/app appearance changes
+- [x] **7.4 Custom layout (not NavigationSplitView)**
+  - HStack with fixed-width sidebar (280px) + content area
+  - Explicit 1px border between sidebar and content
+  - Custom ScrollView tree view instead of List
+  - Hover states on tree items
+  - Explicit click selection handling
+
+**Status:** Complete
+
+---
+
 ### Completed
 _(Items move here when done)_

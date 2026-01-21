@@ -37,19 +37,25 @@ struct DirigibleApp: App {
             Group {
                 if !firebaseSync.isAuthenticated {
                     LoginView()
-                        .frame(width: 304, height: 480)
+                        .frame(width: 320, height: 500)
                 } else if !UserSettings.load().hasCompletedOnboarding {
                     OnboardingView()
+                        .frame(minWidth: 500, minHeight: 400)
                 } else {
                     MainView()
+                        .frame(minWidth: 900, minHeight: 600)
                 }
             }
             .environmentObject(firebaseSync)
             .environmentObject(markdownSync)
+            .onAppear {
+                // Apply saved appearance on launch
+                AppSettings.shared.applyAppearance()
+            }
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
-        .defaultSize(width: 304, height: 480)
+        .defaultSize(width: 1200, height: 800)
         .commands {
             SidebarCommands()
 

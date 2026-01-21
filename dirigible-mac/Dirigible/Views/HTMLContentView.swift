@@ -1,8 +1,8 @@
 import SwiftUI
 import WebKit
 
-/// Renders HTML content matching the web app's TipTap editor styling
-/// Supports both view-only and editable modes
+/// Rich text editor matching TipTap's markdown input rules
+/// Supports: headers, lists, blockquotes, code blocks, formatting
 struct HTMLContentView: NSViewRepresentable {
     let html: String
     let isEditable: Bool
@@ -25,6 +25,11 @@ struct HTMLContentView: NSViewRepresentable {
         // Make background transparent
         webView.setValue(false, forKey: "drawsBackground")
 
+        // Load initial content
+        let fullHTML = wrapHTMLWithStyles(html, isEditable: isEditable)
+        webView.loadHTMLString(fullHTML, baseURL: nil)
+        context.coordinator.lastLoadedHTML = html
+
         return webView
     }
 
@@ -34,13 +39,12 @@ struct HTMLContentView: NSViewRepresentable {
             return
         }
 
-        // Check if content actually changed to avoid unnecessary reloads
-        if context.coordinator.lastLoadedHTML == html && context.coordinator.lastIsEditable == isEditable {
+        // Check if content actually changed
+        if context.coordinator.lastLoadedHTML == html {
             return
         }
 
         context.coordinator.lastLoadedHTML = html
-        context.coordinator.lastIsEditable = isEditable
         let fullHTML = wrapHTMLWithStyles(html, isEditable: isEditable)
         webView.loadHTMLString(fullHTML, baseURL: nil)
     }
@@ -50,95 +54,10 @@ struct HTMLContentView: NSViewRepresentable {
     }
 
     private func wrapHTMLWithStyles(_ content: String, isEditable: Bool) -> String {
-        let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-
-        let bgColor = isDark ? "#0A0A0A" : "#FFFFFF"
-        let fgColor = isDark ? "#EDEDED" : "#171717"
-        let mutedColor = isDark ? "#A3A3A3" : "#737373"
-        let borderColor = isDark ? "#262626" : "#E5E5E5"
-        let hoverColor = isDark ? "#171717" : "#F5F5F5"
-        let accentColor = isDark ? "#3B82F6" : "#2563EB"
-        let codeBg = isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)"
-
         let editableAttr = isEditable ? "contenteditable=\"true\"" : ""
-        let placeholderContent = isEditable ? "<p class=\"placeholder\">Start typing...</p>" : "<p style='color: \(mutedColor)'>No content</p>"
+        let placeholderContent = isEditable && content.isEmpty ? "<p class=\"placeholder\">Start typing...</p>" : content
 
-        let editingJS = isEditable ? """
-            <script>
-                let debounceTimer = null;
-                const editor = document.getElementById('editor');
-
-                // Track focus state
-                editor.addEventListener('focus', function() {
-                    window.webkit.messageHandlers.contentChanged.postMessage({ type: 'focus' });
-                    // Remove placeholder on focus
-                    const placeholder = editor.querySelector('.placeholder');
-                    if (placeholder && editor.children.length === 1) {
-                        placeholder.remove();
-                        // Add empty paragraph for editing
-                        const p = document.createElement('p');
-                        p.innerHTML = '<br>';
-                        editor.appendChild(p);
-                        // Place cursor at start
-                        const range = document.createRange();
-                        range.setStart(p, 0);
-                        range.collapse(true);
-                        const sel = window.getSelection();
-                        sel.removeAllRanges();
-                        sel.addRange(range);
-                    }
-                });
-
-                editor.addEventListener('blur', function() {
-                    window.webkit.messageHandlers.contentChanged.postMessage({ type: 'blur' });
-                    // Show placeholder if empty
-                    if (editor.innerHTML.trim() === '' || editor.innerHTML === '<p><br></p>') {
-                        editor.innerHTML = '<p class="placeholder">Start typing...</p>';
-                    }
-                });
-
-                // Send content changes with debouncing
-                editor.addEventListener('input', function() {
-                    clearTimeout(debounceTimer);
-                    debounceTimer = setTimeout(function() {
-                        let content = editor.innerHTML;
-                        // Don't send placeholder as content
-                        if (content.includes('class="placeholder"')) {
-                            content = '';
-                        }
-                        window.webkit.messageHandlers.contentChanged.postMessage({ type: 'content', html: content });
-                    }, 300);
-                });
-
-                // Handle paste - clean up pasted content
-                editor.addEventListener('paste', function(e) {
-                    e.preventDefault();
-                    const text = e.clipboardData.getData('text/html') || e.clipboardData.getData('text/plain');
-                    document.execCommand('insertHTML', false, text);
-                });
-
-                // Keyboard shortcuts
-                editor.addEventListener('keydown', function(e) {
-                    if (e.metaKey || e.ctrlKey) {
-                        switch(e.key) {
-                            case 'b':
-                                e.preventDefault();
-                                document.execCommand('bold');
-                                break;
-                            case 'i':
-                                e.preventDefault();
-                                document.execCommand('italic');
-                                break;
-                            case 'u':
-                                e.preventDefault();
-                                document.execCommand('underline');
-                                break;
-                        }
-                    }
-                });
-            </script>
-        """ : ""
-
+        // Use CSS custom properties that respond to prefers-color-scheme
         return """
         <!DOCTYPE html>
         <html>
@@ -146,6 +65,26 @@ struct HTMLContentView: NSViewRepresentable {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>
+                :root {
+                    --background: #FFFFFF;
+                    --foreground: #171717;
+                    --muted: #737373;
+                    --border: #E5E5E5;
+                    --hover: #F5F5F5;
+                    --accent: #2563EB;
+                    --code-bg: rgba(0,0,0,0.08);
+                }
+                @media (prefers-color-scheme: dark) {
+                    :root {
+                        --background: #0A0A0A;
+                        --foreground: #EDEDED;
+                        --muted: #A3A3A3;
+                        --border: #262626;
+                        --hover: #171717;
+                        --accent: #3B82F6;
+                        --code-bg: rgba(255,255,255,0.1);
+                    }
+                }
                 * {
                     box-sizing: border-box;
                 }
@@ -158,8 +97,8 @@ struct HTMLContentView: NSViewRepresentable {
                     font-family: Georgia, 'Times New Roman', serif;
                     font-size: 14px;
                     line-height: 1.75;
-                    color: \(fgColor);
-                    background: \(bgColor);
+                    color: var(--foreground);
+                    background: var(--background);
                     -webkit-font-smoothing: antialiased;
                 }
                 #editor {
@@ -167,12 +106,8 @@ struct HTMLContentView: NSViewRepresentable {
                     outline: none;
                     padding: 0;
                 }
-                #editor:empty::before {
-                    content: "Start typing...";
-                    color: \(mutedColor);
-                }
                 .placeholder {
-                    color: \(mutedColor);
+                    color: var(--muted);
                 }
                 h1 {
                     font-size: 1.75rem;
@@ -181,6 +116,7 @@ struct HTMLContentView: NSViewRepresentable {
                     margin-bottom: 0.75rem;
                     line-height: 1.2;
                 }
+                h1:first-child { margin-top: 0; }
                 h2 {
                     font-size: 1.375rem;
                     font-weight: 600;
@@ -188,6 +124,7 @@ struct HTMLContentView: NSViewRepresentable {
                     margin-bottom: 0.5rem;
                     line-height: 1.3;
                 }
+                h2:first-child { margin-top: 0; }
                 h3 {
                     font-size: 1.125rem;
                     font-weight: 600;
@@ -195,6 +132,7 @@ struct HTMLContentView: NSViewRepresentable {
                     margin-bottom: 0.375rem;
                     line-height: 1.4;
                 }
+                h3:first-child { margin-top: 0; }
                 p {
                     margin: 0.75rem 0;
                 }
@@ -217,16 +155,15 @@ struct HTMLContentView: NSViewRepresentable {
                 li p {
                     margin: 0;
                 }
-                /* Nested lists */
                 li > ul, li > ol {
                     margin: 0;
                 }
 
                 blockquote {
-                    border-left: 3px solid \(borderColor);
+                    border-left: 3px solid var(--border);
                     padding-left: 1rem;
                     margin: 1rem 0;
-                    color: \(mutedColor);
+                    color: var(--muted);
                     font-style: italic;
                 }
 
@@ -243,7 +180,7 @@ struct HTMLContentView: NSViewRepresentable {
                     word-wrap: break-word;
                 }
                 code {
-                    background: \(codeBg);
+                    background: var(--code-bg);
                     padding: 0.15rem 0.3rem;
                     border-radius: 0.25rem;
                     font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
@@ -257,25 +194,21 @@ struct HTMLContentView: NSViewRepresentable {
                 }
 
                 a {
-                    color: \(accentColor);
+                    color: var(--accent);
                     text-decoration: underline;
                 }
 
                 hr {
                     border: none;
-                    border-top: 1px solid \(borderColor);
+                    border-top: 1px solid var(--border);
                     margin: 1.5rem 0;
                 }
 
-                strong, b {
-                    font-weight: 700;
-                }
-                em, i {
-                    font-style: italic;
-                }
+                strong, b { font-weight: 700; }
+                em, i { font-style: italic; }
                 s, strike, del {
                     text-decoration: line-through;
-                    color: \(mutedColor);
+                    color: var(--muted);
                 }
 
                 /* Task lists */
@@ -290,13 +223,6 @@ struct HTMLContentView: NSViewRepresentable {
                 }
                 ul[data-type="taskList"] li input[type="checkbox"] {
                     margin-top: 0.25rem;
-                    width: 14px;
-                    height: 14px;
-                    accent-color: \(fgColor);
-                }
-                ul[data-type="taskList"] li[data-checked="true"] > div {
-                    text-decoration: line-through;
-                    color: \(mutedColor);
                 }
 
                 /* Tables */
@@ -307,13 +233,13 @@ struct HTMLContentView: NSViewRepresentable {
                     font-size: 0.875rem;
                 }
                 table td, table th {
-                    border: 1px solid \(borderColor);
+                    border: 1px solid var(--border);
                     padding: 0.375rem 0.5rem;
                     text-align: left;
                     vertical-align: top;
                 }
                 table th {
-                    background: \(hoverColor);
+                    background: var(--hover);
                     font-weight: 600;
                 }
 
@@ -324,41 +250,223 @@ struct HTMLContentView: NSViewRepresentable {
                     border-radius: 0.25rem;
                     margin: 0.75rem 0;
                 }
-                figure {
-                    margin: 0.75rem 0;
-                }
-                figcaption {
-                    text-align: center;
-                    font-size: 0.8125rem;
-                    color: \(mutedColor);
-                    margin-top: 0.25rem;
-                }
-
-                /* File attachments */
-                .file-attachment {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 0.5rem;
-                    padding: 0.5rem 0.75rem;
-                    background: \(hoverColor);
-                    border: 1px solid \(borderColor);
-                    border-radius: 0.25rem;
-                    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-                    font-size: 0.8125rem;
-                    color: \(fgColor);
-                    text-decoration: none;
-                    margin: 0.25rem 0;
-                }
-                .file-attachment:hover {
-                    background: \(borderColor);
-                }
             </style>
         </head>
         <body>
-            <div id="editor" \(editableAttr)>\(content.isEmpty ? placeholderContent : content)</div>
-            \(editingJS)
+            <div id="editor" \(editableAttr)>\(placeholderContent)</div>
+            \(isEditable ? editorScript : "")
         </body>
         </html>
+        """
+    }
+
+    private var editorScript: String {
+        """
+        <script>
+            const editor = document.getElementById('editor');
+            let debounceTimer = null;
+
+            // Track editing state
+            editor.addEventListener('focus', function() {
+                window.webkit.messageHandlers.contentChanged.postMessage({ type: 'focus' });
+                // Remove placeholder
+                const placeholder = editor.querySelector('.placeholder');
+                if (placeholder) {
+                    placeholder.remove();
+                    if (editor.innerHTML.trim() === '') {
+                        editor.innerHTML = '<p><br></p>';
+                        placeCaretAtStart();
+                    }
+                }
+            });
+
+            editor.addEventListener('blur', function() {
+                window.webkit.messageHandlers.contentChanged.postMessage({ type: 'blur' });
+                // Show placeholder if empty
+                const text = editor.innerText.trim();
+                if (!text || text === '') {
+                    editor.innerHTML = '<p class="placeholder">Start typing...</p>';
+                }
+            });
+
+            // Send content changes with debouncing
+            function sendContent() {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(function() {
+                    let content = editor.innerHTML;
+                    if (content.includes('class="placeholder"')) {
+                        content = '';
+                    }
+                    window.webkit.messageHandlers.contentChanged.postMessage({ type: 'content', html: content });
+                }, 300);
+            }
+
+            editor.addEventListener('input', sendContent);
+
+            // Markdown input rules - like TipTap's StarterKit
+            editor.addEventListener('keydown', function(e) {
+                // Handle Enter key for markdown conversion
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    const selection = window.getSelection();
+                    const node = selection.anchorNode;
+                    const block = getParentBlock(node);
+
+                    if (block && block.tagName === 'P') {
+                        const text = block.innerText;
+
+                        // Check for markdown patterns at start of line
+                        const patterns = [
+                            { regex: /^### $/, tag: 'h3' },
+                            { regex: /^## $/, tag: 'h2' },
+                            { regex: /^# $/, tag: 'h1' },
+                            { regex: /^> $/, tag: 'blockquote' },
+                            { regex: /^- $/, tag: 'ul' },
+                            { regex: /^\\* $/, tag: 'ul' },
+                            { regex: /^1\\. $/, tag: 'ol' },
+                            { regex: /^---$/, tag: 'hr' },
+                            { regex: /^```$/, tag: 'pre' },
+                        ];
+
+                        for (const p of patterns) {
+                            if (p.regex.test(text)) {
+                                e.preventDefault();
+                                convertToElement(block, p.tag);
+                                sendContent();
+                                return;
+                            }
+                        }
+                    }
+
+                    // Double enter to exit list/blockquote
+                    if (block) {
+                        const parent = block.parentElement;
+                        if ((parent.tagName === 'UL' || parent.tagName === 'OL' || parent.tagName === 'BLOCKQUOTE') &&
+                            block.innerText.trim() === '') {
+                            e.preventDefault();
+                            exitBlock(block, parent);
+                            sendContent();
+                            return;
+                        }
+                    }
+                }
+
+                // Keyboard shortcuts for formatting
+                if (e.metaKey || e.ctrlKey) {
+                    switch(e.key) {
+                        case 'b':
+                            e.preventDefault();
+                            document.execCommand('bold');
+                            sendContent();
+                            break;
+                        case 'i':
+                            e.preventDefault();
+                            document.execCommand('italic');
+                            sendContent();
+                            break;
+                        case 'u':
+                            e.preventDefault();
+                            document.execCommand('underline');
+                            sendContent();
+                            break;
+                    }
+                }
+            });
+
+            // Handle paste
+            editor.addEventListener('paste', function(e) {
+                e.preventDefault();
+                const html = e.clipboardData.getData('text/html');
+                const text = e.clipboardData.getData('text/plain');
+                if (html) {
+                    document.execCommand('insertHTML', false, html);
+                } else {
+                    document.execCommand('insertText', false, text);
+                }
+                sendContent();
+            });
+
+            function getParentBlock(node) {
+                while (node && node !== editor) {
+                    if (node.nodeType === 1 && ['P', 'H1', 'H2', 'H3', 'LI', 'BLOCKQUOTE', 'PRE'].includes(node.tagName)) {
+                        return node;
+                    }
+                    node = node.parentNode;
+                }
+                return null;
+            }
+
+            function convertToElement(block, tag) {
+                if (tag === 'hr') {
+                    const hr = document.createElement('hr');
+                    const p = document.createElement('p');
+                    p.innerHTML = '<br>';
+                    block.replaceWith(hr);
+                    hr.after(p);
+                    placeCaretInElement(p);
+                } else if (tag === 'ul' || tag === 'ol') {
+                    const list = document.createElement(tag);
+                    const li = document.createElement('li');
+                    li.innerHTML = '<br>';
+                    list.appendChild(li);
+                    block.replaceWith(list);
+                    placeCaretInElement(li);
+                } else if (tag === 'pre') {
+                    const pre = document.createElement('pre');
+                    const code = document.createElement('code');
+                    code.innerHTML = '<br>';
+                    pre.appendChild(code);
+                    block.replaceWith(pre);
+                    placeCaretInElement(code);
+                } else if (tag === 'blockquote') {
+                    const bq = document.createElement('blockquote');
+                    const p = document.createElement('p');
+                    p.innerHTML = '<br>';
+                    bq.appendChild(p);
+                    block.replaceWith(bq);
+                    placeCaretInElement(p);
+                } else {
+                    const el = document.createElement(tag);
+                    el.innerHTML = '<br>';
+                    block.replaceWith(el);
+                    placeCaretInElement(el);
+                }
+            }
+
+            function exitBlock(block, parent) {
+                const p = document.createElement('p');
+                p.innerHTML = '<br>';
+                if (parent.tagName === 'BLOCKQUOTE') {
+                    parent.after(p);
+                    if (parent.children.length === 1 && block.innerText.trim() === '') {
+                        parent.remove();
+                    } else {
+                        block.remove();
+                    }
+                } else {
+                    // List
+                    parent.after(p);
+                    block.remove();
+                    if (parent.children.length === 0) {
+                        parent.remove();
+                    }
+                }
+                placeCaretInElement(p);
+            }
+
+            function placeCaretInElement(el) {
+                const range = document.createRange();
+                const sel = window.getSelection();
+                range.setStart(el, 0);
+                range.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
+
+            function placeCaretAtStart() {
+                const p = editor.querySelector('p');
+                if (p) placeCaretInElement(p);
+            }
+        </script>
         """
     }
 
@@ -366,7 +474,6 @@ struct HTMLContentView: NSViewRepresentable {
         var onContentChange: ((String) -> Void)?
         var isEditing = false
         var lastLoadedHTML: String = ""
-        var lastIsEditable: Bool = false
         weak var webView: WKWebView?
         private let isEditable: Bool
 
@@ -387,6 +494,7 @@ struct HTMLContentView: NSViewRepresentable {
                 isEditing = false
             case "content":
                 if let html = dict["html"] as? String {
+                    lastLoadedHTML = html
                     onContentChange?(html)
                 }
             default:
@@ -395,7 +503,6 @@ struct HTMLContentView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            // Open links in default browser (but allow editing clicks)
             if navigationAction.navigationType == .linkActivated, let url = navigationAction.request.url {
                 NSWorkspace.shared.open(url)
                 decisionHandler(.cancel)
@@ -416,25 +523,15 @@ struct HTMLContentView: NSViewRepresentable {
         <ul>
             <li>First item</li>
             <li>Second item with <code>inline code</code></li>
-            <li>Third item</li>
         </ul>
-        <h3>Code Block</h3>
-        <pre><code>function hello() {
-            console.log("Hello, world!");
-        }</code></pre>
-        <blockquote>This is a blockquote with some thoughtful text.</blockquote>
-        <table>
-            <tr><th>Name</th><th>Value</th></tr>
-            <tr><td>Alpha</td><td>100</td></tr>
-            <tr><td>Beta</td><td>200</td></tr>
-        </table>
+        <blockquote>This is a blockquote.</blockquote>
     """)
-    .frame(width: 600, height: 800)
+    .frame(width: 600, height: 400)
 }
 
 #Preview("Editable") {
     HTMLContentView(
-        html: "<p>Edit me!</p>",
+        html: "",
         isEditable: true,
         onContentChange: { print("Content: \($0)") }
     )
