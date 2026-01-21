@@ -33,15 +33,44 @@ public class FirebaseSync: ObservableObject {
     private var songsListener: ListenerRegistration?
     private var currentFirebaseUser: FirebaseUser?
 
+    private var authStateHandle: AuthStateDidChangeListenerHandle?
+
     private init() {
+        // Listen for auth state changes
+        authStateHandle = Auth.auth().addStateDidChangeListener { [weak self] auth, user in
+            print("[AUTH-LISTENER] Auth state changed!")
+            print("[AUTH-LISTENER] user = \(user?.email ?? "nil")")
+            print("[AUTH-LISTENER] user.uid = \(user?.uid ?? "nil")")
+        }
+
         // Restore saved auth state
         Task { @MainActor in
             await restoreAuthState()
         }
     }
 
-    /// Restore auth state from UserDefaults
+    /// Restore auth state from Firebase Auth SDK or UserDefaults
     private func restoreAuthState() async {
+        // First check if Firebase Auth SDK has a current user
+        if let user = Auth.auth().currentUser {
+            print("[AUTH] Firebase Auth SDK has current user: \(user.email ?? "no email")")
+
+            currentFirebaseUser = FirebaseUser(
+                uid: user.uid,
+                email: user.email,
+                displayName: user.displayName,
+                idToken: "",  // SDK manages tokens internally
+                refreshToken: user.refreshToken ?? ""
+            )
+
+            isAuthenticated = true
+            userEmail = user.email
+
+            await startSync()
+            return
+        }
+
+        // Fall back to UserDefaults (for REST API auth)
         guard let savedEmail = UserDefaults.standard.string(forKey: "firebase_user_email"),
               let savedUid = UserDefaults.standard.string(forKey: "firebase_user_uid"),
               let savedIdToken = UserDefaults.standard.string(forKey: "firebase_id_token"),
@@ -52,6 +81,36 @@ public class FirebaseSync: ObservableObject {
         }
 
         print("[AUTH] Restoring saved auth state for: \(savedEmail)")
+
+        // Try to sign in to Firebase Auth SDK using saved tokens
+        if let savedAccessToken = UserDefaults.standard.string(forKey: "firebase_access_token") {
+            print("[AUTH] Attempting to sign in to Firebase Auth SDK with saved tokens...")
+            do {
+                let credential = GoogleAuthProvider.credential(withIDToken: savedIdToken, accessToken: savedAccessToken)
+                let authResult = try await Auth.auth().signIn(with: credential)
+                print("[AUTH] SUCCESS - Firebase Auth SDK signed in: \(authResult.user.email ?? "no email")")
+
+                currentFirebaseUser = FirebaseUser(
+                    uid: authResult.user.uid,
+                    email: authResult.user.email,
+                    displayName: authResult.user.displayName,
+                    idToken: savedIdToken,
+                    refreshToken: authResult.user.refreshToken ?? savedRefreshToken
+                )
+
+                isAuthenticated = true
+                userEmail = authResult.user.email
+
+                await startSync()
+                return
+            } catch {
+                print("[AUTH] Firebase Auth SDK sign-in failed: \(error)")
+                print("[AUTH] User may need to sign out and sign back in for write access")
+            }
+        }
+
+        // Fall back to local state only (reads will work, writes may fail)
+        print("[AUTH] Using local state only - writes may fail")
 
         currentFirebaseUser = FirebaseUser(
             uid: savedUid,
@@ -64,16 +123,19 @@ public class FirebaseSync: ObservableObject {
         isAuthenticated = true
         userEmail = savedEmail
 
-        // Start sync
+        // Start sync (read-only will work, writes may fail)
         await startSync()
     }
 
     /// Save auth state to UserDefaults
-    private func saveAuthState(_ user: FirebaseUser) {
+    private func saveAuthState(_ user: FirebaseUser, accessToken: String? = nil) {
         UserDefaults.standard.set(user.email, forKey: "firebase_user_email")
         UserDefaults.standard.set(user.uid, forKey: "firebase_user_uid")
         UserDefaults.standard.set(user.idToken, forKey: "firebase_id_token")
         UserDefaults.standard.set(user.refreshToken, forKey: "firebase_refresh_token")
+        if let accessToken = accessToken {
+            UserDefaults.standard.set(accessToken, forKey: "firebase_access_token")
+        }
         print("[AUTH] Saved auth state to UserDefaults")
     }
 
@@ -130,29 +192,58 @@ public class FirebaseSync: ObservableObject {
             throw error
         }
 
-        // Use Firebase Auth REST API to avoid SDK keychain issues
-        print("[AUTH] Step 7: Signing in via Firebase REST API...")
+        // Sign in to Firebase Auth SDK using Google credential
+        // This is required for Firestore write permissions
+        print("[AUTH] Step 7: Signing in to Firebase Auth SDK...")
         do {
-            let firebaseUser = try await signInWithFirebaseREST(idToken: tokens.idToken, accessToken: tokens.accessToken)
-            print("[AUTH] Step 8: SUCCESS - Got Firebase user: \(firebaseUser.email ?? "no email")")
+            let credential = GoogleAuthProvider.credential(withIDToken: tokens.idToken, accessToken: tokens.accessToken)
+            let authResult = try await Auth.auth().signIn(with: credential)
+            print("[AUTH] Step 8: SUCCESS - Firebase Auth SDK signed in: \(authResult.user.email ?? "no email")")
+
+            // Create FirebaseUser for local storage
+            let firebaseUser = FirebaseUser(
+                uid: authResult.user.uid,
+                email: authResult.user.email,
+                displayName: authResult.user.displayName,
+                idToken: tokens.idToken,
+                refreshToken: authResult.user.refreshToken ?? ""
+            )
 
             // Store tokens for future use and persist
             self.currentFirebaseUser = firebaseUser
-            saveAuthState(firebaseUser)
+            saveAuthState(firebaseUser, accessToken: tokens.accessToken)
 
-            // Update auth state manually since SDK has keychain issues
+            // Update auth state
             await MainActor.run {
                 self.isAuthenticated = true
                 self.userEmail = firebaseUser.email
             }
             print("[AUTH] Step 9: Auth state updated, user is signed in!")
+            print("[AUTH] Auth.auth().currentUser = \(Auth.auth().currentUser?.email ?? "nil")")
 
-            // Start Firestore sync (notes are public read, so this should work)
+            // Start Firestore sync
             print("[AUTH] Step 10: Starting Firestore sync...")
             await startSync()
         } catch {
-            print("[AUTH] Step 7 FAILED: Firebase REST API error: \(error)")
-            throw error
+            print("[AUTH] Step 7 FAILED: Firebase Auth SDK error: \(error)")
+            print("[AUTH] Falling back to REST API...")
+
+            // Fall back to REST API if SDK fails (keeps read-only access)
+            do {
+                let firebaseUser = try await signInWithFirebaseREST(idToken: tokens.idToken, accessToken: tokens.accessToken)
+                self.currentFirebaseUser = firebaseUser
+                saveAuthState(firebaseUser)
+
+                await MainActor.run {
+                    self.isAuthenticated = true
+                    self.userEmail = firebaseUser.email
+                }
+
+                await startSync()
+            } catch {
+                print("[AUTH] REST API fallback also failed: \(error)")
+                throw error
+            }
         }
         #endif
     }
@@ -691,6 +782,12 @@ public class FirebaseSync: ObservableObject {
 
     /// Create a new note
     public func createNote(_ note: NoteItem) async throws {
+        // Debug: check auth state before write
+        let currentUser = Auth.auth().currentUser
+        print("[WRITE] Creating note \(note.id)")
+        print("[WRITE] Auth.auth().currentUser = \(currentUser?.email ?? "nil")")
+        print("[WRITE] Auth.auth().currentUser.uid = \(currentUser?.uid ?? "nil")")
+
         let data = noteToFirestoreData(note)
         try await Firestore.firestore().collection("notes").document(note.id).setData(data)
     }

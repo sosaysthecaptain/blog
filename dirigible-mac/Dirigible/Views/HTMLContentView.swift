@@ -301,47 +301,59 @@ struct HTMLContentView: NSViewRepresentable {
                 }, 300);
             }
 
-            editor.addEventListener('input', sendContent);
-
             // Markdown input rules - like TipTap's StarterKit
+            // Triggers on input (when space is typed) not on Enter
+            editor.addEventListener('input', function(e) {
+                sendContent();
+
+                const selection = window.getSelection();
+                const node = selection.anchorNode;
+                const block = getParentBlock(node);
+
+                if (block && block.tagName === 'P') {
+                    const text = block.innerText;
+
+                    // Check for markdown patterns - triggers immediately when pattern is complete
+                    const patterns = [
+                        { regex: /^### $/, tag: 'h3' },
+                        { regex: /^## $/, tag: 'h2' },
+                        { regex: /^# $/, tag: 'h1' },
+                        { regex: /^> $/, tag: 'blockquote' },
+                        { regex: /^- $/, tag: 'ul' },
+                        { regex: /^\\* $/, tag: 'ul' },
+                        { regex: /^1\\. $/, tag: 'ol' },
+                        { regex: /^---$/, tag: 'hr' },
+                        { regex: /^```$/, tag: 'pre' },
+                    ];
+
+                    for (const p of patterns) {
+                        if (p.regex.test(text)) {
+                            convertToElement(block, p.tag);
+                            sendContent();
+                            return;
+                        }
+                    }
+                }
+            });
+
+            // Handle Enter key for double-enter exit and keyboard shortcuts
             editor.addEventListener('keydown', function(e) {
-                // Handle Enter key for markdown conversion
+                // Double enter to exit list/blockquote
                 if (e.key === 'Enter' && !e.shiftKey) {
                     const selection = window.getSelection();
                     const node = selection.anchorNode;
                     const block = getParentBlock(node);
 
-                    if (block && block.tagName === 'P') {
-                        const text = block.innerText;
-
-                        // Check for markdown patterns at start of line
-                        const patterns = [
-                            { regex: /^### $/, tag: 'h3' },
-                            { regex: /^## $/, tag: 'h2' },
-                            { regex: /^# $/, tag: 'h1' },
-                            { regex: /^> $/, tag: 'blockquote' },
-                            { regex: /^- $/, tag: 'ul' },
-                            { regex: /^\\* $/, tag: 'ul' },
-                            { regex: /^1\\. $/, tag: 'ol' },
-                            { regex: /^---$/, tag: 'hr' },
-                            { regex: /^```$/, tag: 'pre' },
-                        ];
-
-                        for (const p of patterns) {
-                            if (p.regex.test(text)) {
-                                e.preventDefault();
-                                convertToElement(block, p.tag);
-                                sendContent();
-                                return;
-                            }
-                        }
-                    }
-
-                    // Double enter to exit list/blockquote
                     if (block) {
                         const parent = block.parentElement;
-                        if ((parent.tagName === 'UL' || parent.tagName === 'OL' || parent.tagName === 'BLOCKQUOTE') &&
-                            block.innerText.trim() === '') {
+                        // In a list or blockquote with empty content = exit
+                        if ((parent.tagName === 'UL' || parent.tagName === 'OL') && block.tagName === 'LI' && block.innerText.trim() === '') {
+                            e.preventDefault();
+                            exitBlock(block, parent);
+                            sendContent();
+                            return;
+                        }
+                        if (parent.tagName === 'BLOCKQUOTE' && block.innerText.trim() === '') {
                             e.preventDefault();
                             exitBlock(block, parent);
                             sendContent();

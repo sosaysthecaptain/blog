@@ -12,6 +12,8 @@ import {
 import { NoteItem, updateNote } from "@/lib/notes";
 import { useAutosave } from "@/hooks/useAutosave";
 import { useFocusSync } from "@/hooks/useFocusSync";
+import { useSignedUrls } from "@/hooks/useSignedUrls";
+import { extractPathFromUrl } from "@/lib/signed-url-cache";
 import { ConfirmDialog } from "@/components/ui/Dialog";
 import { useCachedSongs } from "@/hooks/useCachedSongs";
 import { setupSongsListener } from "@/lib/cache-sync";
@@ -74,22 +76,7 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const playFnRef = useRef<((song: Song) => void) | null>(null);
-
-    // Compute displayed songs list for autoplay (same sorting as DataGrid)
-    const displayedSongs = useMemo(() => {
-      let result = songs;
-      if (searchQuery) {
-        result = searchSongs(songs, searchQuery);
-      }
-      result = sortSongs(result, localLibrary.musicSortColumn || "artist", localLibrary.musicSortDirection || "asc");
-      return result;
-    }, [songs, searchQuery, localLibrary.musicSortColumn, localLibrary.musicSortDirection]);
-
-    // Keep displayedSongs in a ref for the callback
-    const displayedSongsRef = useRef(displayedSongs);
-    useEffect(() => {
-      displayedSongsRef.current = displayedSongs;
-    }, [displayedSongs]);
+    const displayedSongsRef = useRef<Song[]>([]);
 
     // Callback to autoplay next song when queue is exhausted
     const handleQueueExhausted = useCallback((currentSong: Song | null) => {
@@ -138,6 +125,75 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
         setSongs(cachedSongs);
       }
     }, [cachedSongs, songsLoading]);
+
+    // Collect paths that need signed URLs (only /api/files/ URLs)
+    const songPaths = useMemo(() => {
+      const paths: string[] = [];
+      const needsSigning = (url: string | null | undefined): url is string =>
+        typeof url === "string" && url.startsWith("/api/files/");
+
+      for (const song of songs) {
+        if (needsSigning(song.storageUrl)) paths.push(extractPathFromUrl(song.storageUrl));
+        if (needsSigning(song.albumArtUrl)) paths.push(extractPathFromUrl(song.albumArtUrl));
+        if (needsSigning(song.albumArtThumbUrl)) paths.push(extractPathFromUrl(song.albumArtThumbUrl));
+      }
+      return paths;
+    }, [songs]);
+
+    // Get signed URLs for all song resources
+    const { getSignedUrl, isLoading: isLoadingUrls } = useSignedUrls(songPaths);
+
+    // Transform songs to use signed URLs
+    const songsWithSignedUrls = useMemo(() => {
+      const needsSigning = (url: string | null | undefined): url is string => {
+        if (!url) return false;
+        // Firebase Storage URLs work as-is
+        if (url.includes("firebasestorage.googleapis.com")) return false;
+        // Direct https URLs that aren't /api/files/ work as-is
+        if (url.startsWith("https://") && !url.includes("/api/files/")) return false;
+        // /api/files/ URLs need signing
+        return url.startsWith("/api/files/");
+      };
+
+      return songs.map((song) => {
+        let storageUrl = song.storageUrl;
+        let albumArtUrl = song.albumArtUrl;
+        let albumArtThumbUrl = song.albumArtThumbUrl;
+
+        if (needsSigning(song.storageUrl)) {
+          const signed = getSignedUrl(song.storageUrl);
+          storageUrl = signed || ""; // Empty while loading
+        }
+
+        if (needsSigning(song.albumArtUrl)) {
+          const signed = getSignedUrl(song.albumArtUrl);
+          albumArtUrl = signed || null;
+        }
+
+        if (needsSigning(song.albumArtThumbUrl)) {
+          const signed = getSignedUrl(song.albumArtThumbUrl);
+          albumArtThumbUrl = signed || null;
+        }
+
+        return { ...song, storageUrl, albumArtUrl, albumArtThumbUrl };
+      });
+    }, [songs, getSignedUrl]);
+
+    // Compute displayed songs list for autoplay (same sorting as DataGrid)
+    // Use songsWithSignedUrls so playback uses signed URLs
+    const displayedSongs = useMemo(() => {
+      let result = songsWithSignedUrls;
+      if (searchQuery) {
+        result = searchSongs(result, searchQuery);
+      }
+      result = sortSongs(result, localLibrary.musicSortColumn || "artist", localLibrary.musicSortDirection || "asc");
+      return result;
+    }, [songsWithSignedUrls, searchQuery, localLibrary.musicSortColumn, localLibrary.musicSortDirection]);
+
+    // Keep displayedSongs in ref for autoplay callback
+    useEffect(() => {
+      displayedSongsRef.current = displayedSongs;
+    }, [displayedSongs]);
 
     // Set up Firestore listener to keep cache in sync
     useEffect(() => {
@@ -485,7 +541,7 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
             </div>
           ) : (
             <SongsDataGrid
-              songs={songs}
+              songs={songsWithSignedUrls}
               searchQuery={searchQuery}
               sortColumn={localLibrary.musicSortColumn || "artist"}
               sortDirection={localLibrary.musicSortDirection || "asc"}
@@ -501,7 +557,7 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
               onQueueSong={musicQueue.addToQueue}
               onExportSelected={() => setShowExportModal(true)}
               onExportLibrary={() => {
-                setSelectedSongIds(songs.map((s) => s.id || "").filter(Boolean));
+                setSelectedSongIds(songsWithSignedUrls.map((s) => s.id || "").filter(Boolean));
                 setShowExportModal(true);
               }}
               onEditMetadata={setSongsToEdit}
@@ -579,7 +635,7 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
         {/* Export Modal */}
         {showExportModal && (
           <ExportSongsModal
-            songs={songs.filter((s) => s.id && selectedSongIds.includes(s.id))}
+            songs={songsWithSignedUrls.filter((s) => s.id && selectedSongIds.includes(s.id))}
             onClose={() => {
               setShowExportModal(false);
               setSelectedSongIds([]);
