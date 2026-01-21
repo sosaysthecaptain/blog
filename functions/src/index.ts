@@ -1,5 +1,5 @@
 import { onObjectFinalized } from "firebase-functions/v2/storage";
-import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import sharp from "sharp";
 import * as path from "path";
@@ -381,61 +381,40 @@ async function getB2Auth() {
 }
 
 /**
- * HTTP endpoint for uploading files to B2.
- * Accepts multipart form data with 'file' and 'path' fields.
+ * Callable function to upload files to B2.
+ * Accepts base64-encoded file data and path.
  */
-export const uploadToB2 = onRequest(
+export const uploadToB2 = onCall(
   {
     memory: "512MiB",
     timeoutSeconds: 120,
-    cors: true,
   },
-  async (req, res) => {
-    if (req.method !== "POST") {
-      res.status(405).json({ error: "Method not allowed" });
-      return;
+  async (request) => {
+    // Require authentication
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "Must be authenticated to upload files"
+      );
     }
 
     if (!B2_KEY_ID || !B2_APP_KEY) {
-      res.status(500).json({ error: "B2 credentials not configured" });
-      return;
+      throw new HttpsError("internal", "B2 credentials not configured");
+    }
+
+    const { fileData, path: filePath, contentType = "application/octet-stream" } = request.data as {
+      fileData: string;
+      path: string;
+      contentType?: string;
+    };
+
+    if (!fileData || !filePath) {
+      throw new HttpsError("invalid-argument", "fileData and path are required");
     }
 
     try {
-      // Parse multipart form data
-      const busboy = await import("busboy");
-      const bb = busboy.default({ headers: req.headers });
-
-      let fileBuffer: Buffer | null = null;
-      let filePath = "";
-      let contentType = "application/octet-stream";
-
-      const parsePromise = new Promise<void>((resolve, reject) => {
-        bb.on("file", (name: string, file: NodeJS.ReadableStream, info: { filename: string; mimeType: string }) => {
-          const chunks: Buffer[] = [];
-          file.on("data", (chunk: Buffer) => chunks.push(chunk));
-          file.on("end", () => {
-            fileBuffer = Buffer.concat(chunks);
-            contentType = info.mimeType || "application/octet-stream";
-          });
-        });
-        bb.on("field", (name: string, val: string) => {
-          if (name === "path") filePath = val;
-        });
-        bb.on("finish", resolve);
-        bb.on("error", reject);
-      });
-
-      req.pipe(bb);
-      await parsePromise;
-
-      if (!fileBuffer || !filePath) {
-        res.status(400).json({ error: "Missing file or path" });
-        return;
-      }
-
-      // Type assertion after null check
-      const buffer = fileBuffer as Buffer;
+      // Decode base64 file data
+      const buffer = Buffer.from(fileData, "base64");
 
       // Get B2 auth
       const auth = await getB2Auth();
@@ -482,51 +461,50 @@ export const uploadToB2 = onRequest(
 
       const result = await uploadResponse.json();
 
-      // Return public URL
-      const publicUrl = `https://f005.backblazeb2.com/file/${B2_BUCKET}/${filePath}`;
-
-      res.json({
-        url: publicUrl,
+      // Return the path (client will use getSignedUrls to get viewable URLs)
+      return {
+        url: `/api/files/${filePath}`,
         path: filePath,
         size: result.contentLength,
-      });
+      };
     } catch (error) {
       console.error("Upload error:", error);
-      res.status(500).json({
-        error: error instanceof Error ? error.message : "Upload failed",
-      });
+      throw new HttpsError(
+        "internal",
+        error instanceof Error ? error.message : "Upload failed"
+      );
     }
   }
 );
 
 /**
- * Delete a file from B2
+ * Callable function to delete a file from B2
  */
-export const deleteFromB2 = onRequest(
+export const deleteFromB2 = onCall(
   {
     memory: "256MiB",
     timeoutSeconds: 30,
-    cors: true,
   },
-  async (req, res) => {
-    if (req.method !== "DELETE" && req.method !== "POST") {
-      res.status(405).json({ error: "Method not allowed" });
-      return;
+  async (request) => {
+    // Require authentication
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "Must be authenticated to delete files"
+      );
     }
 
     if (!B2_KEY_ID || !B2_APP_KEY) {
-      res.status(500).json({ error: "B2 credentials not configured" });
-      return;
+      throw new HttpsError("internal", "B2 credentials not configured");
+    }
+
+    const { path: filePath } = request.data as { path: string };
+
+    if (!filePath) {
+      throw new HttpsError("invalid-argument", "path is required");
     }
 
     try {
-      const { path: filePath } = req.body;
-
-      if (!filePath) {
-        res.status(400).json({ error: "Missing path parameter" });
-        return;
-      }
-
       const auth = await getB2Auth();
 
       // List file versions to get fileId
@@ -554,8 +532,7 @@ export const deleteFromB2 = onRequest(
       const file = listData.files.find((f: { fileName: string }) => f.fileName === filePath);
 
       if (!file) {
-        res.json({ success: true, message: "File not found" });
-        return;
+        return { success: true, message: "File not found" };
       }
 
       // Delete file
@@ -578,12 +555,13 @@ export const deleteFromB2 = onRequest(
         throw new Error(`Delete failed: ${deleteResponse.statusText}`);
       }
 
-      res.json({ success: true });
+      return { success: true };
     } catch (error) {
       console.error("Delete error:", error);
-      res.status(500).json({
-        error: error instanceof Error ? error.message : "Delete failed",
-      });
+      throw new HttpsError(
+        "internal",
+        error instanceof Error ? error.message : "Delete failed"
+      );
     }
   }
 );

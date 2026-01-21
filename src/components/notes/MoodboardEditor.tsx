@@ -87,12 +87,15 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
     sortMode: "chronological" | "manual";
   } | null>(null);
 
-  // Collect all image paths for signed URL fetching
+  // Collect paths that need signed URLs (only /api/files/ URLs)
   const imagePaths = useMemo(() => {
     const paths: string[] = [];
+    const needsSigning = (url: string | undefined): url is string =>
+      typeof url === "string" && url.startsWith("/api/files/");
+
     for (const img of images) {
-      if (img.url) paths.push(extractPathFromUrl(img.url));
-      if (img.thumbnailUrl) paths.push(extractPathFromUrl(img.thumbnailUrl));
+      if (needsSigning(img.url)) paths.push(extractPathFromUrl(img.url));
+      if (needsSigning(img.thumbnailUrl)) paths.push(extractPathFromUrl(img.thumbnailUrl));
     }
     return paths;
   }, [images]);
@@ -101,20 +104,33 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
   const { getSignedUrl, isLoading: isLoadingUrls } = useSignedUrls(imagePaths);
 
   // Transform images to use signed URLs
-  // Don't fall back to /api/files/ URLs as they don't work
+  // Firebase Storage URLs and direct B2 URLs don't need signing
   const imagesWithSignedUrls = useMemo(() => {
+    const needsSigning = (url: string | undefined): url is string => {
+      if (!url) return false;
+      // Firebase Storage URLs work as-is
+      if (url.includes("firebasestorage.googleapis.com")) return false;
+      // Direct https URLs that aren't /api/files/ work as-is
+      if (url.startsWith("https://") && !url.includes("/api/files/")) return false;
+      // /api/files/ URLs need signing
+      return url.startsWith("/api/files/");
+    };
+
     return images.map((img) => {
-      const signedUrl = getSignedUrl(img.url);
-      const signedThumbUrl = img.thumbnailUrl ? getSignedUrl(img.thumbnailUrl) : undefined;
+      let url = img.url;
+      let thumbnailUrl = img.thumbnailUrl;
 
-      // Only use original URL as fallback if it's not a broken /api/files/ URL
-      const isBrokenUrl = (url: string) => url?.startsWith("/api/files/");
+      if (needsSigning(img.url)) {
+        const signed = getSignedUrl(img.url);
+        url = signed || ""; // Empty while loading
+      }
 
-      return {
-        ...img,
-        url: signedUrl || (isBrokenUrl(img.url) ? "" : img.url),
-        thumbnailUrl: signedThumbUrl || (img.thumbnailUrl && isBrokenUrl(img.thumbnailUrl) ? "" : img.thumbnailUrl),
-      };
+      if (needsSigning(img.thumbnailUrl)) {
+        const signed = getSignedUrl(img.thumbnailUrl);
+        thumbnailUrl = signed || ""; // Empty while loading
+      }
+
+      return { ...img, url, thumbnailUrl };
     });
   }, [images, getSignedUrl]);
 

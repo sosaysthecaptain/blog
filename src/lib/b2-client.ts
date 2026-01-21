@@ -1,7 +1,10 @@
 /**
  * Client-side B2 upload utilities
- * These call the server-side /api/upload route
+ * These call Firebase callable functions
  */
+
+import { httpsCallable } from "firebase/functions";
+import { functions } from "./firebase";
 
 export interface UploadResult {
   url: string;
@@ -10,7 +13,7 @@ export interface UploadResult {
 }
 
 /**
- * Upload a file to B2 via the API route
+ * Upload a file to B2 via Firebase callable function
  */
 export async function uploadToB2(
   file: Blob,
@@ -19,28 +22,33 @@ export async function uploadToB2(
 ): Promise<UploadResult> {
   onProgress?.(10);
 
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("path", path);
+  // Convert blob to base64
+  const arrayBuffer = await file.arrayBuffer();
+  const base64 = btoa(
+    new Uint8Array(arrayBuffer).reduce(
+      (data, byte) => data + String.fromCharCode(byte),
+      ""
+    )
+  );
 
   onProgress?.(30);
 
-  const response = await fetch("/api/upload", {
-    method: "POST",
-    body: formData,
+  const uploadFn = httpsCallable<
+    { fileData: string; path: string; contentType: string },
+    UploadResult
+  >(functions, "uploadToB2");
+
+  onProgress?.(50);
+
+  const result = await uploadFn({
+    fileData: base64,
+    path,
+    contentType: file.type || "application/octet-stream",
   });
 
-  onProgress?.(90);
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Upload failed");
-  }
-
-  const result = await response.json();
   onProgress?.(100);
 
-  return result;
+  return result.data;
 }
 
 /**
@@ -64,44 +72,21 @@ export async function uploadMultipleToB2(
 }
 
 /**
- * Delete a file from B2 via the API route
+ * Delete a file from B2 via Firebase callable function
  */
 export async function deleteFromB2(path: string): Promise<void> {
-  const response = await fetch("/api/delete", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ path }),
-  });
+  const deleteFn = httpsCallable<{ path: string }, { success: boolean }>(
+    functions,
+    "deleteFromB2"
+  );
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Delete failed");
-  }
+  await deleteFn({ path });
 }
 
 /**
- * Get the public URL for a B2 file
+ * Get the URL for a B2 file (uses /api/files/ format for signed URL system)
  */
 export function getB2Url(path: string): string {
-  const bucket = process.env.NEXT_PUBLIC_B2_BUCKET_NAME || "dirigible-content";
-  return `https://f005.backblazeb2.com/file/${bucket}/${path}`;
+  return `/api/files/${path}`;
 }
 
-/**
- * Normalize a URL that may be an old /api/files/ proxy URL to a direct B2 URL.
- * Returns the URL unchanged if it's already a direct URL.
- */
-export function normalizeB2Url(url: string): string {
-  if (!url) return url;
-
-  // Convert old proxy URLs to direct B2 URLs
-  if (url.startsWith("/api/files/")) {
-    const path = url.replace("/api/files/", "");
-    return getB2Url(path);
-  }
-
-  // Already a direct URL
-  return url;
-}

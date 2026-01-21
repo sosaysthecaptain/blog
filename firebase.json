@@ -11,14 +11,6 @@
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
       {
-        "source": "/api/upload",
-        "function": "uploadToB2"
-      },
-      {
-        "source": "/api/delete",
-        "function": "deleteFromB2"
-      },
-      {
         "source": "/blog/**",
         "destination": "/blog/fdm-startup/index.html"
       }
