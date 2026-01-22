@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useCallback, useMemo } from "react";
-import { EditorState, StateField, StateEffect, RangeSetBuilder, Compartment } from "@codemirror/state";
+import { useEffect, useRef, useCallback, useMemo, useState } from "react";
+import { EditorState, Compartment } from "@codemirror/state";
 import {
   EditorView,
   keymap,
@@ -14,6 +14,7 @@ import {
   ViewPlugin,
   ViewUpdate,
 } from "@codemirror/view";
+import { RangeSetBuilder } from "@codemirror/state";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
@@ -44,10 +45,19 @@ interface MarkdownEditorProps {
   onDisplayPrefsChange?: (prefs: EditorDisplayPrefs) => void;
 }
 
+// Check if URL needs signing (only /api/files/ URLs need it)
+function needsSigning(url: string): boolean {
+  if (!url) return false;
+  if (url.includes("firebasestorage.googleapis.com")) return false;
+  if (url.startsWith("https://") && !url.includes("/api/files/")) return false;
+  return url.startsWith("/api/files/");
+}
+
 // Extract all image URLs from markdown content
 function extractImageUrls(content: string): string[] {
   const urls: string[] = [];
-  const imageRegex = /!\[[^\]]*\]\(([^)"=\s]+)/g;
+  // Match ![...](url) - capture the URL part
+  const imageRegex = /!\[[^\]]*\]\(([^)\s"=]+)/g;
   let match;
   while ((match = imageRegex.exec(content)) !== null) {
     const url = match[1].trim();
@@ -58,20 +68,23 @@ function extractImageUrls(content: string): string[] {
   return urls;
 }
 
-// Store for signed URLs that can be updated without recreating editor
+// Module-level store for signed URLs (avoids re-renders)
 const signedUrlStore = {
   urls: {} as Record<string, string>,
-  listeners: new Set<() => void>(),
   set(urls: Record<string, string>) {
-    this.urls = urls;
-    this.listeners.forEach((l) => l());
+    this.urls = { ...this.urls, ...urls };
   },
-  get(path: string): string | null {
-    return this.urls[path] || null;
+  get(url: string): string | null {
+    // Try direct match
+    if (this.urls[url]) return this.urls[url];
+    // Try path extraction
+    const path = extractPathFromUrl(url);
+    if (this.urls[path]) return this.urls[path];
+    return null;
   },
 };
 
-// Image widget
+// Image widget with resize and caption
 class ImageWidget extends WidgetType {
   constructor(
     readonly src: string,
@@ -88,72 +101,55 @@ class ImageWidget extends WidgetType {
 
   toDOM() {
     const wrapper = document.createElement("div");
-    wrapper.style.margin = "0.5rem 0";
+    wrapper.className = "cm-image-wrapper";
 
     const container = document.createElement("div");
     container.className = "cm-image-container";
-    container.style.position = "relative";
-    container.style.display = "inline-block";
-    container.style.maxWidth = "100%";
+
+    // Get signed URL if needed
+    let displayUrl = this.src;
+    const requiresSigning = needsSigning(this.src);
+    if (requiresSigning) {
+      const signed = signedUrlStore.get(this.src);
+      if (signed) {
+        displayUrl = signed;
+      } else {
+        // Show loading state while waiting for signed URL
+        container.innerHTML = `<div class="cm-image-loading">Loading image...</div>`;
+        wrapper.appendChild(container);
+        return wrapper;
+      }
+    }
 
     const img = document.createElement("img");
-    const path = extractPathFromUrl(this.src);
-    const signedUrl = signedUrlStore.get(path) || signedUrlStore.get(this.src);
-    img.src = signedUrl || this.src;
+    img.src = displayUrl;
     img.alt = this.alt;
+    if (this.width) {
+      img.style.width = `${this.width}px`;
+    }
     img.className = "cm-inline-image";
-    img.style.maxWidth = "100%";
-    img.style.width = this.width ? `${this.width}px` : "auto";
-    img.style.height = "auto";
-    img.style.borderRadius = "8px";
-    img.style.cursor = "pointer";
-    img.style.display = "block";
 
     if (this.onClick) {
       img.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        this.onClick!(signedUrl || this.src);
+        this.onClick!(displayUrl);
       });
     }
 
-    img.style.opacity = "0";
-    img.style.transition = "opacity 0.2s";
     img.onload = () => {
       img.style.opacity = "1";
     };
+
     img.onerror = () => {
-      container.innerHTML = `
-        <div style="padding: 0.75rem; background: var(--hover); border: 1px dashed var(--border); border-radius: 8px; color: var(--muted); font-size: 0.75rem;">
-          Failed to load image
-        </div>
-      `;
+      container.innerHTML = `<div class="cm-image-error">Failed to load image</div>`;
     };
 
     container.appendChild(img);
 
     // Resize handle
     const resizeHandle = document.createElement("div");
-    resizeHandle.style.cssText = `
-      position: absolute;
-      right: -4px;
-      bottom: -4px;
-      width: 10px;
-      height: 10px;
-      background: var(--foreground);
-      border: 2px solid var(--background);
-      border-radius: 50%;
-      cursor: se-resize;
-      opacity: 0;
-      transition: opacity 0.15s;
-    `;
-
-    container.addEventListener("mouseenter", () => {
-      resizeHandle.style.opacity = "1";
-    });
-    container.addEventListener("mouseleave", () => {
-      resizeHandle.style.opacity = "0";
-    });
+    resizeHandle.className = "cm-resize-handle";
 
     let startX = 0;
     let startWidth = 0;
@@ -182,22 +178,12 @@ class ImageWidget extends WidgetType {
     container.appendChild(resizeHandle);
     wrapper.appendChild(container);
 
-    // Editable caption
+    // Caption
     const captionEl = document.createElement("div");
     captionEl.className = "cm-image-caption";
     captionEl.contentEditable = "true";
     captionEl.textContent = this.caption || "";
     captionEl.setAttribute("data-placeholder", "Add caption...");
-    captionEl.style.cssText = `
-      font-size: 0.75rem;
-      color: var(--muted);
-      font-style: italic;
-      text-align: center;
-      margin-top: 0.25rem;
-      max-width: ${this.width ? this.width + "px" : "100%"};
-      outline: none;
-      min-height: 1.2em;
-    `;
 
     captionEl.addEventListener("blur", () => {
       const newCaption = captionEl.textContent?.trim() || "";
@@ -214,9 +200,7 @@ class ImageWidget extends WidgetType {
       e.stopPropagation();
     });
 
-    captionEl.addEventListener("click", (e) => {
-      e.stopPropagation();
-    });
+    captionEl.addEventListener("click", (e) => e.stopPropagation());
 
     wrapper.appendChild(captionEl);
     return wrapper;
@@ -225,9 +209,8 @@ class ImageWidget extends WidgetType {
   updateWidth(newWidth: number) {
     const doc = this.view.state.doc;
     const lineText = doc.sliceString(this.lineFrom, this.lineTo);
-
-    // Parse current syntax and update width
-    const match = lineText.match(/^(!\[[^\]]*\]\([^)"=\s]+)(?:\s*=\d+)?(\s*"[^"]*")?(\))$/);
+    // ![alt](url) or ![alt](url =width) or ![alt](url "caption") or ![alt](url =width "caption")
+    const match = lineText.match(/^(!\[[^\]]*\]\([^\s)"=]+)(?:\s*=\d+)?(\s*"[^"]*")?(\))$/);
     if (match) {
       const newText = `${match[1]} =${newWidth}${match[2] || ""}${match[3]}`;
       this.view.dispatch({
@@ -239,9 +222,7 @@ class ImageWidget extends WidgetType {
   updateCaption(newCaption: string) {
     const doc = this.view.state.doc;
     const lineText = doc.sliceString(this.lineFrom, this.lineTo);
-
-    // Parse current syntax and update caption
-    const match = lineText.match(/^(!\[[^\]]*\]\([^)"=\s]+(?:\s*=\d+)?)(?:\s*"[^"]*")?(\))$/);
+    const match = lineText.match(/^(!\[[^\]]*\]\([^\s)"=]+(?:\s*=\d+)?)(?:\s*"[^"]*")?(\))$/);
     if (match) {
       const captionPart = newCaption ? ` "${newCaption}"` : "";
       const newText = `${match[1]}${captionPart}${match[2]}`;
@@ -252,12 +233,8 @@ class ImageWidget extends WidgetType {
   }
 
   eq(other: ImageWidget) {
-    return (
-      other.src === this.src &&
-      other.alt === this.alt &&
-      other.caption === this.caption &&
-      other.width === this.width
-    );
+    return other.src === this.src && other.alt === this.alt &&
+           other.caption === this.caption && other.width === this.width;
   }
 
   ignoreEvent(e: Event) {
@@ -276,45 +253,25 @@ class CheckboxWidget extends WidgetType {
   }
 
   toDOM() {
+    const span = document.createElement("span");
+    span.className = "cm-checkbox-wrapper";
+
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = this.isChecked;
-    checkbox.style.cssText = `
-      appearance: none;
-      width: 0.875rem;
-      height: 0.875rem;
-      border: 1.5px solid var(--foreground);
-      border-radius: 2px;
-      background: ${this.isChecked ? "var(--foreground)" : "transparent"};
-      cursor: pointer;
-      position: relative;
-      vertical-align: middle;
-      margin-right: 0.375rem;
-      margin-top: -2px;
-    `;
-
-    if (this.isChecked) {
-      const checkmark = document.createElement("span");
-      checkmark.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--background)" stroke-width="3" style="position: absolute; left: 1px; top: 1px;"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
-      checkmark.style.cssText = `position: absolute; pointer-events: none;`;
-      checkbox.style.position = "relative";
-      checkbox.appendChild(checkmark);
-    }
+    checkbox.className = `cm-checkbox ${this.isChecked ? "cm-checkbox-checked" : ""}`;
 
     checkbox.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
       const newChar = this.isChecked ? " " : "x";
       this.view.dispatch({
-        changes: {
-          from: this.checkboxPos + 3,
-          to: this.checkboxPos + 4,
-          insert: newChar,
-        },
+        changes: { from: this.checkboxPos + 3, to: this.checkboxPos + 4, insert: newChar },
       });
     });
 
-    return checkbox;
+    span.appendChild(checkbox);
+    return span;
   }
 
   eq(other: CheckboxWidget) {
@@ -326,7 +283,17 @@ class CheckboxWidget extends WidgetType {
   }
 }
 
-// Upload placeholder
+// Bullet widget
+class BulletWidget extends WidgetType {
+  toDOM() {
+    const span = document.createElement("span");
+    span.className = "cm-bullet";
+    span.textContent = "•";
+    return span;
+  }
+}
+
+// Upload placeholder widget
 class UploadPlaceholderWidget extends WidgetType {
   constructor(readonly filename: string) {
     super();
@@ -334,13 +301,12 @@ class UploadPlaceholderWidget extends WidgetType {
 
   toDOM() {
     const container = document.createElement("div");
+    container.className = "cm-upload-placeholder";
     container.innerHTML = `
-      <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--hover); border: 1px dashed var(--border); border-radius: 6px; margin: 0.5rem 0;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite;">
-          <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
-        </svg>
-        <span style="color: var(--muted); font-size: 0.8rem;">Uploading ${this.filename}...</span>
-      </div>
+      <svg class="cm-upload-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
+      </svg>
+      <span>Uploading ${this.filename}...</span>
     `;
     return container;
   }
@@ -350,161 +316,118 @@ class UploadPlaceholderWidget extends WidgetType {
   }
 }
 
-// Create decorations
+// Create decorations for markdown rendering
 function createDecorations(view: EditorView, onImageClick?: (src: string) => void): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const doc = view.state.doc;
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
-    const lineText = line.text;
+    const text = line.text;
 
-    // Images: ![alt](url) or ![alt](url =width) or ![alt](url "caption") or ![alt](url =width "caption")
-    const imageRegex = /^!\[([^\]]*)\]\(([^)"=\s]+)(?:\s*=(\d+))?(?:\s*"([^"]*)")?\)$/;
-    const imageMatch = lineText.match(imageRegex);
+    // Images: ![alt](url) or ![alt](url =width) or ![alt](url "caption") or combinations
+    const imageMatch = text.match(/^!\[([^\]]*)\]\(([^\s)"=]+)(?:\s*=(\d+))?(?:\s*"([^"]*)")?\)$/);
     if (imageMatch) {
-      const alt = imageMatch[1];
-      const src = imageMatch[2].trim();
-      const width = imageMatch[3] ? parseInt(imageMatch[3]) : null;
-      const caption = imageMatch[4] || null;
+      const [, alt, src, widthStr, caption] = imageMatch;
+      const width = widthStr ? parseInt(widthStr) : null;
 
       if (src === "uploading") {
-        builder.add(
-          line.from,
-          line.to,
-          Decoration.replace({
-            widget: new UploadPlaceholderWidget(alt || "image"),
-          })
-        );
+        builder.add(line.from, line.to, Decoration.replace({
+          widget: new UploadPlaceholderWidget(alt || "image"),
+        }));
       } else {
-        builder.add(
-          line.from,
-          line.to,
-          Decoration.replace({
-            widget: new ImageWidget(src, alt, caption, width, line.from, line.to, view, onImageClick),
-          })
-        );
+        builder.add(line.from, line.to, Decoration.replace({
+          widget: new ImageWidget(src, alt, caption || null, width, line.from, line.to, view, onImageClick),
+        }));
       }
       continue;
     }
 
-    // Checkboxes: - [ ] or - [x]
-    const taskMatch = lineText.match(/^(\s*)- \[([ x])\] /);
+    // Task lists: - [ ] or - [x] (with optional indentation)
+    const taskMatch = text.match(/^(\s*)- \[([ x])\] (.*)$/);
     if (taskMatch) {
-      const indent = taskMatch[1].length;
-      const isChecked = taskMatch[2] === "x";
-      const checkStart = line.from + indent;
-      // Replace "- [ ] " with just the checkbox widget
-      builder.add(
-        checkStart,
-        checkStart + 6,
-        Decoration.replace({
-          widget: new CheckboxWidget(isChecked, checkStart, view),
-        })
-      );
+      const [, indent, check] = taskMatch;
+      const isChecked = check === "x";
+      const checkStart = line.from + indent.length;
+      // Replace "- [ ] " or "- [x] " with checkbox widget
+      builder.add(checkStart, checkStart + 6, Decoration.replace({
+        widget: new CheckboxWidget(isChecked, checkStart, view),
+      }));
+      continue;
     }
 
-    // Unordered lists: replace - with •
-    const listMatch = lineText.match(/^(\s*)- (?!\[[ x]\])/);
+    // Unordered lists: - item (with optional indentation, but not task lists)
+    const listMatch = text.match(/^(\s*)- (?!\[[ x]\])(.*)$/);
     if (listMatch) {
-      const indent = listMatch[1].length;
-      const bulletStart = line.from + indent;
-      builder.add(
-        bulletStart,
-        bulletStart + 2,
-        Decoration.replace({
-          widget: new (class extends WidgetType {
-            toDOM() {
-              const span = document.createElement("span");
-              span.textContent = "• ";
-              return span;
-            }
-          })(),
-        })
-      );
+      const [, indent] = listMatch;
+      const bulletStart = line.from + indent.length;
+      // Replace "- " with bullet
+      builder.add(bulletStart, bulletStart + 2, Decoration.replace({
+        widget: new BulletWidget(),
+      }));
     }
   }
 
   return builder.finish();
 }
 
-// Decoration plugin
+// Decoration plugin - always rebuilds to catch signed URL updates
 const decorationPlugin = (onImageClick?: (src: string) => void) =>
   ViewPlugin.fromClass(
     class {
       decorations: DecorationSet;
-
       constructor(view: EditorView) {
         this.decorations = createDecorations(view, onImageClick);
       }
-
       update(update: ViewUpdate) {
-        if (update.docChanged || update.viewportChanged) {
-          this.decorations = createDecorations(update.view, onImageClick);
-        }
+        // Always rebuild - signed URLs might have changed
+        this.decorations = createDecorations(update.view, onImageClick);
       }
     },
-    {
-      decorations: (v) => v.decorations,
-    }
+    { decorations: (v) => v.decorations }
   );
 
 // Font families
 const fontFamilies = {
-  mono: "var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-  serif: "var(--font-serif), Georgia, Cambria, 'Times New Roman', Times, serif",
-  sans: "var(--font-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+  mono: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+  serif: "Georgia, Cambria, 'Times New Roman', Times, serif",
+  sans: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
 };
 
-// Create theme based on preferences
+// Create theme
 function createEditorTheme(prefs: EditorDisplayPrefs) {
   return EditorView.theme({
     "&": {
       fontSize: "0.875rem",
       fontFamily: fontFamilies[prefs.font],
-      lineHeight: "1.5",
+      lineHeight: "1.6",
       color: "var(--foreground)",
       backgroundColor: "transparent",
     },
-    "&.cm-focused": {
-      outline: "none",
-    },
+    "&.cm-focused": { outline: "none" },
     ".cm-content": {
       caretColor: "var(--foreground)",
       padding: "0",
       minHeight: "400px",
       whiteSpace: prefs.wordWrap ? "pre-wrap" : "pre",
       wordBreak: prefs.wordWrap ? "break-word" : "normal",
-      overflowWrap: prefs.wordWrap ? "break-word" : "normal",
     },
-    ".cm-line": {
-      padding: "1px 0",
-    },
+    ".cm-line": { padding: "0" },
     ".cm-cursor": {
       borderLeftColor: "var(--foreground)",
-      borderLeftWidth: "2px",
+      borderLeftWidth: "1.5px",
     },
-    ".cm-selectionBackground": {
-      backgroundColor: "rgba(128, 128, 128, 0.3) !important",
-    },
-    "&.cm-focused .cm-selectionBackground": {
-      backgroundColor: "rgba(128, 128, 128, 0.4) !important",
-    },
-    ".cm-placeholder": {
-      color: "var(--muted)",
-      fontStyle: "italic",
-    },
-    ".cm-scroller": {
-      overflow: "auto",
-    },
+    ".cm-selectionBackground": { backgroundColor: "rgba(128, 128, 128, 0.3) !important" },
+    "&.cm-focused .cm-selectionBackground": { backgroundColor: "rgba(128, 128, 128, 0.4) !important" },
+    ".cm-placeholder": { color: "var(--muted)", fontStyle: "italic" },
   });
 }
 
 // Syntax highlighting
 const markdownHighlighting = HighlightStyle.define([
-  { tag: tags.heading1, fontWeight: "700", fontSize: "1.5rem", lineHeight: "1.2" },
-  { tag: tags.heading2, fontWeight: "600", fontSize: "1.25rem", lineHeight: "1.3" },
-  { tag: tags.heading3, fontWeight: "600", fontSize: "1.1rem", lineHeight: "1.4" },
+  { tag: tags.heading1, fontWeight: "700", fontSize: "1.5rem" },
+  { tag: tags.heading2, fontWeight: "600", fontSize: "1.25rem" },
+  { tag: tags.heading3, fontWeight: "600", fontSize: "1.1rem" },
   { tag: tags.heading4, fontWeight: "600" },
   { tag: tags.emphasis, fontStyle: "italic" },
   { tag: tags.strong, fontWeight: "700" },
@@ -540,30 +463,37 @@ export default function MarkdownEditor({
   const themeCompartment = useRef(new Compartment());
   const isInternalChange = useRef(false);
 
-  // Extract image URLs for signing
-  const imageUrls = useMemo(() => extractImageUrls(content), [content]);
+  // Menu state
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Extract URLs that need signing
+  const imageUrls = useMemo(() => {
+    const urls = extractImageUrls(content);
+    return urls.filter(needsSigning);
+  }, [content]);
+
+  // Get signed URLs
   const { getSignedUrl } = useSignedUrls(imageUrls);
 
-  // Update signed URL store when URLs change
+  // Update signed URL store
   useEffect(() => {
-    const map: Record<string, string> = {};
+    const newUrls: Record<string, string> = {};
     for (const url of imageUrls) {
-      const path = extractPathFromUrl(url);
       const signed = getSignedUrl(url);
       if (signed) {
-        map[path] = signed;
-        map[url] = signed;
+        newUrls[url] = signed;
+        newUrls[extractPathFromUrl(url)] = signed;
       }
     }
-    signedUrlStore.set(map);
-
-    // Trigger decoration refresh
-    const view = viewRef.current;
-    if (view) {
-      view.dispatch({});
+    if (Object.keys(newUrls).length > 0) {
+      signedUrlStore.set(newUrls);
+      // Refresh decorations
+      viewRef.current?.dispatch({});
     }
   }, [imageUrls, getSignedUrl]);
 
+  // Keep refs current
   useEffect(() => { noteIdRef.current = noteId; }, [noteId]);
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   useEffect(() => { onMediaAddedRef.current = onMediaAdded; }, [onMediaAdded]);
@@ -571,99 +501,90 @@ export default function MarkdownEditor({
 
   // Update theme when prefs change
   useEffect(() => {
-    const view = viewRef.current;
-    if (view) {
-      view.dispatch({
+    if (viewRef.current) {
+      viewRef.current.dispatch({
         effects: themeCompartment.current.reconfigure(createEditorTheme(displayPrefs)),
       });
     }
   }, [displayPrefs]);
 
+  // Close menu on outside click
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [menuOpen]);
+
+  // Image upload handler
   const handleImageUpload = useCallback(async (blob: Blob) => {
     const view = viewRef.current;
     if (!view) return;
 
     const id = noteIdRef.current || `temp-${Date.now()}`;
     const pos = view.state.selection.main.head;
-    const placeholderText = "\n![Uploading...](uploading)\n";
+    const placeholderText = "![image](uploading)";
 
-    view.dispatch({
-      changes: { from: pos, insert: placeholderText },
-    });
+    view.dispatch({ changes: { from: pos, insert: `\n${placeholderText}\n` } });
 
     try {
       const result = await uploadNoteImage(blob, id);
-
-      if (onMediaAddedRef.current) {
-        onMediaAddedRef.current({
-          id: `img-${Date.now()}`,
-          url: result.url,
-          path: result.path,
-          type: "image",
-          fileSize: result.size,
-        });
-      }
+      onMediaAddedRef.current?.({
+        id: `img-${Date.now()}`,
+        url: result.url,
+        path: result.path,
+        type: "image",
+        fileSize: result.size,
+      });
 
       const currentContent = view.state.doc.toString();
-      const placeholderIndex = currentContent.indexOf("![Uploading...](uploading)");
-
-      if (placeholderIndex !== -1) {
+      const idx = currentContent.indexOf(placeholderText);
+      if (idx !== -1) {
         view.dispatch({
-          changes: {
-            from: placeholderIndex,
-            to: placeholderIndex + "![Uploading...](uploading)".length,
-            insert: `![](${result.url})`,
-          },
+          changes: { from: idx, to: idx + placeholderText.length, insert: `![](${result.url})` },
         });
       }
     } catch (error) {
       console.error("Failed to upload image:", error);
       const currentContent = view.state.doc.toString();
-      const idx = currentContent.indexOf("![Uploading...](uploading)");
+      const idx = currentContent.indexOf(placeholderText);
       if (idx !== -1) {
-        view.dispatch({
-          changes: { from: idx, to: idx + "![Uploading...](uploading)".length, insert: "" },
-        });
+        view.dispatch({ changes: { from: idx, to: idx + placeholderText.length, insert: "" } });
       }
     }
   }, []);
 
+  // File upload handler
   const handleFileUpload = useCallback(async (file: File) => {
     const view = viewRef.current;
     if (!view) return;
 
     const id = noteIdRef.current || `temp-${Date.now()}`;
     const pos = view.state.selection.main.head;
-    const placeholderText = `[Uploading ${file.name}...](uploading)`;
+    const placeholderText = `[${file.name}](uploading)`;
 
-    view.dispatch({
-      changes: { from: pos, insert: placeholderText },
-    });
+    view.dispatch({ changes: { from: pos, insert: placeholderText } });
 
     try {
       const result = await uploadNoteFile(file, id);
-
-      if (onMediaAddedRef.current) {
-        onMediaAddedRef.current({
-          id: `file-${Date.now()}`,
-          url: result.url,
-          path: result.path,
-          type: "file",
-          filename: result.filename,
-          fileSize: result.size,
-        });
-      }
+      onMediaAddedRef.current?.({
+        id: `file-${Date.now()}`,
+        url: result.url,
+        path: result.path,
+        type: "file",
+        filename: result.filename,
+        fileSize: result.size,
+      });
 
       const currentContent = view.state.doc.toString();
       const idx = currentContent.indexOf(placeholderText);
-
       if (idx !== -1) {
         view.dispatch({
-          changes: {
-            from: idx,
-            to: idx + placeholderText.length,
-            insert: `[${result.filename}](${result.url})`,
-          },
+          changes: { from: idx, to: idx + placeholderText.length, insert: `[${result.filename}](${result.url})` },
         });
       }
     } catch (error) {
@@ -671,28 +592,25 @@ export default function MarkdownEditor({
       const currentContent = view.state.doc.toString();
       const idx = currentContent.indexOf(placeholderText);
       if (idx !== -1) {
-        view.dispatch({
-          changes: { from: idx, to: idx + placeholderText.length, insert: "" },
-        });
+        view.dispatch({ changes: { from: idx, to: idx + placeholderText.length, insert: "" } });
       }
     }
   }, []);
 
-  // Initialize editor once
+  // Initialize editor
   useEffect(() => {
     if (!editorRef.current || viewRef.current) return;
 
     const handlePaste = (event: ClipboardEvent) => {
       const files = event.clipboardData?.files;
       if (files && files.length > 0) {
+        event.preventDefault();
         for (const file of Array.from(files)) {
-          event.preventDefault();
           if (file.type.startsWith("image/")) {
             handleImageUpload(file);
           } else {
             handleFileUpload(file);
           }
-          return;
         }
       }
     };
@@ -749,115 +667,325 @@ export default function MarkdownEditor({
       view.destroy();
       viewRef.current = null;
     };
-  }, []); // Only run once on mount
+  }, []);
 
-  // Sync content from props (only if it differs from editor state)
+  // Sync content from props
   useEffect(() => {
     const view = viewRef.current;
     if (view) {
       const currentContent = view.state.doc.toString();
       if (content !== currentContent) {
         isInternalChange.current = true;
-        view.dispatch({
-          changes: { from: 0, to: view.state.doc.length, insert: content },
-        });
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } });
         isInternalChange.current = false;
       }
     }
   }, [content]);
 
   return (
-    <div className="markdown-editor relative">
-      {/* Display preferences dropdown */}
+    <div className="markdown-editor">
+      {/* Settings button */}
       {onDisplayPrefsChange && (
-        <div className="absolute top-0 right-0 z-10">
-          <details className="relative">
-            <summary className="p-1.5 text-xs text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded cursor-pointer list-none">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </summary>
-            <div className="absolute right-0 mt-1 w-48 bg-[--background] border border-[--border] rounded-lg shadow-lg p-2 space-y-2">
-              {/* Word wrap */}
-              <label className="flex items-center gap-2 text-xs cursor-pointer hover:bg-[--hover] p-1.5 rounded">
+        <div className="md-settings-container" ref={menuRef}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="md-settings-btn"
+            title="Display settings"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+
+          {menuOpen && (
+            <div className="md-settings-menu">
+              <label className="md-menu-item">
                 <input
                   type="checkbox"
                   checked={displayPrefs.wordWrap}
                   onChange={(e) => onDisplayPrefsChange({ ...displayPrefs, wordWrap: e.target.checked })}
-                  className="rounded border-[--border]"
                 />
                 <span>Word wrap</span>
               </label>
 
-              {/* Font selection */}
-              <div className="space-y-1 p-1.5">
-                <span className="text-xs text-[--muted]">Font</span>
-                <div className="flex gap-1">
-                  {(["mono", "serif", "sans"] as const).map((font) => (
-                    <button
-                      key={font}
-                      onClick={() => onDisplayPrefsChange({ ...displayPrefs, font })}
-                      className={`flex-1 px-2 py-1 text-xs rounded border ${
-                        displayPrefs.font === font
-                          ? "border-[--foreground] bg-[--foreground] text-[--background]"
-                          : "border-[--border] hover:border-[--foreground]"
-                      }`}
-                      style={{ fontFamily: fontFamilies[font] }}
-                    >
-                      {font === "mono" ? "Aa" : font === "serif" ? "Aa" : "Aa"}
-                    </button>
-                  ))}
-                </div>
+              <div className="md-menu-divider" />
+
+              <div className="md-menu-label">Font</div>
+              <div className="md-font-buttons">
+                {(["mono", "serif", "sans"] as const).map((font) => (
+                  <button
+                    key={font}
+                    type="button"
+                    onClick={() => onDisplayPrefsChange({ ...displayPrefs, font })}
+                    className={`md-font-btn ${displayPrefs.font === font ? "md-font-btn-active" : ""}`}
+                    style={{ fontFamily: fontFamilies[font] }}
+                  >
+                    {font}
+                  </button>
+                ))}
               </div>
 
-              {/* Show markdown */}
-              <label className="flex items-center gap-2 text-xs cursor-pointer hover:bg-[--hover] p-1.5 rounded">
+              <div className="md-menu-divider" />
+
+              <label className="md-menu-item">
                 <input
                   type="checkbox"
                   checked={displayPrefs.showMarkdownSyntax}
                   onChange={(e) => onDisplayPrefsChange({ ...displayPrefs, showMarkdownSyntax: e.target.checked })}
-                  className="rounded border-[--border]"
                 />
-                <span>Show markdown</span>
+                <span>Show markdown syntax</span>
               </label>
             </div>
-          </details>
+          )}
         </div>
       )}
 
-      <div ref={editorRef} className="min-h-[400px]" />
+      <div ref={editorRef} className="md-editor-container" />
 
       <style jsx global>{`
+        .markdown-editor {
+          position: relative;
+        }
+
+        .md-settings-container {
+          position: absolute;
+          top: 0;
+          right: 0;
+          z-index: 10;
+        }
+
+        .md-settings-btn {
+          padding: 6px;
+          color: var(--muted);
+          border-radius: 4px;
+          transition: all 0.15s;
+        }
+        .md-settings-btn:hover {
+          color: var(--foreground);
+          background: var(--hover);
+        }
+
+        .md-settings-menu {
+          position: absolute;
+          top: 100%;
+          right: 0;
+          margin-top: 4px;
+          width: 180px;
+          padding: 8px;
+          background: var(--sidebar-bg, var(--background));
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.05);
+        }
+
+        .md-menu-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 8px;
+          font-size: 13px;
+          color: var(--foreground);
+          border-radius: 4px;
+          cursor: pointer;
+        }
+        .md-menu-item:hover {
+          background: var(--hover);
+        }
+        .md-menu-item input[type="checkbox"] {
+          width: 14px;
+          height: 14px;
+          accent-color: var(--foreground);
+        }
+
+        .md-menu-divider {
+          height: 1px;
+          background: var(--border);
+          margin: 6px 0;
+        }
+
+        .md-menu-label {
+          padding: 4px 8px;
+          font-size: 11px;
+          color: var(--muted);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .md-font-buttons {
+          display: flex;
+          gap: 4px;
+          padding: 0 4px 4px;
+        }
+
+        .md-font-btn {
+          flex: 1;
+          padding: 4px 8px;
+          font-size: 12px;
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          background: transparent;
+          color: var(--foreground);
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .md-font-btn:hover {
+          border-color: var(--foreground);
+        }
+        .md-font-btn-active {
+          background: var(--foreground);
+          color: var(--background);
+          border-color: var(--foreground);
+        }
+
+        .md-editor-container {
+          min-height: 400px;
+        }
+
+        /* Editor styles */
         .markdown-editor .cm-editor {
           background: transparent;
         }
 
+        /* Line height for lists - tighter spacing */
         .markdown-editor .cm-line {
-          padding: 1px 0;
+          line-height: 1.5;
         }
 
-        /* Tighter list spacing */
-        .markdown-editor .cm-line + .cm-line {
-          /* Default tight spacing */
+        /* Image styles */
+        .cm-image-wrapper {
+          display: block;
+          margin: 8px 0;
         }
 
-        /* Image caption placeholder */
+        .cm-image-container {
+          position: relative;
+          display: inline-block;
+        }
+
+        .cm-inline-image {
+          max-width: 100%;
+          height: auto;
+          border-radius: 8px;
+          cursor: pointer;
+          opacity: 0;
+          transition: opacity 0.2s;
+        }
+
+        .cm-resize-handle {
+          position: absolute;
+          right: -4px;
+          bottom: -4px;
+          width: 10px;
+          height: 10px;
+          background: var(--foreground);
+          border: 2px solid var(--background);
+          border-radius: 50%;
+          cursor: se-resize;
+          opacity: 0;
+          transition: opacity 0.15s;
+        }
+        .cm-image-container:hover .cm-resize-handle {
+          opacity: 1;
+        }
+
+        .cm-image-error {
+          padding: 12px 16px;
+          background: var(--hover);
+          border: 1px dashed var(--border);
+          border-radius: 8px;
+          color: var(--muted);
+          font-size: 13px;
+        }
+
+        .cm-image-loading {
+          padding: 12px 16px;
+          background: var(--hover);
+          border: 1px dashed var(--border);
+          border-radius: 8px;
+          color: var(--muted);
+          font-size: 13px;
+        }
+
+        .cm-image-caption {
+          font-size: 12px;
+          color: var(--muted);
+          font-style: italic;
+          text-align: center;
+          margin-top: 4px;
+          outline: none;
+          min-height: 1.4em;
+        }
         .cm-image-caption:empty::before {
           content: attr(data-placeholder);
-          color: var(--muted);
           opacity: 0.5;
+        }
+
+        /* Checkbox styles */
+        .cm-checkbox-wrapper {
+          display: inline-flex;
+          align-items: center;
+          margin-right: 6px;
+          vertical-align: baseline;
+        }
+
+        .cm-checkbox {
+          appearance: none;
+          width: 14px;
+          height: 14px;
+          border: 1.5px solid var(--foreground);
+          border-radius: 3px;
+          background: transparent;
+          cursor: pointer;
+          vertical-align: text-bottom;
+          position: relative;
+          margin: 0;
+        }
+        .cm-checkbox-checked {
+          background: var(--foreground);
+        }
+        .cm-checkbox-checked::after {
+          content: "";
+          position: absolute;
+          left: 3px;
+          top: 0px;
+          width: 4px;
+          height: 8px;
+          border: solid var(--background);
+          border-width: 0 2px 2px 0;
+          transform: rotate(45deg);
+        }
+
+        /* Bullet styles */
+        .cm-bullet {
+          color: var(--foreground);
+          margin-right: 6px;
+        }
+
+        /* Upload placeholder */
+        .cm-upload-placeholder {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          background: var(--hover);
+          border: 1px dashed var(--border);
+          border-radius: 6px;
+          margin: 8px 0;
+          color: var(--muted);
+          font-size: 13px;
+        }
+
+        .cm-upload-spinner {
+          width: 16px;
+          height: 16px;
+          animation: spin 1s linear infinite;
         }
 
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
-        }
-
-        /* Hide details marker */
-        .markdown-editor details > summary::-webkit-details-marker,
-        .markdown-editor details > summary::marker {
-          display: none;
         }
       `}</style>
     </div>
