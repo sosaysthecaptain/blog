@@ -410,7 +410,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Untitled"
-          className="w-full text-2xl md:text-4xl font-bold bg-transparent outline-none text-[--foreground] placeholder:text-[--muted] mb-2 font-serif"
+          className="w-full text-2xl md:text-4xl font-bold bg-transparent outline-none text-[--foreground] placeholder:text-[--muted] mb-2 font-mono"
         />
 
         {/* Date, Time & Tags row */}
@@ -422,7 +422,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
             className="bg-transparent outline-none italic cursor-pointer"
             style={{ colorScheme: 'light dark' }}
           />
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 group/time">
             {time ? (
               <>
                 <input
@@ -435,7 +435,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
                 <button
                   type="button"
                   onClick={() => setTime("")}
-                  className="p-0.5 hover:bg-[--hover] rounded text-[--muted] hover:text-[--foreground]"
+                  className="p-0.5 hover:bg-[--hover] rounded text-[--muted] hover:text-[--foreground] opacity-0 group-hover/time:opacity-100 transition-opacity"
                   title="Clear time"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

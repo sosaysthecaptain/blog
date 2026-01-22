@@ -95,8 +95,8 @@ export default function ImageLightbox({
 export function extractImagesFromHtml(content: string): string[] {
   const images: string[] = [];
 
-  // Match markdown image syntax: ![alt](url)
-  const markdownRegex = /!\[[^\]]*\]\(([^)]+)\)/g;
+  // Match markdown image syntax: ![alt](url) or ![alt](url "caption")
+  const markdownRegex = /!\[[^\]]*\]\(([^)"]+)(?:\s+"[^"]*")?\)/g;
   let match;
   while ((match = markdownRegex.exec(content)) !== null) {
     const url = match[1].trim();

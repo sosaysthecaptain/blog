@@ -448,6 +448,7 @@ export default function NotesPage() {
       parentId,
       content: "",
       date: dateStr,
+      time: timeStr,
       tags: [],
       published: false,
       createdAt: now as any,
