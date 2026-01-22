@@ -690,38 +690,32 @@ struct NoteDetailView: View {
 
     /// Process HTML to replace /api/files/ URLs with signed URLs
     private func processImageUrls(_ html: String) {
-        guard !html.isEmpty else {
-            processedContent = html
-            return
-        }
+        // Always set content immediately so it displays right away
+        processedContent = html
+
+        guard !html.isEmpty else { return }
 
         // Find all /api/files/ URLs in the HTML
         let pattern = #"/api/files/[^"'\s]+"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else {
-            processedContent = html
-            return
-        }
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
 
         let range = NSRange(html.startIndex..., in: html)
         let matches = regex.matches(in: html, range: range)
 
-        if matches.isEmpty {
-            processedContent = html
-            return
-        }
+        if matches.isEmpty { return }
 
         // Extract unique paths
         var paths: [String] = []
         for match in matches {
-            if let range = Range(match.range, in: html) {
-                let path = String(html[range])
+            if let matchRange = Range(match.range, in: html) {
+                let path = String(html[matchRange])
                 if !paths.contains(path) {
                     paths.append(path)
                 }
             }
         }
 
-        // Fetch signed URLs and replace
+        // Fetch signed URLs and replace (async - content already displayed)
         Task {
             do {
                 let signedUrls = try await FirebaseSync.shared.getSignedUrls(for: paths)
@@ -734,9 +728,6 @@ struct NoteDetailView: View {
                 }
             } catch {
                 print("[NoteDetailView] Failed to get signed URLs: \(error)")
-                await MainActor.run {
-                    processedContent = html
-                }
             }
         }
     }

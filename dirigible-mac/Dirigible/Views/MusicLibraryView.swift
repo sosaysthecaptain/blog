@@ -241,7 +241,8 @@ struct MusicLibraryDetailView: View {
                             isPlaying: player.currentSong?.id == song.id,
                             isAlternate: index % 2 == 1,
                             onTap: { event in handleRowClick(song, event: event) },
-                            onDoubleTap: { playSong(song) }
+                            onDoubleTap: { playSong(song) },
+                            onAddToQueue: { player.addToQueue(song) }
                         )
                     }
                 }
@@ -370,6 +371,7 @@ struct SongRow: View {
     let isAlternate: Bool
     let onTap: (NSEvent?) -> Void
     let onDoubleTap: () -> Void
+    let onAddToQueue: () -> Void
 
     @State private var isHovered = false
 
@@ -449,100 +451,123 @@ struct SongRow: View {
             TapGesture(count: 1)
                 .onEnded { onTap(NSApp.currentEvent) }
         )
+        .contextMenu {
+            Button("Play") { onDoubleTap() }
+            Button("Add to Queue") { onAddToQueue() }
+            Divider()
+            Button("Delete", role: .destructive) { }
+        }
     }
 }
 
-// MARK: - Player Bar
+// MARK: - Player Bar (matching web app layout)
 
 struct PlayerBar: View {
     @StateObject private var player = MusicPlayer.shared
 
     var body: some View {
-        HStack(spacing: DirigibleStyle.Spacing.md) {
-            // Album art (if available)
+        HStack(spacing: 0) {
+            // Album art - full height on left (80x80 like web)
             if let song = player.currentSong {
-                AlbumArtView(song: song, size: 40)
+                AlbumArtView(song: song, size: 80)
+                    .clipped()
+            } else {
+                Rectangle()
+                    .fill(DirigibleStyle.Colors.hover)
+                    .frame(width: 80, height: 80)
+                    .overlay(
+                        Image(systemName: "music.note")
+                            .font(.system(size: 24))
+                            .foregroundColor(DirigibleStyle.Colors.muted)
+                    )
             }
 
-            // Song info
-            VStack(alignment: .leading, spacing: 1) {
-                Text(player.currentSong?.title ?? "Not Playing")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(DirigibleStyle.Colors.foreground)
-                    .lineLimit(1)
+            // Song info, controls, and progress
+            VStack(alignment: .leading, spacing: 4) {
+                // Top row: song info + controls + volume
+                HStack(spacing: DirigibleStyle.Spacing.md) {
+                    // Song info
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(player.currentSong?.title ?? "No song")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(DirigibleStyle.Colors.foreground)
+                            .lineLimit(1)
 
-                Text(player.currentSong?.artist ?? "-")
-                    .font(.system(size: 11))
-                    .foregroundColor(DirigibleStyle.Colors.muted)
-                    .lineLimit(1)
-            }
-            .frame(minWidth: 120, alignment: .leading)
+                        Text(player.currentSong?.artist ?? "")
+                            .font(.system(size: 10))
+                            .foregroundColor(DirigibleStyle.Colors.muted)
+                            .lineLimit(1)
+                    }
+                    .frame(minWidth: 100, alignment: .leading)
 
-            Spacer()
+                    Spacer()
 
-            // Playback controls
-            HStack(spacing: DirigibleStyle.Spacing.sm) {
-                Button(action: player.previous) {
-                    Image(systemName: "backward.fill")
-                        .font(.system(size: 12))
+                    // Playback controls
+                    HStack(spacing: 8) {
+                        Button(action: player.previous) {
+                            Image(systemName: "backward.end.fill")
+                                .font(.system(size: 16))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(DirigibleStyle.Colors.muted)
+
+                        Button(action: player.togglePlayPause) {
+                            Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 18))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(DirigibleStyle.Colors.background)
+                        .frame(width: 36, height: 36)
+                        .background(DirigibleStyle.Colors.foreground)
+                        .clipShape(Circle())
+
+                        Button(action: player.next) {
+                            Image(systemName: "forward.end.fill")
+                                .font(.system(size: 16))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(DirigibleStyle.Colors.muted)
+                    }
+
+                    Spacer()
+
+                    // Volume
+                    HStack(spacing: 4) {
+                        Button(action: player.toggleMute) {
+                            Image(systemName: player.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                                .font(.system(size: 14))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(DirigibleStyle.Colors.muted)
+
+                        Slider(value: Binding(
+                            get: { player.volume },
+                            set: { player.setVolume($0) }
+                        ), in: 0...1)
+                        .frame(width: 56)
+                    }
                 }
-                .buttonStyle(.plain)
-                .foregroundColor(DirigibleStyle.Colors.muted)
 
-                Button(action: player.togglePlayPause) {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 14))
+                // Progress bar row at bottom
+                HStack(spacing: 8) {
+                    Text(formatTime(player.currentTime))
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(DirigibleStyle.Colors.muted)
+                        .frame(width: 32, alignment: .leading)
+
+                    ProgressBar(value: player.progress, onSeek: player.seek)
+                        .frame(height: 4)
+
+                    Text(formatTime(player.duration))
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(DirigibleStyle.Colors.muted)
+                        .frame(width: 32, alignment: .trailing)
                 }
-                .buttonStyle(.plain)
-                .foregroundColor(DirigibleStyle.Colors.foreground)
-                .frame(width: 28, height: 28)
-                .background(DirigibleStyle.Colors.hover)
-                .cornerRadius(14)
-
-                Button(action: player.next) {
-                    Image(systemName: "forward.fill")
-                        .font(.system(size: 12))
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(DirigibleStyle.Colors.muted)
             }
-
-            Spacer()
-
-            // Progress
-            HStack(spacing: 6) {
-                Text(formatTime(player.currentTime))
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(DirigibleStyle.Colors.muted)
-                    .frame(width: 36, alignment: .trailing)
-
-                ProgressBar(value: player.progress, onSeek: player.seek)
-                    .frame(width: 120, height: 3)
-
-                Text(formatTime(player.duration))
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(DirigibleStyle.Colors.muted)
-                    .frame(width: 36, alignment: .leading)
-            }
-
-            // Volume
-            HStack(spacing: 4) {
-                Button(action: player.toggleMute) {
-                    Image(systemName: player.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                        .font(.system(size: 10))
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(DirigibleStyle.Colors.muted)
-
-                Slider(value: Binding(
-                    get: { player.volume },
-                    set: { player.setVolume($0) }
-                ), in: 0...1)
-                .frame(width: 60)
-            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
         }
-        .padding(.horizontal, DirigibleStyle.Spacing.md)
-        .padding(.vertical, 8)
+        .frame(height: 80)
         .background(DirigibleStyle.Colors.sidebarBg)
     }
 
@@ -698,6 +723,10 @@ class MusicPlayer: ObservableObject {
         if let first = songs.first {
             play(first)
         }
+    }
+
+    func addToQueue(_ song: Song) {
+        queue.append(song)
     }
 
     func play(_ song: Song) {
