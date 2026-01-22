@@ -1,442 +1,395 @@
 import SwiftUI
-import AppKit
+import WebKit
 
-/// Rich text editor with markdown shortcuts that outputs HTML
-/// Handles conversion between markdown-style input and HTML storage
+/// Rich text editor using TipTap (ProseMirror-based) in a WKWebView
+/// Matches the web app's editing experience exactly
 struct RichTextEditor: NSViewRepresentable {
     @Binding var html: String
     var onContentChange: ((String) -> Void)?
 
-    func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSTextView.scrollableTextView()
-        let textView = scrollView.documentView as! NSTextView
+    func makeNSView(context: Context) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        config.userContentController.add(context.coordinator, name: "contentChange")
+        config.userContentController.add(context.coordinator, name: "editorReady")
 
-        textView.delegate = context.coordinator
-        textView.isRichText = true
-        textView.allowsUndo = true
-        textView.isAutomaticQuoteSubstitutionEnabled = false
-        textView.isAutomaticDashSubstitutionEnabled = false
-        textView.isAutomaticTextReplacementEnabled = false
-        textView.usesAdaptiveColorMappingForDarkAppearance = true
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.navigationDelegate = context.coordinator
 
-        // Styling
-        textView.backgroundColor = .clear
-        textView.drawsBackground = false
-        textView.textContainerInset = NSSize(width: 0, height: 8)
-        textView.textContainer?.lineFragmentPadding = 0
+        // Make background transparent
+        webView.setValue(false, forKey: "drawsBackground")
 
-        // Default font
-        textView.typingAttributes = [
-            .font: NSFont(name: "Georgia", size: 14) ?? NSFont.systemFont(ofSize: 14),
-            .foregroundColor: NSColor.labelColor
-        ]
+        context.coordinator.webView = webView
 
-        context.coordinator.textView = textView
+        // Load the editor HTML
+        let htmlContent = context.coordinator.generateEditorHTML()
+        webView.loadHTMLString(htmlContent, baseURL: nil)
 
-        // Load initial HTML content
-        if !html.isEmpty {
-            context.coordinator.loadHTML(html)
-        }
-
-        return scrollView
+        return webView
     }
 
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard !context.coordinator.isEditing else { return }
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        // Only update if content changed externally (not from our own edits)
+        guard context.coordinator.isReady,
+              !context.coordinator.isEditing,
+              context.coordinator.lastSetHTML != html else { return }
 
-        let textView = scrollView.documentView as! NSTextView
-        if context.coordinator.lastLoadedHTML != html {
-            context.coordinator.loadHTML(html)
-        }
+        context.coordinator.setContent(html)
     }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(html: $html, onContentChange: onContentChange)
     }
 
-    class Coordinator: NSObject, NSTextViewDelegate {
+    class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         @Binding var html: String
         var onContentChange: ((String) -> Void)?
-        weak var textView: NSTextView?
+        weak var webView: WKWebView?
+        var isReady = false
         var isEditing = false
-        var lastLoadedHTML = ""
-
-        // Fonts
-        let bodyFont = NSFont(name: "Georgia", size: 14) ?? NSFont.systemFont(ofSize: 14)
-        let h1Font = NSFont(name: "Georgia-Bold", size: 28) ?? NSFont.boldSystemFont(ofSize: 28)
-        let h2Font = NSFont(name: "Georgia-Bold", size: 22) ?? NSFont.boldSystemFont(ofSize: 22)
-        let h3Font = NSFont(name: "Georgia-Bold", size: 18) ?? NSFont.boldSystemFont(ofSize: 18)
-        let codeFont = NSFont(name: "SF Mono", size: 13) ?? NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        var lastSetHTML = ""
+        var pendingContent: String?
 
         init(html: Binding<String>, onContentChange: ((String) -> Void)?) {
             _html = html
             self.onContentChange = onContentChange
         }
 
-        func loadHTML(_ htmlString: String) {
-            guard let textView = textView else { return }
-            lastLoadedHTML = htmlString
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            switch message.name {
+            case "editorReady":
+                isReady = true
+                // Set initial content or any pending content
+                if let pending = pendingContent {
+                    setContent(pending)
+                    pendingContent = nil
+                } else if !html.isEmpty {
+                    setContent(html)
+                }
 
-            if htmlString.isEmpty {
-                textView.string = ""
+            case "contentChange":
+                guard let dict = message.body as? [String: Any],
+                      let newHTML = dict["html"] as? String else { return }
+
+                isEditing = true
+                lastSetHTML = newHTML
+                html = newHTML
+                onContentChange?(newHTML)
+
+                // Reset editing flag after a short delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.isEditing = false
+                }
+
+            default:
+                break
+            }
+        }
+
+        func setContent(_ content: String) {
+            guard isReady, let webView = webView else {
+                pendingContent = content
                 return
             }
 
-            // Convert HTML to attributed string
-            if let data = htmlString.data(using: .utf8),
-               let attrString = try? NSAttributedString(
-                   data: data,
-                   options: [
-                       .documentType: NSAttributedString.DocumentType.html,
-                       .characterEncoding: String.Encoding.utf8.rawValue
-                   ],
-                   documentAttributes: nil
-               ) {
-                // Apply our custom styling
-                let mutableAttr = NSMutableAttributedString(attributedString: attrString)
-                applyCustomStyling(to: mutableAttr)
-                textView.textStorage?.setAttributedString(mutableAttr)
-            } else {
-                // Fallback: just show as plain text
-                textView.string = htmlString.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            lastSetHTML = content
+            let escaped = content
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "`", with: "\\`")
+                .replacingOccurrences(of: "$", with: "\\$")
+
+            webView.evaluateJavaScript("setContent(`\(escaped)`)") { _, error in
+                if let error = error {
+                    print("[RichTextEditor] Error setting content: \(error)")
+                }
             }
         }
 
-        private func applyCustomStyling(to attrString: NSMutableAttributedString) {
-            let fullRange = NSRange(location: 0, length: attrString.length)
+        func generateEditorHTML() -> String {
+            // Detect dark mode
+            let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
 
-            // Set default font for body text
-            attrString.addAttribute(.font, value: bodyFont, range: fullRange)
-            attrString.addAttribute(.foregroundColor, value: NSColor.labelColor, range: fullRange)
-
-            // Detect headers by font size (HTML parsing sets larger fonts for headers)
-            attrString.enumerateAttribute(.font, in: fullRange, options: []) { value, range, _ in
-                if let font = value as? NSFont {
-                    let size = font.pointSize
-                    if size >= 24 {
-                        attrString.addAttribute(.font, value: h1Font, range: range)
-                    } else if size >= 18 && size < 24 {
-                        attrString.addAttribute(.font, value: h2Font, range: range)
-                    } else if size >= 14 && size < 18 && font.fontDescriptor.symbolicTraits.contains(.bold) {
-                        attrString.addAttribute(.font, value: h3Font, range: range)
+            return """
+            <!DOCTYPE html>
+            <html class="\(isDark ? "dark" : "")">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <script src="https://cdn.jsdelivr.net/npm/@tiptap/core@2.1.13/dist/index.umd.min.js"></script>
+                <script src="https://cdn.jsdelivr.net/npm/@tiptap/pm@2.1.13/dist/index.umd.min.js"></script>
+                <script src="https://cdn.jsdelivr.net/npm/@tiptap/starter-kit@2.1.13/dist/index.umd.min.js"></script>
+                <script src="https://cdn.jsdelivr.net/npm/@tiptap/extension-placeholder@2.1.13/dist/index.umd.min.js"></script>
+                <script src="https://cdn.jsdelivr.net/npm/@tiptap/extension-link@2.1.13/dist/index.umd.min.js"></script>
+                <script src="https://cdn.jsdelivr.net/npm/@tiptap/extension-task-list@2.1.13/dist/index.umd.min.js"></script>
+                <script src="https://cdn.jsdelivr.net/npm/@tiptap/extension-task-item@2.1.13/dist/index.umd.min.js"></script>
+                <style>
+                    :root {
+                        --background: #FFFFFF;
+                        --foreground: #171717;
+                        --muted: #737373;
+                        --border: #E5E5E5;
+                        --hover: #F5F5F5;
+                        --accent: #2563EB;
                     }
-                }
-            }
-        }
+                    .dark {
+                        --background: #0A0A0A;
+                        --foreground: #EDEDED;
+                        --muted: #A3A3A3;
+                        --border: #262626;
+                        --hover: #171717;
+                        --accent: #3B82F6;
+                    }
+                    * {
+                        margin: 0;
+                        padding: 0;
+                        box-sizing: border-box;
+                    }
+                    body {
+                        font-family: Georgia, serif;
+                        font-size: 14px;
+                        line-height: 1.75;
+                        color: var(--foreground);
+                        background: transparent;
+                        padding: 8px 0;
+                    }
+                    #editor {
+                        outline: none;
+                        min-height: 100px;
+                    }
+                    .ProseMirror {
+                        outline: none;
+                    }
+                    .ProseMirror p.is-editor-empty:first-child::before {
+                        color: var(--muted);
+                        content: attr(data-placeholder);
+                        float: left;
+                        height: 0;
+                        pointer-events: none;
+                    }
+                    .ProseMirror p {
+                        margin: 0.75em 0;
+                    }
+                    .ProseMirror p:first-child {
+                        margin-top: 0;
+                    }
+                    .ProseMirror h1 {
+                        font-family: Georgia, serif;
+                        font-size: 28px;
+                        font-weight: 700;
+                        margin: 1.5em 0 0.5em 0;
+                        line-height: 1.2;
+                    }
+                    .ProseMirror h1:first-child {
+                        margin-top: 0;
+                    }
+                    .ProseMirror h2 {
+                        font-family: Georgia, serif;
+                        font-size: 22px;
+                        font-weight: 700;
+                        margin: 1.25em 0 0.5em 0;
+                        line-height: 1.3;
+                    }
+                    .ProseMirror h2:first-child {
+                        margin-top: 0;
+                    }
+                    .ProseMirror h3 {
+                        font-family: Georgia, serif;
+                        font-size: 18px;
+                        font-weight: 700;
+                        margin: 1em 0 0.5em 0;
+                        line-height: 1.4;
+                    }
+                    .ProseMirror h3:first-child {
+                        margin-top: 0;
+                    }
+                    .ProseMirror ul {
+                        list-style-type: disc;
+                        padding-left: 1.25em;
+                        margin: 0.5em 0;
+                    }
+                    .ProseMirror ol {
+                        list-style-type: decimal;
+                        padding-left: 1.25em;
+                        margin: 0.5em 0;
+                    }
+                    .ProseMirror li {
+                        margin: 0.125em 0;
+                    }
+                    .ProseMirror li p {
+                        margin: 0;
+                    }
+                    .ProseMirror li > ul,
+                    .ProseMirror li > ol {
+                        margin: 0;
+                    }
+                    .ProseMirror blockquote {
+                        border-left: 3px solid var(--border);
+                        padding-left: 1em;
+                        margin: 1em 0;
+                        color: var(--muted);
+                        font-style: italic;
+                    }
+                    .ProseMirror pre {
+                        background: #2d2d2d;
+                        color: #f8f8f2;
+                        padding: 1em;
+                        border-radius: 4px;
+                        overflow-x: auto;
+                        font-family: "SF Mono", ui-monospace, monospace;
+                        font-size: 13px;
+                        margin: 1em 0;
+                    }
+                    .ProseMirror code {
+                        background: rgba(0, 0, 0, 0.08);
+                        padding: 0.15em 0.3em;
+                        border-radius: 3px;
+                        font-family: "SF Mono", ui-monospace, monospace;
+                        font-size: 0.9em;
+                    }
+                    .dark .ProseMirror code {
+                        background: rgba(255, 255, 255, 0.1);
+                    }
+                    .ProseMirror pre code {
+                        background: none;
+                        padding: 0;
+                        border-radius: 0;
+                        font-size: inherit;
+                    }
+                    .ProseMirror a {
+                        color: var(--accent);
+                        text-decoration: underline;
+                    }
+                    .ProseMirror hr {
+                        border: none;
+                        border-top: 1px solid var(--border);
+                        margin: 1.5em 0;
+                    }
+                    .ProseMirror strong {
+                        font-weight: 700;
+                    }
+                    .ProseMirror em {
+                        font-style: italic;
+                    }
+                    .ProseMirror s {
+                        text-decoration: line-through;
+                        color: var(--muted);
+                    }
+                    /* Task list styles */
+                    .ProseMirror ul[data-type="taskList"] {
+                        list-style: none;
+                        padding-left: 0;
+                        margin: 0.5em 0;
+                    }
+                    .ProseMirror ul[data-type="taskList"] li {
+                        display: flex;
+                        align-items: flex-start;
+                        gap: 0.5em;
+                        margin: 0.125em 0;
+                    }
+                    .ProseMirror ul[data-type="taskList"] li > label {
+                        flex-shrink: 0;
+                        margin-top: 0.175em;
+                    }
+                    .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"] {
+                        -webkit-appearance: none;
+                        appearance: none;
+                        width: 1em;
+                        height: 1em;
+                        border: 2px solid var(--muted);
+                        border-radius: 3px;
+                        background: var(--background);
+                        cursor: pointer;
+                        position: relative;
+                    }
+                    .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"]:checked {
+                        background: var(--foreground);
+                        border-color: var(--foreground);
+                    }
+                    .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"]:checked::after {
+                        content: '';
+                        position: absolute;
+                        left: 50%;
+                        top: 45%;
+                        width: 5px;
+                        height: 9px;
+                        border: solid white;
+                        border-width: 0 2px 2px 0;
+                        transform: translate(-50%, -50%) rotate(45deg);
+                    }
+                    .dark .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"]:checked::after {
+                        border-color: var(--background);
+                    }
+                    .ProseMirror ul[data-type="taskList"] li > div {
+                        flex: 1;
+                    }
+                    .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div {
+                        text-decoration: line-through;
+                        color: var(--muted);
+                    }
+                </style>
+            </head>
+            <body>
+                <div id="editor"></div>
+                <script>
+                    let editor = null;
 
-        func textDidBeginEditing(_ notification: Notification) {
-            isEditing = true
-        }
+                    function initEditor() {
+                        const { Editor } = window.TiptapCore;
+                        const StarterKit = window.TiptapStarterKit.StarterKit;
+                        const Placeholder = window.TiptapExtensionPlaceholder.Placeholder;
+                        const Link = window.TiptapExtensionLink.Link;
+                        const TaskList = window.TiptapExtensionTaskList.TaskList;
+                        const TaskItem = window.TiptapExtensionTaskItem.TaskItem;
 
-        func textDidEndEditing(_ notification: Notification) {
-            isEditing = false
-            saveContent()
-        }
+                        editor = new Editor({
+                            element: document.getElementById('editor'),
+                            extensions: [
+                                StarterKit.configure({
+                                    heading: {
+                                        levels: [1, 2, 3],
+                                    },
+                                }),
+                                Placeholder.configure({
+                                    placeholder: 'Start typing...',
+                                }),
+                                Link.configure({
+                                    openOnClick: false,
+                                }),
+                                TaskList,
+                                TaskItem.configure({
+                                    nested: true,
+                                }),
+                            ],
+                            content: '',
+                            onUpdate: ({ editor }) => {
+                                const html = editor.getHTML();
+                                window.webkit.messageHandlers.contentChange.postMessage({ html: html });
+                            },
+                        });
 
-        func textDidChange(_ notification: Notification) {
-            scheduleContentSave()
-        }
+                        // Notify Swift that editor is ready
+                        window.webkit.messageHandlers.editorReady.postMessage({});
+                    }
 
-        private var saveTimer: Timer?
-
-        private func scheduleContentSave() {
-            saveTimer?.invalidate()
-            saveTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
-                self?.saveContent()
-            }
-        }
-
-        private func saveContent() {
-            guard let textView = textView else { return }
-
-            // Convert attributed string back to HTML
-            let attrString = textView.attributedString()
-            if let htmlData = try? attrString.data(
-                from: NSRange(location: 0, length: attrString.length),
-                documentAttributes: [
-                    .documentType: NSAttributedString.DocumentType.html,
-                    .characterEncoding: String.Encoding.utf8.rawValue
-                ]
-            ),
-               var htmlString = String(data: htmlData, encoding: .utf8) {
-                // Clean up the HTML
-                htmlString = cleanupHTML(htmlString)
-                lastLoadedHTML = htmlString
-                html = htmlString
-                onContentChange?(htmlString)
-            }
-        }
-
-        private func cleanupHTML(_ html: String) -> String {
-            var result = html
-
-            // Remove the full HTML document wrapper that NSAttributedString generates
-            if let bodyStart = result.range(of: "<body>"),
-               let bodyEnd = result.range(of: "</body>") {
-                result = String(result[bodyStart.upperBound..<bodyEnd.lowerBound])
-            }
-
-            // Remove excessive whitespace and line breaks
-            result = result.trimmingCharacters(in: .whitespacesAndNewlines)
-
-            return result
-        }
-
-        // Track if current line is a heading (to reset on Enter)
-        private var isInHeading = false
-
-        // MARK: - Markdown Shortcuts
-
-        func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange, replacementString: String?) -> Bool {
-            guard let replacement = replacementString else { return true }
-
-            let text = textView.string as NSString
-            let lineRange = text.lineRange(for: NSRange(location: affectedCharRange.location, length: 0))
-            let lineText = text.substring(with: lineRange).trimmingCharacters(in: .newlines)
-            let cursorInLine = affectedCharRange.location - lineRange.location
-
-            // Handle Enter key
-            if replacement == "\n" {
-                // If we're in a heading, reset to body style after pressing Enter
-                if isInHeading {
-                    print("[RichTextEditor] Exiting heading, resetting to body style")
-                    isInHeading = false
-                    // Insert newline with body attributes
-                    let bodyAttrs: [NSAttributedString.Key: Any] = [
-                        .font: bodyFont,
-                        .foregroundColor: NSColor.labelColor
-                    ]
-                    let newline = NSAttributedString(string: "\n", attributes: bodyAttrs)
-                    textView.insertText(newline, replacementRange: affectedCharRange)
-                    textView.typingAttributes = bodyAttrs
-                    return false
-                }
-
-                // Horizontal rule: ---
-                if lineText == "---" {
-                    print("[RichTextEditor] -> hr")
-                    insertHorizontalRule(textView, lineRange: lineRange)
-                    return false
-                }
-
-                // Code block: ```
-                if lineText == "```" {
-                    print("[RichTextEditor] -> code block")
-                    insertCodeBlock(textView, lineRange: lineRange)
-                    return false
-                }
-
-                // Exit empty bullet list
-                if lineText == "• " {
-                    print("[RichTextEditor] Exiting bullet list")
-                    clearLine(textView, lineRange: lineRange)
-                    return false
-                }
-
-                // Continue bullet list
-                if lineText.hasPrefix("• ") && lineText.count > 2 {
-                    print("[RichTextEditor] Continuing bullet list")
-                    continueList(textView, prefix: "• ")
-                    return false
-                }
-
-                // Handle numbered lists: check if line matches "N. " pattern
-                if let match = lineText.range(of: #"^(\d+)\. (.*)$"#, options: .regularExpression) {
-                    // Extract the number
-                    if let dotIndex = lineText.firstIndex(of: ".") {
-                        let numStr = String(lineText[lineText.startIndex..<dotIndex])
-                        let afterPrefix = lineText[lineText.index(dotIndex, offsetBy: 2)...]
-
-                        if afterPrefix.isEmpty {
-                            // Empty numbered list item - exit list
-                            print("[RichTextEditor] Exiting numbered list")
-                            clearLine(textView, lineRange: lineRange)
-                            return false
-                        } else if let num = Int(numStr) {
-                            // Continue numbered list
-                            print("[RichTextEditor] Continuing numbered list")
-                            continueList(textView, prefix: "\(num + 1). ")
-                            return false
+                    function setContent(html) {
+                        if (editor) {
+                            editor.commands.setContent(html, false);
                         }
                     }
-                }
-            }
 
-            // Handle Space key
-            if replacement == " " {
-                print("[RichTextEditor] Processing space at cursor \(cursorInLine) in line '\(lineText)'")
-
-                // Header shortcuts
-                if lineText == "###" && cursorInLine == 3 {
-                    print("[RichTextEditor] -> H3")
-                    convertToHeading(textView, lineRange: lineRange, level: 3)
-                    return false
-                }
-                if lineText == "##" && cursorInLine == 2 {
-                    print("[RichTextEditor] -> H2")
-                    convertToHeading(textView, lineRange: lineRange, level: 2)
-                    return false
-                }
-                if lineText == "#" && cursorInLine == 1 {
-                    print("[RichTextEditor] -> H1")
-                    convertToHeading(textView, lineRange: lineRange, level: 1)
-                    return false
-                }
-
-                // List shortcuts
-                if (lineText == "-" || lineText == "*") && cursorInLine == 1 {
-                    print("[RichTextEditor] -> bullet list")
-                    convertToListItem(textView, lineRange: lineRange, prefix: "• ")
-                    return false
-                }
-                if lineText == "1." && cursorInLine == 2 {
-                    print("[RichTextEditor] -> numbered list")
-                    convertToListItem(textView, lineRange: lineRange, prefix: "1. ")
-                    return false
-                }
-
-                // Blockquote
-                if lineText == ">" && cursorInLine == 1 {
-                    print("[RichTextEditor] -> blockquote")
-                    convertToBlockquote(textView, lineRange: lineRange)
-                    return false
-                }
-            }
-
-            // Handle backtick for inline code
-            if replacement == "`" {
-                // Check if we're closing an inline code span
-                let beforeCursor = text.substring(to: affectedCharRange.location)
-                if let lastBacktick = beforeCursor.lastIndex(of: "`") {
-                    let codeContent = String(beforeCursor[beforeCursor.index(after: lastBacktick)...])
-                    // Only convert if there's content between backticks and no newline
-                    if !codeContent.isEmpty && !codeContent.contains("\n") {
-                        print("[RichTextEditor] -> inline code: '\(codeContent)'")
-                        convertToInlineCode(textView, from: beforeCursor.distance(from: beforeCursor.startIndex, to: lastBacktick), content: codeContent)
-                        return false
+                    function getContent() {
+                        return editor ? editor.getHTML() : '';
                     }
-                }
-            }
 
-            return true
-        }
-
-        private func convertToHeading(_ textView: NSTextView, lineRange: NSRange, level: Int) {
-            let font: NSFont
-            switch level {
-            case 1: font = h1Font
-            case 2: font = h2Font
-            default: font = h3Font
-            }
-
-            // Replace the markdown prefix with empty string and apply heading style
-            let storage = textView.textStorage!
-            storage.replaceCharacters(in: lineRange, with: "")
-
-            // Apply heading attributes to the now-empty line
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: font,
-                .foregroundColor: NSColor.labelColor
-            ]
-            textView.typingAttributes = attrs
-            textView.setSelectedRange(NSRange(location: lineRange.location, length: 0))
-
-            // Track that we're in a heading so we can reset on Enter
-            isInHeading = true
-        }
-
-        private func convertToListItem(_ textView: NSTextView, lineRange: NSRange, prefix: String) {
-            let storage = textView.textStorage!
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: bodyFont,
-                .foregroundColor: NSColor.labelColor
-            ]
-            let prefixAttr = NSAttributedString(string: prefix, attributes: attrs)
-
-            storage.replaceCharacters(in: lineRange, with: prefixAttr)
-            textView.setSelectedRange(NSRange(location: lineRange.location + prefix.count, length: 0))
-        }
-
-        private func convertToBlockquote(_ textView: NSTextView, lineRange: NSRange) {
-            let storage = textView.textStorage!
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont(name: "Georgia-Italic", size: 14) ?? bodyFont,
-                .foregroundColor: NSColor.secondaryLabelColor
-            ]
-            let prefix = NSAttributedString(string: "", attributes: attrs)
-
-            storage.replaceCharacters(in: lineRange, with: prefix)
-            textView.typingAttributes = attrs
-            textView.setSelectedRange(NSRange(location: lineRange.location, length: 0))
-        }
-
-        private func insertHorizontalRule(_ textView: NSTextView, lineRange: NSRange) {
-            let storage = textView.textStorage!
-            let hrString = NSAttributedString(string: "———\n", attributes: [
-                .font: bodyFont,
-                .foregroundColor: NSColor.separatorColor
-            ])
-
-            storage.replaceCharacters(in: lineRange, with: hrString)
-            textView.typingAttributes = [.font: bodyFont, .foregroundColor: NSColor.labelColor]
-            textView.setSelectedRange(NSRange(location: lineRange.location + 4, length: 0))
-        }
-
-        private func continueList(_ textView: NSTextView, prefix: String) {
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: bodyFont,
-                .foregroundColor: NSColor.labelColor
-            ]
-            let continuation = NSAttributedString(string: "\n" + prefix, attributes: attrs)
-
-            textView.insertText(continuation, replacementRange: textView.selectedRange())
-        }
-
-        private func clearLine(_ textView: NSTextView, lineRange: NSRange) {
-            let storage = textView.textStorage!
-            storage.replaceCharacters(in: lineRange, with: "")
-            textView.typingAttributes = [.font: bodyFont, .foregroundColor: NSColor.labelColor]
-            textView.setSelectedRange(NSRange(location: lineRange.location, length: 0))
-        }
-
-        private func insertCodeBlock(_ textView: NSTextView, lineRange: NSRange) {
-            let storage = textView.textStorage!
-
-            // Create code block with monospace font and background color
-            let codeAttrs: [NSAttributedString.Key: Any] = [
-                .font: codeFont,
-                .foregroundColor: NSColor.labelColor,
-                .backgroundColor: NSColor.quaternaryLabelColor
-            ]
-
-            // Replace ``` with empty code block placeholder
-            let codeBlock = NSAttributedString(string: "\n", attributes: codeAttrs)
-            storage.replaceCharacters(in: lineRange, with: codeBlock)
-            textView.typingAttributes = codeAttrs
-            textView.setSelectedRange(NSRange(location: lineRange.location, length: 0))
-        }
-
-        private func convertToInlineCode(_ textView: NSTextView, from startOffset: Int, content: String) {
-            let storage = textView.textStorage!
-
-            // Range from opening backtick to current cursor (where closing backtick would be)
-            let codeRange = NSRange(location: startOffset, length: content.count + 1)
-
-            // Create inline code with monospace font and subtle background
-            let codeAttrs: [NSAttributedString.Key: Any] = [
-                .font: codeFont,
-                .foregroundColor: NSColor.labelColor,
-                .backgroundColor: NSColor.quaternaryLabelColor
-            ]
-
-            let codeString = NSAttributedString(string: content, attributes: codeAttrs)
-
-            // Replace the `content with styled content (no backticks)
-            storage.replaceCharacters(in: codeRange, with: codeString)
-
-            // Reset to body attributes after the code
-            textView.typingAttributes = [.font: bodyFont, .foregroundColor: NSColor.labelColor]
-            textView.setSelectedRange(NSRange(location: startOffset + content.count, length: 0))
+                    // Initialize when DOM is ready
+                    if (document.readyState === 'loading') {
+                        document.addEventListener('DOMContentLoaded', initEditor);
+                    } else {
+                        initEditor();
+                    }
+                </script>
+            </body>
+            </html>
+            """
         }
     }
 }

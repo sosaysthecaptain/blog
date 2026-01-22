@@ -540,6 +540,7 @@ public class FirebaseSync: ObservableObject {
         }
 
         // Start songs listener
+        print("[FirebaseSync] Starting songs listener...")
         let songsRef = Firestore.firestore().collection("songs")
         songsListener = songsRef.addSnapshotListener { [weak self] snapshot, error in
             Task { @MainActor in
@@ -549,7 +550,12 @@ public class FirebaseSync: ObservableObject {
                     return
                 }
 
-                guard let snapshot else { return }
+                guard let snapshot else {
+                    print("[FirebaseSync] Songs snapshot is nil")
+                    return
+                }
+
+                print("[FirebaseSync] Songs snapshot received: \(snapshot.documents.count) documents, \(snapshot.documentChanges.count) changes")
                 await self?.handleSongsSnapshot(snapshot)
             }
         }
@@ -619,28 +625,54 @@ public class FirebaseSync: ObservableObject {
     }
 
     private func handleSongsSnapshot(_ snapshot: QuerySnapshot) async {
+        var addedCount = 0
+        var modifiedCount = 0
+        var removedCount = 0
+        var failedCount = 0
+
         for change in snapshot.documentChanges {
             let doc = change.document
             let id = doc.documentID
 
             switch change.type {
-            case .added, .modified:
+            case .added:
+                addedCount += 1
                 if let song = parseSongDocument(doc) {
                     do {
                         try await LocalCache.shared.upsertSong(song)
                     } catch {
                         print("[FirebaseSync] Failed to upsert song \(id): \(error)")
+                        failedCount += 1
                     }
+                } else {
+                    print("[FirebaseSync] Failed to parse song: \(id)")
+                    failedCount += 1
+                }
+            case .modified:
+                modifiedCount += 1
+                if let song = parseSongDocument(doc) {
+                    do {
+                        try await LocalCache.shared.upsertSong(song)
+                    } catch {
+                        print("[FirebaseSync] Failed to upsert song \(id): \(error)")
+                        failedCount += 1
+                    }
+                } else {
+                    print("[FirebaseSync] Failed to parse song: \(id)")
+                    failedCount += 1
                 }
             case .removed:
+                removedCount += 1
                 do {
                     try await LocalCache.shared.deleteSong(id)
                 } catch {
                     print("[FirebaseSync] Failed to delete song \(id): \(error)")
+                    failedCount += 1
                 }
             }
         }
 
+        print("[FirebaseSync] Songs processed: \(addedCount) added, \(modifiedCount) modified, \(removedCount) removed, \(failedCount) failed")
         lastSyncTime = Date()
     }
 
@@ -745,16 +777,37 @@ public class FirebaseSync: ObservableObject {
         let data = doc.data()
         let id = doc.documentID
 
-        guard let libraryId = data["libraryId"] as? String,
-              let title = data["title"] as? String,
-              let artist = data["artist"] as? String,
-              let album = data["album"] as? String,
-              let storageUrl = data["storageUrl"] as? String,
-              let storagePath = data["storagePath"] as? String,
-              let fileName = data["fileName"] as? String,
-              let fileType = data["fileType"] as? String
-        else {
-            print("[FirebaseSync] Invalid song document: \(id)")
+        // Check each required field and log which is missing
+        guard let libraryId = data["libraryId"] as? String else {
+            print("[FirebaseSync] Song \(id) missing libraryId")
+            return nil
+        }
+        guard let title = data["title"] as? String else {
+            print("[FirebaseSync] Song \(id) missing title")
+            return nil
+        }
+        guard let artist = data["artist"] as? String else {
+            print("[FirebaseSync] Song \(id) missing artist")
+            return nil
+        }
+        guard let album = data["album"] as? String else {
+            print("[FirebaseSync] Song \(id) missing album")
+            return nil
+        }
+        guard let storageUrl = data["storageUrl"] as? String else {
+            print("[FirebaseSync] Song \(id) missing storageUrl")
+            return nil
+        }
+        guard let storagePath = data["storagePath"] as? String else {
+            print("[FirebaseSync] Song \(id) missing storagePath")
+            return nil
+        }
+        guard let fileName = data["fileName"] as? String else {
+            print("[FirebaseSync] Song \(id) missing fileName")
+            return nil
+        }
+        guard let fileType = data["fileType"] as? String else {
+            print("[FirebaseSync] Song \(id) missing fileType")
             return nil
         }
 
