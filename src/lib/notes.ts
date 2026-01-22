@@ -37,6 +37,12 @@ export interface EmbeddedMedia {
   fileSize: number;     // File size in bytes
 }
 
+export interface EditorDisplayPrefs {
+  wordWrap: boolean;
+  font: "mono" | "serif" | "sans";
+  showMarkdownSyntax: boolean;
+}
+
 export interface NoteItem {
   id?: string;
   type: "note" | "folder" | "moodboard" | "music";
@@ -51,7 +57,7 @@ export interface NoteItem {
   time?: string | null; // HH:MM format, optional
   tags?: string[];
   embeddedMedia?: EmbeddedMedia[]; // Track images/files for size calculation and cleanup
-  showMarkdownSyntax?: boolean; // Show raw markdown syntax in editor
+  displayPrefs?: EditorDisplayPrefs; // Editor display preferences (font, word wrap, etc.)
 
   // Moodboard-specific fields
   images?: MoodboardImage[];
