@@ -51,6 +51,7 @@ export interface NoteItem {
   time?: string | null; // HH:MM format, optional
   tags?: string[];
   embeddedMedia?: EmbeddedMedia[]; // Track images/files for size calculation and cleanup
+  showMarkdownSyntax?: boolean; // Show raw markdown syntax in editor
 
   // Moodboard-specific fields
   images?: MoodboardImage[];

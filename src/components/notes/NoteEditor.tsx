@@ -41,6 +41,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [tagColors, setTagColors] = useState<TagColorsMap>({});
   const [embeddedMedia, setEmbeddedMedia] = useState<EmbeddedMedia[]>(note.embeddedMedia || []);
+  const [showMarkdownSyntax, setShowMarkdownSyntax] = useState(note.showMarkdownSyntax || false);
 
   // Save state (isSaving and hasLocalChanges now managed by autosave hook)
 
@@ -67,6 +68,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
     published: boolean;
     slug: string;
     embeddedMedia: EmbeddedMedia[];
+    showMarkdownSyntax: boolean;
   } | null>(null);
 
   // Check if this note is in a publishable folder
@@ -86,7 +88,8 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
     published,
     slug,
     embeddedMedia,
-  }), [title, content, date, time, tags, published, slug, embeddedMedia]);
+    showMarkdownSyntax,
+  }), [title, content, date, time, tags, published, slug, embeddedMedia, showMarkdownSyntax]);
 
   // Autosave callback - saves to Firestore
   const handleAutosave = useCallback(async (data: typeof autosaveData) => {
@@ -101,6 +104,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
       published: data.published,
       slug: data.slug,
       embeddedMedia: data.embeddedMedia,
+      showMarkdownSyntax: data.showMarkdownSyntax,
     });
 
     // Update saved version reference
@@ -150,6 +154,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
     setPublished(note.published || false);
     setSlug(note.slug || "");
     setEmbeddedMedia(note.embeddedMedia || []);
+    setShowMarkdownSyntax(note.showMarkdownSyntax || false);
     setSlugError(null);
     setRemoteNote(null);
 
@@ -163,6 +168,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
       published: note.published || false,
       slug: note.slug || "",
       embeddedMedia: note.embeddedMedia || [],
+      showMarkdownSyntax: note.showMarkdownSyntax || false,
     };
   }, [note.id]); // Only reset when note ID changes
 
@@ -176,6 +182,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
     setPublished(remoteDoc.published || false);
     setSlug(remoteDoc.slug || "");
     setEmbeddedMedia(remoteDoc.embeddedMedia || []);
+    setShowMarkdownSyntax(remoteDoc.showMarkdownSyntax || false);
 
     savedVersionRef.current = {
       title: remoteDoc.title,
@@ -186,6 +193,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
       published: remoteDoc.published || false,
       slug: remoteDoc.slug || "",
       embeddedMedia: remoteDoc.embeddedMedia || [],
+      showMarkdownSyntax: remoteDoc.showMarkdownSyntax || false,
     };
     setLastSavedAt(remoteDoc.updatedAt?.toDate() || null);
     onUpdate(remoteDoc);
@@ -278,6 +286,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
     setPublished(remoteNote.published || false);
     setSlug(remoteNote.slug || "");
     setEmbeddedMedia(remoteNote.embeddedMedia || []);
+    setShowMarkdownSyntax(remoteNote.showMarkdownSyntax || false);
 
     savedVersionRef.current = {
       title: remoteNote.title,
@@ -288,6 +297,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
       published: remoteNote.published || false,
       slug: remoteNote.slug || "",
       embeddedMedia: remoteNote.embeddedMedia || [],
+      showMarkdownSyntax: remoteNote.showMarkdownSyntax || false,
     };
 
     // Mark as saved so autosave knows this is the baseline
@@ -491,6 +501,8 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
           onImageClick={openLightbox}
           noteId={note.id!}
           onMediaAdded={handleMediaAdded}
+          showMarkdownSyntax={showMarkdownSyntax}
+          onToggleSyntax={setShowMarkdownSyntax}
         />
       </div>
 
