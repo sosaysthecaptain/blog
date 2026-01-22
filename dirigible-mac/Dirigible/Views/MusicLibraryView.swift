@@ -10,10 +10,11 @@ struct MusicLibraryDetailView: View {
 
     @State private var songs: [Song] = []
     @State private var searchText = ""
-    @State private var sortColumn: MusicSortColumn = .title
+    @State private var sortColumn: MusicSortColumn = .artist
     @State private var sortAscending = true
     @State private var selectedSongIds: Set<String> = []
     @State private var isLoading = true
+    @State private var lastClickedId: String?
 
     @StateObject private var player = MusicPlayer.shared
 
@@ -30,16 +31,35 @@ struct MusicLibraryDetailView: View {
             }
         }
 
-        // Sort
+        // Sort with "the" stripping for artist
         result.sort { a, b in
             let comparison: Bool
             switch sortColumn {
             case .title:
                 comparison = a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
             case .artist:
-                comparison = a.artist.localizedCaseInsensitiveCompare(b.artist) == .orderedAscending
+                // Primary: artist (strip "the"), secondary: album, tertiary: track
+                let aArtist = stripThe(a.artist)
+                let bArtist = stripThe(b.artist)
+                let artistCmp = aArtist.localizedCaseInsensitiveCompare(bArtist)
+                if artistCmp != .orderedSame {
+                    comparison = artistCmp == .orderedAscending
+                } else {
+                    let albumCmp = a.album.localizedCaseInsensitiveCompare(b.album)
+                    if albumCmp != .orderedSame {
+                        comparison = albumCmp == .orderedAscending
+                    } else {
+                        comparison = (a.trackNumber ?? 999) < (b.trackNumber ?? 999)
+                    }
+                }
             case .album:
-                comparison = a.album.localizedCaseInsensitiveCompare(b.album) == .orderedAscending
+                // Primary: album, secondary: track
+                let albumCmp = a.album.localizedCaseInsensitiveCompare(b.album)
+                if albumCmp != .orderedSame {
+                    comparison = albumCmp == .orderedAscending
+                } else {
+                    comparison = (a.trackNumber ?? 999) < (b.trackNumber ?? 999)
+                }
             case .year:
                 comparison = (a.year ?? 0) < (b.year ?? 0)
             case .trackNumber:
@@ -53,6 +73,30 @@ struct MusicLibraryDetailView: View {
         }
 
         return result
+    }
+
+    /// Strip "the " from the beginning for sorting
+    private func stripThe(_ str: String) -> String {
+        let lower = str.lowercased()
+        if lower.hasPrefix("the ") {
+            return String(str.dropFirst(4))
+        }
+        return str
+    }
+
+    // Stats calculation
+    private var stats: (count: Int, duration: String, size: String) {
+        let totalSeconds = songs.reduce(0) { $0 + $1.duration }
+        let totalBytes = songs.reduce(0) { $0 + $1.fileSize }
+        return (songs.count, formatTotalDuration(totalSeconds), formatFileSize(totalBytes))
+    }
+
+    private var selectionStats: (count: Int, duration: String, size: String)? {
+        guard !selectedSongIds.isEmpty else { return nil }
+        let selected = songs.filter { selectedSongIds.contains($0.id) }
+        let totalSeconds = selected.reduce(0) { $0 + $1.duration }
+        let totalBytes = selected.reduce(0) { $0 + $1.fileSize }
+        return (selected.count, formatTotalDuration(totalSeconds), formatFileSize(totalBytes))
     }
 
     var body: some View {
@@ -72,6 +116,12 @@ struct MusicLibraryDetailView: View {
                 songsTable
             }
 
+            Divider()
+                .background(DirigibleStyle.Colors.border)
+
+            // Footer with stats
+            footer
+
             // Player bar (if playing)
             if player.currentSong != nil {
                 Divider()
@@ -85,38 +135,46 @@ struct MusicLibraryDetailView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: DirigibleStyle.Spacing.sm) {
+        HStack(spacing: DirigibleStyle.Spacing.md) {
             Text(item.title)
                 .font(.custom("Georgia", size: 24).weight(.bold))
                 .foregroundColor(DirigibleStyle.Colors.foreground)
 
-            HStack(spacing: DirigibleStyle.Spacing.md) {
-                // Search
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 12))
-                        .foregroundColor(DirigibleStyle.Colors.muted)
+            Spacer()
 
-                    TextField("Search songs...", text: $searchText)
-                        .textFieldStyle(.plain)
-                        .font(DirigibleStyle.Typography.body)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(DirigibleStyle.Colors.hover)
-                .cornerRadius(6)
-                .frame(maxWidth: 300)
-
-                Spacer()
-
-                // Song count
-                Text("\(filteredSongs.count) songs")
-                    .font(DirigibleStyle.Typography.caption)
+            // Search - right justified
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 10))
                     .foregroundColor(DirigibleStyle.Colors.muted)
+
+                TextField("Search", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 11))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(DirigibleStyle.Colors.background)
+            .overlay(Rectangle().stroke(DirigibleStyle.Colors.border, lineWidth: 1))
+            .frame(width: 160)
+        }
+        .padding(.horizontal, DirigibleStyle.Spacing.md)
+        .padding(.vertical, DirigibleStyle.Spacing.sm)
+        .background(DirigibleStyle.Colors.sidebarBg)
+    }
+
+    private var footer: some View {
+        HStack {
+            if let sel = selectionStats {
+                Text("\(sel.count) of \(stats.count) selected · \(sel.duration) · \(sel.size)")
+            } else {
+                Text("\(stats.count) songs · \(stats.duration) · \(stats.size)")
             }
         }
-        .padding(.horizontal, DirigibleStyle.Spacing.xl)
-        .padding(.vertical, DirigibleStyle.Spacing.lg)
+        .font(.system(size: 11))
+        .foregroundColor(DirigibleStyle.Colors.muted)
+        .padding(.horizontal, DirigibleStyle.Spacing.md)
+        .padding(.vertical, 6)
     }
 
     private var loadingState: some View {
@@ -152,23 +210,23 @@ struct MusicLibraryDetailView: View {
 
     private var songsTable: some View {
         VStack(spacing: 0) {
-            // Column headers
+            // Column headers - compact
             HStack(spacing: 0) {
                 // Playing indicator
                 Text("")
-                    .frame(width: 24)
+                    .frame(width: 18)
 
-                columnHeader("#", column: .trackNumber, width: 36)
-                columnHeader("Title", column: .title, flex: 1.5, minWidth: 120)
-                columnHeader("Artist", column: .artist, flex: 1, minWidth: 80)
-                columnHeader("Album", column: .album, flex: 1, minWidth: 80)
-                columnHeader("Year", column: .year, width: 50)
-                columnHeader("Time", column: .duration, width: 54)
-                columnHeader("Size", column: .fileSize, width: 60)
+                columnHeader("#", column: .trackNumber, width: 28)
+                columnHeader("Title", column: .title, flex: true)
+                columnHeader("Artist", column: .artist, flex: true)
+                columnHeader("Album", column: .album, flex: true)
+                columnHeader("Year", column: .year, width: 44)
+                columnHeader("Time", column: .duration, width: 48)
+                columnHeader("Size", column: .fileSize, width: 50)
             }
-            .padding(.horizontal, DirigibleStyle.Spacing.md)
-            .padding(.vertical, 8)
-            .background(DirigibleStyle.Colors.hover)
+            .padding(.horizontal, 6)
+            .frame(height: 24)
+            .background(DirigibleStyle.Colors.background)
 
             Divider()
                 .background(DirigibleStyle.Colors.border)
@@ -182,7 +240,7 @@ struct MusicLibraryDetailView: View {
                             isSelected: selectedSongIds.contains(song.id),
                             isPlaying: player.currentSong?.id == song.id,
                             isAlternate: index % 2 == 1,
-                            onTap: { selectSong(song) },
+                            onTap: { event in handleRowClick(song, event: event) },
                             onDoubleTap: { playSong(song) }
                         )
                     }
@@ -191,7 +249,7 @@ struct MusicLibraryDetailView: View {
         }
     }
 
-    private func columnHeader(_ title: String, column: MusicSortColumn, width: CGFloat? = nil, flex: CGFloat? = nil, minWidth: CGFloat? = nil) -> some View {
+    private func columnHeader(_ title: String, column: MusicSortColumn, width: CGFloat? = nil, flex: Bool = false) -> some View {
         Button(action: {
             if sortColumn == column {
                 sortAscending.toggle()
@@ -201,27 +259,26 @@ struct MusicLibraryDetailView: View {
             }
             saveSortPreferences()
         }) {
-            HStack(spacing: 4) {
+            HStack(spacing: 2) {
                 Text(title)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundColor(DirigibleStyle.Colors.muted)
 
                 if sortColumn == column {
                     Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 8, weight: .medium))
                         .foregroundColor(DirigibleStyle.Colors.muted)
                 }
             }
-            .frame(maxWidth: flex != nil ? .infinity : nil, alignment: .leading)
+            .frame(maxWidth: flex ? .infinity : nil, alignment: .leading)
         }
         .buttonStyle(.plain)
         .frame(width: width)
-        .frame(minWidth: minWidth)
     }
 
     private func loadSongs() {
         isLoading = true
-        sortColumn = item.musicSortColumn ?? .title
+        sortColumn = item.musicSortColumn ?? .artist
         sortAscending = item.musicSortDirection != .desc
 
         Task {
@@ -240,15 +297,29 @@ struct MusicLibraryDetailView: View {
         }
     }
 
-    private func selectSong(_ song: Song) {
-        if NSEvent.modifierFlags.contains(.command) {
+    private func handleRowClick(_ song: Song, event: NSEvent?) {
+        let isShift = event?.modifierFlags.contains(.shift) ?? false
+        let isCmd = event?.modifierFlags.contains(.command) ?? false
+
+        if isCmd {
+            // Cmd+click: toggle selection
             if selectedSongIds.contains(song.id) {
                 selectedSongIds.remove(song.id)
             } else {
                 selectedSongIds.insert(song.id)
             }
+        } else if isShift, let lastId = lastClickedId {
+            // Shift+click: range selection
+            let songIds = filteredSongs.map { $0.id }
+            if let startIdx = songIds.firstIndex(of: lastId),
+               let endIdx = songIds.firstIndex(of: song.id) {
+                let range = min(startIdx, endIdx)...max(startIdx, endIdx)
+                selectedSongIds = Set(songIds[range])
+            }
         } else {
+            // Regular click: single selection
             selectedSongIds = [song.id]
+            lastClickedId = song.id
         }
     }
 
@@ -266,6 +337,28 @@ struct MusicLibraryDetailView: View {
         updated.updatedAt = Date()
         onUpdate(updated)
     }
+
+    private func formatTotalDuration(_ seconds: Double) -> String {
+        let h = Int(seconds) / 3600
+        let m = (Int(seconds) % 3600) / 60
+        if h > 0 {
+            return "\(h)h \(m)m"
+        }
+        return "\(m)m"
+    }
+
+    private func formatFileSize(_ bytes: Int) -> String {
+        if bytes >= 1024 * 1024 * 1024 {
+            return String(format: "%.1f GB", Double(bytes) / Double(1024 * 1024 * 1024))
+        }
+        if bytes >= 1024 * 1024 {
+            return "\(bytes / (1024 * 1024)) MB"
+        }
+        if bytes >= 1024 {
+            return "\(bytes / 1024) KB"
+        }
+        return "\(bytes) B"
+    }
 }
 
 // MARK: - Song Row
@@ -275,7 +368,7 @@ struct SongRow: View {
     let isSelected: Bool
     let isPlaying: Bool
     let isAlternate: Bool
-    let onTap: () -> Void
+    let onTap: (NSEvent?) -> Void
     let onDoubleTap: () -> Void
 
     @State private var isHovered = false
@@ -286,70 +379,76 @@ struct SongRow: View {
             Group {
                 if isPlaying {
                     Image(systemName: "play.fill")
-                        .font(.system(size: 10))
+                        .font(.system(size: 8))
                         .foregroundColor(DirigibleStyle.Colors.accent)
                 } else {
                     Text("")
                 }
             }
-            .frame(width: 24)
+            .frame(width: 18)
 
             // Track number
-            Text(song.trackNumber.map { String($0) } ?? "-")
-                .font(.system(size: 12, design: .monospaced))
+            Text(song.trackNumber.map { String($0) } ?? "")
+                .font(.system(size: 11))
                 .foregroundColor(DirigibleStyle.Colors.muted)
-                .frame(width: 36, alignment: .leading)
+                .frame(width: 28, alignment: .leading)
 
             // Title
             Text(song.title)
-                .font(DirigibleStyle.Typography.body)
+                .font(.system(size: 11))
                 .foregroundColor(DirigibleStyle.Colors.foreground)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             // Artist
             Text(song.artist)
-                .font(DirigibleStyle.Typography.body)
+                .font(.system(size: 11))
                 .foregroundColor(DirigibleStyle.Colors.muted)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             // Album
             Text(song.album)
-                .font(DirigibleStyle.Typography.body)
+                .font(.system(size: 11))
                 .foregroundColor(DirigibleStyle.Colors.muted)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             // Year
-            Text(song.year.map { String($0) } ?? "-")
-                .font(.system(size: 12))
+            Text(song.year.map { String($0) } ?? "")
+                .font(.system(size: 11))
                 .foregroundColor(DirigibleStyle.Colors.muted)
-                .frame(width: 50, alignment: .leading)
+                .frame(width: 44, alignment: .leading)
 
             // Duration
             Text(song.formattedDuration)
-                .font(.system(size: 12, design: .monospaced))
+                .font(.system(size: 11))
                 .foregroundColor(DirigibleStyle.Colors.muted)
-                .frame(width: 54, alignment: .leading)
+                .frame(width: 48, alignment: .leading)
 
             // File size
             Text(song.formattedFileSize)
-                .font(.system(size: 12))
+                .font(.system(size: 11))
                 .foregroundColor(DirigibleStyle.Colors.muted)
-                .frame(width: 60, alignment: .leading)
+                .frame(width: 50, alignment: .leading)
         }
-        .padding(.horizontal, DirigibleStyle.Spacing.md)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 6)
+        .frame(height: 18)
         .background(
-            isSelected ? DirigibleStyle.Colors.accent.opacity(0.2) :
-            isHovered ? DirigibleStyle.Colors.hover :
+            isSelected ? DirigibleStyle.Colors.hover :
+            isHovered ? DirigibleStyle.Colors.hover.opacity(0.5) :
             isAlternate ? DirigibleStyle.Colors.sidebarBg : Color.clear
         )
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
-        .onTapGesture(count: 2, perform: onDoubleTap)
-        .onTapGesture(count: 1, perform: onTap)
+        .gesture(
+            TapGesture(count: 2)
+                .onEnded { onDoubleTap() }
+        )
+        .simultaneousGesture(
+            TapGesture(count: 1)
+                .onEnded { onTap(NSApp.currentEvent) }
+        )
     }
 }
 
@@ -362,22 +461,22 @@ struct PlayerBar: View {
         HStack(spacing: DirigibleStyle.Spacing.md) {
             // Album art (if available)
             if let song = player.currentSong {
-                AlbumArtView(song: song, size: 48)
+                AlbumArtView(song: song, size: 40)
             }
 
             // Song info
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(player.currentSong?.title ?? "Not Playing")
-                    .font(DirigibleStyle.Typography.body)
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundColor(DirigibleStyle.Colors.foreground)
                     .lineLimit(1)
 
                 Text(player.currentSong?.artist ?? "-")
-                    .font(DirigibleStyle.Typography.caption)
+                    .font(.system(size: 11))
                     .foregroundColor(DirigibleStyle.Colors.muted)
                     .lineLimit(1)
             }
-            .frame(minWidth: 150, alignment: .leading)
+            .frame(minWidth: 120, alignment: .leading)
 
             Spacer()
 
@@ -385,24 +484,24 @@ struct PlayerBar: View {
             HStack(spacing: DirigibleStyle.Spacing.sm) {
                 Button(action: player.previous) {
                     Image(systemName: "backward.fill")
-                        .font(.system(size: 14))
+                        .font(.system(size: 12))
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(DirigibleStyle.Colors.muted)
 
                 Button(action: player.togglePlayPause) {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 18))
+                        .font(.system(size: 14))
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(DirigibleStyle.Colors.foreground)
-                .frame(width: 36, height: 36)
+                .frame(width: 28, height: 28)
                 .background(DirigibleStyle.Colors.hover)
-                .cornerRadius(18)
+                .cornerRadius(14)
 
                 Button(action: player.next) {
                     Image(systemName: "forward.fill")
-                        .font(.system(size: 14))
+                        .font(.system(size: 12))
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(DirigibleStyle.Colors.muted)
@@ -411,26 +510,26 @@ struct PlayerBar: View {
             Spacer()
 
             // Progress
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Text(formatTime(player.currentTime))
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(DirigibleStyle.Colors.muted)
-                    .frame(width: 40, alignment: .trailing)
+                    .frame(width: 36, alignment: .trailing)
 
                 ProgressBar(value: player.progress, onSeek: player.seek)
-                    .frame(width: 150, height: 4)
+                    .frame(width: 120, height: 3)
 
                 Text(formatTime(player.duration))
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(DirigibleStyle.Colors.muted)
-                    .frame(width: 40, alignment: .leading)
+                    .frame(width: 36, alignment: .leading)
             }
 
             // Volume
             HStack(spacing: 4) {
                 Button(action: player.toggleMute) {
                     Image(systemName: player.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                        .font(.system(size: 12))
+                        .font(.system(size: 10))
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(DirigibleStyle.Colors.muted)
@@ -439,11 +538,11 @@ struct PlayerBar: View {
                     get: { player.volume },
                     set: { player.setVolume($0) }
                 ), in: 0...1)
-                .frame(width: 80)
+                .frame(width: 60)
             }
         }
-        .padding(.horizontal, DirigibleStyle.Spacing.lg)
-        .padding(.vertical, DirigibleStyle.Spacing.md)
+        .padding(.horizontal, DirigibleStyle.Spacing.md)
+        .padding(.vertical, 8)
         .background(DirigibleStyle.Colors.sidebarBg)
     }
 
@@ -469,12 +568,12 @@ struct ProgressBar: View {
                 // Background
                 Rectangle()
                     .fill(DirigibleStyle.Colors.border)
-                    .cornerRadius(2)
+                    .cornerRadius(1.5)
 
                 // Progress
                 Rectangle()
                     .fill(DirigibleStyle.Colors.accent)
-                    .cornerRadius(2)
+                    .cornerRadius(1.5)
                     .frame(width: max(0, geometry.size.width * (isDragging ? dragValue : value)))
             }
             .contentShape(Rectangle())
@@ -519,7 +618,7 @@ struct AlbumArtView: View {
             }
         }
         .frame(width: size, height: size)
-        .cornerRadius(4)
+        .cornerRadius(3)
         .onAppear(perform: loadArt)
     }
 
