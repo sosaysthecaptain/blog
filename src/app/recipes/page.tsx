@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useState, useEffect, useMemo, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { getPublishedRecipes, NoteItem } from "@/lib/notes";
 import ImageLightbox, { extractImagesFromHtml } from "@/components/ImageLightbox";
 
@@ -37,23 +39,6 @@ export default function RecipesPage() {
     () => setLightboxIndex((i) => (i - 1 + allImages.length) % allImages.length),
     [allImages.length]
   );
-
-  // Handle image clicks via event delegation
-  useEffect(() => {
-    const handleClick = (e: Event) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === "IMG") {
-        const src = target.getAttribute("src");
-        if (src) {
-          openLightbox(src);
-        }
-      }
-    };
-
-    const container = document.querySelector(".recipe-content");
-    container?.addEventListener("click", handleClick);
-    return () => container?.removeEventListener("click", handleClick);
-  }, [openLightbox, selectedRecipe]);
 
   useEffect(() => {
     async function loadRecipes() {
@@ -194,10 +179,23 @@ export default function RecipesPage() {
             <div className="border-t border-[--border] mb-8" />
 
             {/* Content */}
-            <div
-              className="recipe-content recipe-prose font-serif"
-              dangerouslySetInnerHTML={{ __html: selectedRecipe.content || "" }}
-            />
+            <div className="recipe-content recipe-prose font-serif">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  img: ({ src, alt }) => (
+                    <img
+                      src={typeof src === 'string' ? src : undefined}
+                      alt={alt || ""}
+                      onClick={() => typeof src === 'string' && openLightbox(src)}
+                      style={{ cursor: "pointer" }}
+                    />
+                  ),
+                }}
+              >
+                {selectedRecipe.content || ""}
+              </ReactMarkdown>
+            </div>
           </div>
         ) : (
           <div className="flex items-center justify-center h-full">

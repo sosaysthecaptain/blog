@@ -6,7 +6,7 @@ import { findRemovedFiles, deleteFileByUrl } from "@/lib/notes-storage";
 import { getCurrentUser, isAdminEmail } from "@/lib/auth";
 import { useAutosave } from "@/hooks/useAutosave";
 import { useFocusSync } from "@/hooks/useFocusSync";
-import TiptapEditor from "./TiptapEditor";
+import MarkdownEditor from "./MarkdownEditor";
 import TagInput from "./TagInput";
 import ImageLightbox, { extractImagesFromHtml } from "@/components/ImageLightbox";
 import { ConfirmDialog } from "@/components/ui/Dialog";
@@ -485,7 +485,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
         )}
 
         {/* Editor */}
-        <TiptapEditor
+        <MarkdownEditor
           content={content}
           onChange={setContent}
           onImageClick={openLightbox}

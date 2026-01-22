@@ -91,15 +91,27 @@ export default function ImageLightbox({
   );
 }
 
-// Helper to extract images from HTML content
+// Helper to extract images from content (supports both markdown and HTML for backwards compatibility)
 export function extractImagesFromHtml(content: string): string[] {
   const images: string[] = [];
-  const htmlRegex = /<img[^>]+src=["']([^"']+)["']/g;
+
+  // Match markdown image syntax: ![alt](url)
+  const markdownRegex = /!\[[^\]]*\]\(([^)]+)\)/g;
   let match;
+  while ((match = markdownRegex.exec(content)) !== null) {
+    const url = match[1].trim();
+    if (!images.includes(url)) {
+      images.push(url);
+    }
+  }
+
+  // Also match HTML img tags for backwards compatibility
+  const htmlRegex = /<img[^>]+src=["']([^"']+)["']/g;
   while ((match = htmlRegex.exec(content)) !== null) {
     if (!images.includes(match[1])) {
       images.push(match[1]);
     }
   }
+
   return images;
 }

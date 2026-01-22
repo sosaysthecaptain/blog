@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { getPublishedBlogPostBySlug, getAdjacentBlogPosts, NoteItem } from "@/lib/notes";
 import Footer from "@/components/Footer";
 
@@ -253,6 +254,7 @@ export default function BlogPostClient() {
               <HtmlContent content={post.content || ""} onImageClick={openModal} />
             ) : (
               <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
                 components={{
                   h1: ({ children }) => (
                     <h1 className="text-2xl font-bold text-[--foreground] mt-8 mb-4 font-sans">{children}</h1>

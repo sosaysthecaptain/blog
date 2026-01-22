@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { getPublishedRecipeBySlug, NoteItem } from "@/lib/notes";
 import Footer from "@/components/Footer";
 import ImageLightbox, { extractImagesFromHtml } from "@/components/ImageLightbox";
@@ -40,23 +42,6 @@ export default function RecipeClient() {
     () => setLightboxIndex((i) => (i - 1 + allImages.length) % allImages.length),
     [allImages.length]
   );
-
-  // Handle image clicks via event delegation
-  useEffect(() => {
-    const handleClick = (e: Event) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === "IMG") {
-        const src = target.getAttribute("src");
-        if (src) {
-          openLightbox(src);
-        }
-      }
-    };
-
-    const container = document.querySelector(".recipe-content");
-    container?.addEventListener("click", handleClick);
-    return () => container?.removeEventListener("click", handleClick);
-  }, [openLightbox]);
 
   useEffect(() => {
     async function loadRecipe() {
@@ -138,11 +123,24 @@ export default function RecipeClient() {
         {/* Divider */}
         <div className="border-t border-[--border] mb-8" />
 
-        {/* Content - styled like TiptapEditor */}
-        <div
-          className="recipe-content recipe-prose font-serif"
-          dangerouslySetInnerHTML={{ __html: recipe.content || "" }}
-        />
+        {/* Content - rendered markdown */}
+        <div className="recipe-content recipe-prose font-serif">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              img: ({ src, alt }) => (
+                <img
+                  src={typeof src === 'string' ? src : undefined}
+                  alt={alt || ""}
+                  onClick={() => typeof src === 'string' && openLightbox(src)}
+                  style={{ cursor: "pointer" }}
+                />
+              ),
+            }}
+          >
+            {recipe.content || ""}
+          </ReactMarkdown>
+        </div>
 
         <Footer />
       </main>

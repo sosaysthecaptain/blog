@@ -8,57 +8,61 @@ import {
 import { storage } from "./firebase";
 import { uploadToB2, deleteFromB2, getB2Url } from "./b2-client";
 
-// Extract all storage URLs from HTML content (images and file attachments)
+// Extract all storage URLs from markdown content (images and file attachments)
 // Supports both Firebase Storage and B2 URLs
-export function extractStorageUrls(html: string): string[] {
-  if (!html) return [];
+// Works with markdown syntax: ![alt](url) and [text](url)
+export function extractStorageUrls(content: string): string[] {
+  if (!content) return [];
 
   const urls: string[] = [];
   const seen = new Set<string>();
 
-  // Match Firebase Storage URLs
-  // Firebase Storage URLs look like: https://firebasestorage.googleapis.com/v0/b/...
-  const firebaseRegex = /https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/[^"'\s<>]+/g;
-  const firebaseMatches = html.match(firebaseRegex);
+  // Helper to add URL if it's a storage URL
+  const addIfStorageUrl = (url: string) => {
+    const cleanUrl = url.split(')')[0].split('"')[0].split("'")[0].trim();
+    if (seen.has(cleanUrl)) return;
 
-  if (firebaseMatches) {
-    for (const url of firebaseMatches) {
-      const cleanUrl = url.split('&quot;')[0].split('"')[0];
-      if (!seen.has(cleanUrl)) {
-        seen.add(cleanUrl);
-        urls.push(cleanUrl);
-      }
+    // Check if it's a storage URL we care about
+    if (
+      cleanUrl.startsWith('/api/files/') ||
+      cleanUrl.includes('firebasestorage.googleapis.com') ||
+      cleanUrl.includes('backblazeb2.com')
+    ) {
+      seen.add(cleanUrl);
+      urls.push(cleanUrl);
     }
+  };
+
+  // Match markdown image syntax: ![alt](url)
+  const imageRegex = /!\[[^\]]*\]\(([^)]+)\)/g;
+  let match;
+  while ((match = imageRegex.exec(content)) !== null) {
+    addIfStorageUrl(match[1]);
   }
 
-  // Match B2 proxy URLs
-  // B2 proxy URLs look like: /api/files/...
-  const b2ProxyRegex = /\/api\/files\/[^"'\s<>]+/g;
-  const b2ProxyMatches = html.match(b2ProxyRegex);
-
-  if (b2ProxyMatches) {
-    for (const url of b2ProxyMatches) {
-      const cleanUrl = url.split('&quot;')[0].split('"')[0];
-      if (!seen.has(cleanUrl)) {
-        seen.add(cleanUrl);
-        urls.push(cleanUrl);
-      }
-    }
+  // Match markdown link syntax: [text](url)
+  const linkRegex = /(?<!!)\[[^\]]*\]\(([^)]+)\)/g;
+  while ((match = linkRegex.exec(content)) !== null) {
+    addIfStorageUrl(match[1]);
   }
 
-  // Also match direct B2 Storage URLs (legacy)
-  // B2 URLs look like: https://dirigible-content.s3.us-west-004.backblazeb2.com/...
-  const b2DirectRegex = /https:\/\/dirigible-content\.s3\.us-west-004\.backblazeb2\.com\/[^"'\s<>]+/g;
-  const b2DirectMatches = html.match(b2DirectRegex);
+  // Also match raw URLs in the content (for backwards compatibility with any HTML remnants)
+  // Firebase Storage URLs
+  const firebaseRegex = /https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/[^\s"'<>)]+/g;
+  while ((match = firebaseRegex.exec(content)) !== null) {
+    addIfStorageUrl(match[0]);
+  }
 
-  if (b2DirectMatches) {
-    for (const url of b2DirectMatches) {
-      const cleanUrl = url.split('&quot;')[0].split('"')[0];
-      if (!seen.has(cleanUrl)) {
-        seen.add(cleanUrl);
-        urls.push(cleanUrl);
-      }
-    }
+  // B2 proxy URLs
+  const b2ProxyRegex = /\/api\/files\/[^\s"'<>)]+/g;
+  while ((match = b2ProxyRegex.exec(content)) !== null) {
+    addIfStorageUrl(match[0]);
+  }
+
+  // Direct B2 URLs (legacy)
+  const b2DirectRegex = /https:\/\/dirigible-content\.s3\.us-west-004\.backblazeb2\.com\/[^\s"'<>)]+/g;
+  while ((match = b2DirectRegex.exec(content)) !== null) {
+    addIfStorageUrl(match[0]);
   }
 
   return urls;
