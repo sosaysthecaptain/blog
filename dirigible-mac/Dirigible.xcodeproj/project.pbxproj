@@ -17,6 +17,10 @@
 		A1000008 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = A2000009 /* GoogleService-Info.plist */; };
 		A1000009 /* DirigibleStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000B /* DirigibleStyle.swift */; };
 		A100000A /* HTMLContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C /* HTMLContentView.swift */; };
+		A100000B /* MarkdownTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D /* MarkdownTextView.swift */; };
+		A100000C /* MoodboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000E /* MoodboardView.swift */; };
+		A100000D /* MusicLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000F /* MusicLibraryView.swift */; };
+		A100000E /* RichTextEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000010 /* RichTextEditor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +36,10 @@
 		A200000A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A200000B /* DirigibleStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirigibleStyle.swift; sourceTree = "<group>"; };
 		A200000C /* HTMLContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLContentView.swift; sourceTree = "<group>"; };
+		A200000D /* MarkdownTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTextView.swift; sourceTree = "<group>"; };
+		A200000E /* MoodboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoodboardView.swift; sourceTree = "<group>"; };
+		A200000F /* MusicLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicLibraryView.swift; sourceTree = "<group>"; };
+		A2000010 /* RichTextEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichTextEditor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -84,6 +92,10 @@
 				A2000004 /* LoginView.swift */,
 				A2000005 /* SettingsView.swift */,
 				A200000C /* HTMLContentView.swift */,
+				A200000D /* MarkdownTextView.swift */,
+				A200000E /* MoodboardView.swift */,
+				A200000F /* MusicLibraryView.swift */,
+				A2000010 /* RichTextEditor.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -171,6 +183,10 @@
 				A1000004 /* LoginView.swift in Sources */,
 				A1000005 /* SettingsView.swift in Sources */,
 				A100000A /* HTMLContentView.swift in Sources */,
+				A100000B /* MarkdownTextView.swift in Sources */,
+				A100000C /* MoodboardView.swift in Sources */,
+				A100000D /* MusicLibraryView.swift in Sources */,
+				A100000E /* RichTextEditor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

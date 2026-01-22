@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { MoodboardImage } from "@/lib/notes";
 
+type ImageLoadState = "loading" | "loaded" | "error";
+
 interface MoodboardCarouselProps {
   images: MoodboardImage[];
   initialIndex: number;
@@ -19,9 +21,27 @@ export default function MoodboardCarousel({
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isEditingCaption, setIsEditingCaption] = useState(false);
   const [captionValue, setCaptionValue] = useState("");
+  const [imageLoadStates, setImageLoadStates] = useState<Record<string, ImageLoadState>>({});
   const captionInputRef = useRef<HTMLInputElement>(null);
 
   const currentImage = images[currentIndex];
+  const currentLoadState = currentImage?.url ? imageLoadStates[currentImage.url] : "loading";
+
+  // Track image load/error states
+  const handleImageLoad = useCallback((url: string) => {
+    setImageLoadStates((prev) => ({ ...prev, [url]: "loaded" }));
+  }, []);
+
+  const handleImageError = useCallback((url: string) => {
+    setImageLoadStates((prev) => ({ ...prev, [url]: "error" }));
+  }, []);
+
+  // Reset load state when URL changes (e.g., after refresh)
+  useEffect(() => {
+    if (currentImage?.url && !imageLoadStates[currentImage.url]) {
+      setImageLoadStates((prev) => ({ ...prev, [currentImage.url]: "loading" }));
+    }
+  }, [currentImage?.url, imageLoadStates]);
 
   // Navigate to previous image
   const goToPrevious = useCallback(() => {
@@ -157,10 +177,32 @@ export default function MoodboardCarousel({
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
+        {/* Loading/Error states */}
+        {(!currentImage.url || currentLoadState === "loading") && (
+          <div className="flex items-center justify-center min-h-[200px] min-w-[200px]">
+            <svg className="w-8 h-8 text-white/50 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+          </div>
+        )}
+        {currentLoadState === "error" && (
+          <div className="flex flex-col items-center justify-center min-h-[200px] min-w-[200px] text-white/70">
+            <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <p className="text-sm">Failed to load image</p>
+            <p className="text-xs text-white/50 mt-1">URL may have expired</p>
+          </div>
+        )}
         <img
           src={currentImage.url}
           alt={currentImage.caption || ""}
-          className="max-w-full max-h-[80vh] object-contain rounded-lg"
+          className={`max-w-full max-h-[80vh] object-contain rounded-lg ${
+            !currentImage.url || currentLoadState !== "loaded" ? "hidden" : ""
+          }`}
+          onLoad={() => currentImage.url && handleImageLoad(currentImage.url)}
+          onError={() => currentImage.url && handleImageError(currentImage.url)}
         />
 
         {/* Caption */}

@@ -305,7 +305,7 @@ struct MoodboardIcon: View {
             let rect4 = CGRect(x: 13 * scale, y: 13 * scale, width: 9 * scale, height: 9 * scale)
             context.fill(RoundedRectangle(cornerRadius: 1 * scale).path(in: rect4), with: .foreground)
         }
-        .aspectRatio(1, contentMode: .fit)
+        .frame(width: 14, height: 14)
     }
 }
 

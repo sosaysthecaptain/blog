@@ -17,6 +17,7 @@ struct HTMLContentView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.userContentController.add(context.coordinator, name: "contentChanged")
+        config.userContentController.add(context.coordinator, name: "debug")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
@@ -98,7 +99,7 @@ struct HTMLContentView: NSViewRepresentable {
                     font-size: 14px;
                     line-height: 1.75;
                     color: var(--foreground);
-                    background: var(--background);
+                    background: transparent;
                     -webkit-font-smoothing: antialiased;
                 }
                 #editor {
@@ -266,21 +267,43 @@ struct HTMLContentView: NSViewRepresentable {
             const editor = document.getElementById('editor');
             let debounceTimer = null;
 
+            // Debug helper - logs to Swift console
+            function debug(msg) {
+                try {
+                    window.webkit.messageHandlers.debug.postMessage(String(msg));
+                } catch(e) {
+                    console.log('[Debug]', msg);
+                }
+            }
+
+            debug('Editor script loaded');
+
+            // Ensure editor always has at least one P element
+            function ensureBlockStructure() {
+                if (!editor.firstChild || (editor.childNodes.length === 1 && editor.firstChild.nodeType === 3)) {
+                    // Only text node or empty - wrap in P
+                    const text = editor.textContent || '';
+                    editor.innerHTML = '<p>' + (text || '<br>') + '</p>';
+                    return true;
+                }
+                return false;
+            }
+
             // Track editing state
             editor.addEventListener('focus', function() {
+                debug('Focus event');
                 window.webkit.messageHandlers.contentChanged.postMessage({ type: 'focus' });
-                // Remove placeholder
+                // Remove placeholder and ensure we have a P element
                 const placeholder = editor.querySelector('.placeholder');
                 if (placeholder) {
-                    placeholder.remove();
-                    if (editor.innerHTML.trim() === '') {
-                        editor.innerHTML = '<p><br></p>';
-                        placeCaretAtStart();
-                    }
+                    debug('Removing placeholder');
+                    editor.innerHTML = '<p><br></p>';
+                    placeCaretAtStart();
                 }
             });
 
             editor.addEventListener('blur', function() {
+                debug('Blur event');
                 window.webkit.messageHandlers.contentChanged.postMessage({ type: 'blur' });
                 // Show placeholder if empty
                 const text = editor.innerText.trim();
@@ -301,44 +324,112 @@ struct HTMLContentView: NSViewRepresentable {
                 }, 300);
             }
 
-            // Markdown input rules - like TipTap's StarterKit
-            // Triggers on input (when space is typed) not on Enter
-            editor.addEventListener('input', function(e) {
-                sendContent();
-
-                const selection = window.getSelection();
-                const node = selection.anchorNode;
-                const block = getParentBlock(node);
-
-                if (block && block.tagName === 'P') {
-                    const text = block.innerText;
-
-                    // Check for markdown patterns - triggers immediately when pattern is complete
-                    const patterns = [
-                        { regex: /^### $/, tag: 'h3' },
-                        { regex: /^## $/, tag: 'h2' },
-                        { regex: /^# $/, tag: 'h1' },
-                        { regex: /^> $/, tag: 'blockquote' },
-                        { regex: /^- $/, tag: 'ul' },
-                        { regex: /^\\* $/, tag: 'ul' },
-                        { regex: /^1\\. $/, tag: 'ol' },
-                        { regex: /^---$/, tag: 'hr' },
-                        { regex: /^```$/, tag: 'pre' },
-                    ];
-
-                    for (const p of patterns) {
-                        if (p.regex.test(text)) {
-                            convertToElement(block, p.tag);
-                            sendContent();
-                            return;
+            // Get the block-level parent of a node
+            function getParentBlock(node) {
+                if (!node) return null;
+                let current = node;
+                while (current && current !== editor) {
+                    if (current.nodeType === 1) {
+                        const tag = current.tagName;
+                        if (['P', 'H1', 'H2', 'H3', 'LI', 'BLOCKQUOTE', 'PRE', 'DIV'].includes(tag)) {
+                            return current;
                         }
                     }
+                    current = current.parentNode;
+                }
+                return null;
+            }
+
+            // Markdown input rules - triggers when pattern + space is typed
+            editor.addEventListener('input', function(e) {
+                debug('Input event fired');
+                sendContent();
+
+                // Check if we need to wrap bare text in a P
+                if (ensureBlockStructure()) {
+                    debug('Wrapped bare text in P');
+                    placeCaretAtEnd();
+                    return;
+                }
+
+                const selection = window.getSelection();
+                if (!selection.rangeCount) {
+                    debug('No selection range');
+                    return;
+                }
+
+                const node = selection.anchorNode;
+                debug('Anchor node type: ' + (node ? node.nodeType : 'null'));
+
+                const block = getParentBlock(node);
+                debug('Block element: ' + (block ? block.tagName : 'null'));
+
+                if (block && (block.tagName === 'P' || block.tagName === 'DIV')) {
+                    const text = block.textContent || '';
+                    debug('Block text: "' + text + '" len=' + text.length);
+
+                    // Check patterns - must end with space (except hr and code)
+                    if (text === '# ') { debug('-> H1'); convertToHeading(block, 'h1'); return; }
+                    if (text === '## ') { debug('-> H2'); convertToHeading(block, 'h2'); return; }
+                    if (text === '### ') { debug('-> H3'); convertToHeading(block, 'h3'); return; }
+                    if (text === '> ') { debug('-> blockquote'); convertToBlockquote(block); return; }
+                    if (text === '- ' || text === '* ') { debug('-> ul'); convertToList(block, 'ul'); return; }
+                    if (text === '1. ') { debug('-> ol'); convertToList(block, 'ol'); return; }
+                    if (text === '---') { debug('-> hr'); convertToHr(block); return; }
+                    if (text === '```') { debug('-> code'); convertToCodeBlock(block); return; }
                 }
             });
 
-            // Handle Enter key for double-enter exit and keyboard shortcuts
+            function convertToHeading(block, tag) {
+                const el = document.createElement(tag);
+                el.innerHTML = '<br>';
+                block.replaceWith(el);
+                placeCaretInElement(el);
+                sendContent();
+            }
+
+            function convertToBlockquote(block) {
+                const bq = document.createElement('blockquote');
+                const p = document.createElement('p');
+                p.innerHTML = '<br>';
+                bq.appendChild(p);
+                block.replaceWith(bq);
+                placeCaretInElement(p);
+                sendContent();
+            }
+
+            function convertToList(block, tag) {
+                const list = document.createElement(tag);
+                const li = document.createElement('li');
+                li.innerHTML = '<br>';
+                list.appendChild(li);
+                block.replaceWith(list);
+                placeCaretInElement(li);
+                sendContent();
+            }
+
+            function convertToHr(block) {
+                const hr = document.createElement('hr');
+                const p = document.createElement('p');
+                p.innerHTML = '<br>';
+                block.replaceWith(hr);
+                hr.after(p);
+                placeCaretInElement(p);
+                sendContent();
+            }
+
+            function convertToCodeBlock(block) {
+                const pre = document.createElement('pre');
+                const code = document.createElement('code');
+                code.innerHTML = '<br>';
+                pre.appendChild(code);
+                block.replaceWith(pre);
+                placeCaretInElement(code);
+                sendContent();
+            }
+
+            // Handle Enter key for exiting lists/blockquotes
             editor.addEventListener('keydown', function(e) {
-                // Double enter to exit list/blockquote
                 if (e.key === 'Enter' && !e.shiftKey) {
                     const selection = window.getSelection();
                     const node = selection.anchorNode;
@@ -346,17 +437,19 @@ struct HTMLContentView: NSViewRepresentable {
 
                     if (block) {
                         const parent = block.parentElement;
-                        // In a list or blockquote with empty content = exit
-                        if ((parent.tagName === 'UL' || parent.tagName === 'OL') && block.tagName === 'LI' && block.innerText.trim() === '') {
+                        // Empty list item = exit list
+                        if ((parent && (parent.tagName === 'UL' || parent.tagName === 'OL')) &&
+                            block.tagName === 'LI' &&
+                            (block.textContent || '').trim() === '') {
                             e.preventDefault();
-                            exitBlock(block, parent);
-                            sendContent();
+                            exitList(block, parent);
                             return;
                         }
-                        if (parent.tagName === 'BLOCKQUOTE' && block.innerText.trim() === '') {
+                        // Empty blockquote paragraph = exit blockquote
+                        if (parent && parent.tagName === 'BLOCKQUOTE' &&
+                            (block.textContent || '').trim() === '') {
                             e.preventDefault();
-                            exitBlock(block, parent);
-                            sendContent();
+                            exitBlockquote(block, parent);
                             return;
                         }
                     }
@@ -384,6 +477,31 @@ struct HTMLContentView: NSViewRepresentable {
                 }
             });
 
+            function exitList(li, list) {
+                const p = document.createElement('p');
+                p.innerHTML = '<br>';
+                list.after(p);
+                li.remove();
+                if (list.children.length === 0) {
+                    list.remove();
+                }
+                placeCaretInElement(p);
+                sendContent();
+            }
+
+            function exitBlockquote(block, bq) {
+                const p = document.createElement('p');
+                p.innerHTML = '<br>';
+                bq.after(p);
+                if (bq.children.length === 1) {
+                    bq.remove();
+                } else {
+                    block.remove();
+                }
+                placeCaretInElement(p);
+                sendContent();
+            }
+
             // Handle paste
             editor.addEventListener('paste', function(e) {
                 e.preventDefault();
@@ -397,74 +515,6 @@ struct HTMLContentView: NSViewRepresentable {
                 sendContent();
             });
 
-            function getParentBlock(node) {
-                while (node && node !== editor) {
-                    if (node.nodeType === 1 && ['P', 'H1', 'H2', 'H3', 'LI', 'BLOCKQUOTE', 'PRE'].includes(node.tagName)) {
-                        return node;
-                    }
-                    node = node.parentNode;
-                }
-                return null;
-            }
-
-            function convertToElement(block, tag) {
-                if (tag === 'hr') {
-                    const hr = document.createElement('hr');
-                    const p = document.createElement('p');
-                    p.innerHTML = '<br>';
-                    block.replaceWith(hr);
-                    hr.after(p);
-                    placeCaretInElement(p);
-                } else if (tag === 'ul' || tag === 'ol') {
-                    const list = document.createElement(tag);
-                    const li = document.createElement('li');
-                    li.innerHTML = '<br>';
-                    list.appendChild(li);
-                    block.replaceWith(list);
-                    placeCaretInElement(li);
-                } else if (tag === 'pre') {
-                    const pre = document.createElement('pre');
-                    const code = document.createElement('code');
-                    code.innerHTML = '<br>';
-                    pre.appendChild(code);
-                    block.replaceWith(pre);
-                    placeCaretInElement(code);
-                } else if (tag === 'blockquote') {
-                    const bq = document.createElement('blockquote');
-                    const p = document.createElement('p');
-                    p.innerHTML = '<br>';
-                    bq.appendChild(p);
-                    block.replaceWith(bq);
-                    placeCaretInElement(p);
-                } else {
-                    const el = document.createElement(tag);
-                    el.innerHTML = '<br>';
-                    block.replaceWith(el);
-                    placeCaretInElement(el);
-                }
-            }
-
-            function exitBlock(block, parent) {
-                const p = document.createElement('p');
-                p.innerHTML = '<br>';
-                if (parent.tagName === 'BLOCKQUOTE') {
-                    parent.after(p);
-                    if (parent.children.length === 1 && block.innerText.trim() === '') {
-                        parent.remove();
-                    } else {
-                        block.remove();
-                    }
-                } else {
-                    // List
-                    parent.after(p);
-                    block.remove();
-                    if (parent.children.length === 0) {
-                        parent.remove();
-                    }
-                }
-                placeCaretInElement(p);
-            }
-
             function placeCaretInElement(el) {
                 const range = document.createRange();
                 const sel = window.getSelection();
@@ -472,11 +522,24 @@ struct HTMLContentView: NSViewRepresentable {
                 range.collapse(true);
                 sel.removeAllRanges();
                 sel.addRange(range);
+                el.focus();
             }
 
             function placeCaretAtStart() {
-                const p = editor.querySelector('p');
+                const p = editor.querySelector('p:not(.placeholder)');
                 if (p) placeCaretInElement(p);
+            }
+
+            function placeCaretAtEnd() {
+                const p = editor.querySelector('p:not(.placeholder)');
+                if (p && p.lastChild) {
+                    const range = document.createRange();
+                    const sel = window.getSelection();
+                    range.setStartAfter(p.lastChild);
+                    range.collapse(true);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                }
             }
         </script>
         """
@@ -495,6 +558,11 @@ struct HTMLContentView: NSViewRepresentable {
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            if message.name == "debug" {
+                print("[HTMLContentView JS] \(message.body)")
+                return
+            }
+
             guard message.name == "contentChanged",
                   let dict = message.body as? [String: Any],
                   let type = dict["type"] as? String else { return }

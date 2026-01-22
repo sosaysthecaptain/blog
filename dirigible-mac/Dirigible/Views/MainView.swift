@@ -614,10 +614,11 @@ struct NoteDetailView: View {
             // Header with title
             VStack(alignment: .leading, spacing: 0) {
                 TextField("Untitled", text: $title)
-                    .font(DirigibleStyle.Typography.title)
+                    .font(.custom("Georgia", size: 24).weight(.bold))
                     .foregroundColor(DirigibleStyle.Colors.foreground)
                     .textFieldStyle(.plain)
                     .focused($isTitleFocused)
+                    .onSubmit { saveTitleChange() }
                     .padding(.horizontal, DirigibleStyle.Spacing.xl)
                     .padding(.top, DirigibleStyle.Spacing.xl)
                     .padding(.bottom, DirigibleStyle.Spacing.sm)
@@ -652,10 +653,9 @@ struct NoteDetailView: View {
             Divider()
                 .background(DirigibleStyle.Colors.border)
 
-            // Editable content area
-            HTMLContentView(
-                html: content,
-                isEditable: true,
+            // Editable content area with native markdown shortcuts
+            RichTextEditor(
+                html: $content,
                 onContentChange: { newContent in
                     saveContentChange(newContent)
                 }
@@ -668,12 +668,18 @@ struct NoteDetailView: View {
             title = item.title
             content = item.content ?? ""
         }
-        .onChange(of: item.id) {
+        .onChange(of: item.id) { _, _ in
+            // Save current title before switching
+            if title != item.title {
+                saveTitleChange()
+            }
             title = item.title
             content = item.content ?? ""
         }
-        .onChange(of: title) {
-            saveTitleChange()
+        .onChange(of: isTitleFocused) { _, focused in
+            if !focused {
+                saveTitleChange()
+            }
         }
     }
 
@@ -844,61 +850,9 @@ struct FolderTableRow: View {
     }
 }
 
-// MARK: - Moodboard Detail (Placeholder)
+// MoodboardDetailView is in MoodboardView.swift
 
-struct MoodboardDetailView: View {
-    let item: NoteItem
-    let onUpdate: (NoteItem) -> Void
-
-    var body: some View {
-        VStack(spacing: DirigibleStyle.Spacing.md) {
-            MoodboardIcon()
-                .frame(width: 48, height: 48)
-                .foregroundColor(DirigibleStyle.Colors.muted.opacity(0.5))
-
-            Text(item.title)
-                .font(DirigibleStyle.Typography.heading)
-                .foregroundColor(DirigibleStyle.Colors.foreground)
-
-            Text("Moodboard view coming soon")
-                .font(DirigibleStyle.Typography.caption)
-                .foregroundColor(DirigibleStyle.Colors.muted)
-
-            if let images = item.images {
-                Text("\(images.count) images")
-                    .font(DirigibleStyle.Typography.caption)
-                    .foregroundColor(DirigibleStyle.Colors.muted)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(DirigibleStyle.Colors.background)
-    }
-}
-
-// MARK: - Music Library Detail (Placeholder)
-
-struct MusicLibraryDetailView: View {
-    let item: NoteItem
-    let onUpdate: (NoteItem) -> Void
-
-    var body: some View {
-        VStack(spacing: DirigibleStyle.Spacing.md) {
-            Image(systemName: "music.note")
-                .font(.system(size: 48))
-                .foregroundColor(DirigibleStyle.Colors.muted.opacity(0.5))
-
-            Text(item.title)
-                .font(DirigibleStyle.Typography.heading)
-                .foregroundColor(DirigibleStyle.Colors.foreground)
-
-            Text("Music library view coming soon")
-                .font(DirigibleStyle.Typography.caption)
-                .foregroundColor(DirigibleStyle.Colors.muted)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(DirigibleStyle.Colors.background)
-    }
-}
+// MusicLibraryDetailView is now in MusicLibraryView.swift
 
 // MARK: - Empty State
 

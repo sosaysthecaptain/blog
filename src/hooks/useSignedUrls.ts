@@ -8,6 +8,8 @@ import {
   cacheUrls,
   getUncachedPaths,
   extractPathFromUrl,
+  getEarliestExpiration,
+  invalidatePaths,
 } from "@/lib/signed-url-cache";
 
 interface SignedUrlsResponse {
@@ -20,14 +22,20 @@ interface UseSignedUrlsResult {
   getSignedUrl: (pathOrUrl: string) => string | null;
   isLoading: boolean;
   error: Error | null;
+  refresh: () => void;
 }
+
+// How often to check for expiring URLs (every 2 minutes)
+const REFRESH_CHECK_INTERVAL_MS = 2 * 60 * 1000;
+// How long before expiry to trigger refresh (10 minutes)
+const REFRESH_BEFORE_EXPIRY_MS = 10 * 60 * 1000;
 
 /**
  * Hook to get signed URLs for B2 storage paths.
- * Automatically caches URLs and batches requests.
+ * Automatically caches URLs, batches requests, and proactively refreshes before expiry.
  *
  * @param paths - Array of storage paths or URLs that need signing
- * @returns Object with getSignedUrl function, loading state, and error
+ * @returns Object with getSignedUrl function, loading state, error, and refresh function
  */
 export function useSignedUrls(paths: string[]): UseSignedUrlsResult {
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
@@ -37,6 +45,10 @@ export function useSignedUrls(paths: string[]): UseSignedUrlsResult {
   // Track which paths we've already requested to avoid duplicate calls
   const requestedPathsRef = useRef<Set<string>>(new Set());
   const isMountedRef = useRef(true);
+  // Store normalized paths for refresh
+  const normalizedPathsRef = useRef<string[]>([]);
+  // Track if a refresh is in progress to avoid duplicate refresh calls
+  const refreshInProgressRef = useRef(false);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -45,6 +57,114 @@ export function useSignedUrls(paths: string[]): UseSignedUrlsResult {
     };
   }, []);
 
+  // Core fetch function that can be called for initial load or refresh
+  const fetchUrls = useCallback(async (pathsToFetch: string[], isRefresh = false) => {
+    if (pathsToFetch.length === 0) return;
+    if (refreshInProgressRef.current && isRefresh) return;
+
+    if (isRefresh) {
+      refreshInProgressRef.current = true;
+    }
+
+    setIsLoading(true);
+    if (!isRefresh) {
+      setError(null);
+    }
+
+    try {
+      const getSignedUrlsFn = httpsCallable<
+        { paths: string[] },
+        SignedUrlsResponse
+      >(functions, "getSignedUrls");
+
+      const result = await getSignedUrlsFn({ paths: pathsToFetch });
+      const { urls, expiresAt } = result.data;
+
+      // Cache the results
+      cacheUrls(urls, expiresAt);
+
+      // Update state
+      if (isMountedRef.current) {
+        setSignedUrls((prev) => ({ ...prev, ...urls }));
+      }
+    } catch (err) {
+      console.error("Failed to fetch signed URLs:", err);
+      if (isMountedRef.current && !isRefresh) {
+        setError(err instanceof Error ? err : new Error("Failed to fetch signed URLs"));
+      }
+      // Clear requested paths on error so they can be retried
+      if (!isRefresh) {
+        pathsToFetch.forEach((p) => requestedPathsRef.current.delete(p));
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
+      if (isRefresh) {
+        refreshInProgressRef.current = false;
+      }
+    }
+  }, []);
+
+  // Manual refresh function - invalidates cache and re-fetches all paths
+  const refresh = useCallback(() => {
+    const currentPaths = normalizedPathsRef.current;
+    if (currentPaths.length === 0) return;
+
+    // Invalidate the cache for these paths
+    invalidatePaths(currentPaths);
+    // Clear from requested set so they can be re-fetched
+    currentPaths.forEach((p) => requestedPathsRef.current.delete(p));
+    // Fetch fresh URLs
+    fetchUrls(currentPaths, true);
+  }, [fetchUrls]);
+
+  // Proactive refresh check - runs periodically when user is active
+  useEffect(() => {
+    if (!paths || paths.length === 0) return;
+
+    const checkAndRefresh = () => {
+      // Only refresh if the document is visible (user is active)
+      if (document.hidden) return;
+
+      const currentPaths = normalizedPathsRef.current;
+      if (currentPaths.length === 0) return;
+
+      // Check earliest expiration
+      const earliestExpiry = getEarliestExpiration(currentPaths);
+      if (!earliestExpiry) return;
+
+      const timeUntilExpiry = earliestExpiry - Date.now();
+
+      // If URLs are already expired OR will expire within the refresh window, refresh them
+      if (timeUntilExpiry < REFRESH_BEFORE_EXPIRY_MS) {
+        if (timeUntilExpiry <= 0) {
+          console.log("URLs have expired, refreshing...");
+        } else {
+          console.log(`Proactively refreshing URLs (expiring in ${Math.round(timeUntilExpiry / 1000 / 60)} minutes)`);
+        }
+        refresh();
+      }
+    };
+
+    // Set up periodic check
+    const intervalId = setInterval(checkAndRefresh, REFRESH_CHECK_INTERVAL_MS);
+
+    // Also check when tab becomes visible
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        checkAndRefresh();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [paths, refresh]);
+
+  // Initial fetch effect
   useEffect(() => {
     if (!paths || paths.length === 0) return;
 
@@ -55,6 +175,9 @@ export function useSignedUrls(paths: string[]): UseSignedUrlsResult {
       .filter(Boolean);
 
     if (normalizedPaths.length === 0) return;
+
+    // Store for refresh
+    normalizedPathsRef.current = normalizedPaths;
 
     // Check which paths need fetching
     const uncachedPaths = getUncachedPaths(normalizedPaths).filter(
@@ -79,42 +202,8 @@ export function useSignedUrls(paths: string[]): UseSignedUrlsResult {
     // Mark paths as requested
     uncachedPaths.forEach((p) => requestedPathsRef.current.add(p));
 
-    const fetchSignedUrls = async () => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const getSignedUrlsFn = httpsCallable<
-          { paths: string[] },
-          SignedUrlsResponse
-        >(functions, "getSignedUrls");
-
-        const result = await getSignedUrlsFn({ paths: uncachedPaths });
-        const { urls, expiresAt } = result.data;
-
-        // Cache the results
-        cacheUrls(urls, expiresAt);
-
-        // Update state
-        if (isMountedRef.current) {
-          setSignedUrls((prev) => ({ ...prev, ...urls }));
-        }
-      } catch (err) {
-        console.error("Failed to fetch signed URLs:", err);
-        if (isMountedRef.current) {
-          setError(err instanceof Error ? err : new Error("Failed to fetch signed URLs"));
-        }
-        // Clear requested paths on error so they can be retried
-        uncachedPaths.forEach((p) => requestedPathsRef.current.delete(p));
-      } finally {
-        if (isMountedRef.current) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    fetchSignedUrls();
-  }, [paths]);
+    fetchUrls(uncachedPaths);
+  }, [paths, fetchUrls]);
 
   // Function to get a signed URL for a specific path
   const getSignedUrl = useCallback(
@@ -140,7 +229,7 @@ export function useSignedUrls(paths: string[]): UseSignedUrlsResult {
     [signedUrls]
   );
 
-  return { getSignedUrl, isLoading, error };
+  return { getSignedUrl, isLoading, error, refresh };
 }
 
 /**

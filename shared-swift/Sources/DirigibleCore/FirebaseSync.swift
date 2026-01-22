@@ -35,6 +35,10 @@ public class FirebaseSync: ObservableObject {
 
     private var authStateHandle: AuthStateDidChangeListenerHandle?
 
+    // MARK: - Signed URL Cache
+    private var signedUrlCache: [String: (url: String, expiresAt: Date)] = [:]
+    private let signedUrlRefreshBuffer: TimeInterval = 5 * 60  // Refresh 5 minutes before expiry
+
     private init() {
         // Listen for auth state changes
         authStateHandle = Auth.auth().addStateDidChangeListener { [weak self] auth, user in
@@ -968,5 +972,121 @@ public class FirebaseSync: ObservableObject {
         }
 
         return data
+    }
+
+    // MARK: - Signed URLs for Backblaze B2
+
+    /// Get a signed URL for a Backblaze B2 file path
+    /// - Parameter path: The file path (e.g., "images/abc123.jpg" or "/api/files/images/abc123.jpg")
+    /// - Returns: A signed URL that can be used to download the file
+    public func getSignedUrl(for path: String) async throws -> String {
+        let normalizedPath = extractPathFromUrl(path)
+
+        // Check cache first
+        if let cached = signedUrlCache[normalizedPath],
+           Date() < cached.expiresAt.addingTimeInterval(-signedUrlRefreshBuffer) {
+            return cached.url
+        }
+
+        // Fetch new signed URL
+        let urls = try await getSignedUrls(for: [normalizedPath])
+        return urls[normalizedPath] ?? path
+    }
+
+    /// Get signed URLs for multiple Backblaze B2 file paths
+    /// - Parameter paths: Array of file paths
+    /// - Returns: Dictionary mapping original paths to signed URLs
+    public func getSignedUrls(for paths: [String]) async throws -> [String: String] {
+        guard !paths.isEmpty else { return [:] }
+
+        let normalizedPaths = paths.map { extractPathFromUrl($0) }
+
+        // Check which paths need fetching
+        var result: [String: String] = [:]
+        var pathsToFetch: [String] = []
+
+        for path in normalizedPaths {
+            if let cached = signedUrlCache[path],
+               Date() < cached.expiresAt.addingTimeInterval(-signedUrlRefreshBuffer) {
+                result[path] = cached.url
+            } else {
+                pathsToFetch.append(path)
+            }
+        }
+
+        guard !pathsToFetch.isEmpty else { return result }
+
+        // Call Firebase callable function
+        guard let idToken = currentFirebaseUser?.idToken, !idToken.isEmpty else {
+            print("[SignedURL] Not authenticated")
+            throw NSError(domain: "FirebaseSync", code: 401, userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
+        }
+
+        // Firebase Functions region - us-central1 is default
+        let functionsUrl = "https://us-central1-marcs-blog-6b4e4.cloudfunctions.net/getSignedUrls"
+
+        var request = URLRequest(url: URL(string: functionsUrl)!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = ["data": ["paths": pathsToFetch]]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        print("[SignedURL] Fetching signed URLs for \(pathsToFetch.count) paths")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let httpResponse = response as! HTTPURLResponse
+
+        if httpResponse.statusCode != 200 {
+            let errorBody = String(data: data, encoding: .utf8) ?? "unknown"
+            print("[SignedURL] Error: \(httpResponse.statusCode) - \(errorBody)")
+            throw NSError(domain: "FirebaseSync", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Failed to get signed URLs"])
+        }
+
+        // Parse response
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let resultData = json["result"] as? [String: Any],
+              let urls = resultData["urls"] as? [String: String],
+              let expiresAt = resultData["expiresAt"] as? Double else {
+            print("[SignedURL] Failed to parse response")
+            throw NSError(domain: "FirebaseSync", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response format"])
+        }
+
+        let expiryDate = Date(timeIntervalSince1970: expiresAt / 1000)
+
+        // Cache the results
+        for (path, url) in urls {
+            signedUrlCache[path] = (url: url, expiresAt: expiryDate)
+            result[path] = url
+        }
+
+        print("[SignedURL] Cached \(urls.count) signed URLs, expires at \(expiryDate)")
+        return result
+    }
+
+    /// Extract the file path from various URL formats
+    private func extractPathFromUrl(_ url: String) -> String {
+        // Handle /api/files/ URLs
+        if url.hasPrefix("/api/files/") {
+            return String(url.dropFirst("/api/files/".count))
+        }
+
+        // Handle direct B2 URLs
+        if let match = url.range(of: #"backblazeb2\.com/file/[^/]+/(.+)$"#, options: .regularExpression) {
+            let pathStart = url.index(match.lowerBound, offsetBy: url[match].firstIndex(of: "/")!.utf16Offset(in: url[match]))
+            // Extract the path after bucket name
+            if let bucketEnd = url[match].range(of: "/", range: url.index(match.lowerBound, offsetBy: 20)..<match.upperBound) {
+                return String(url[bucketEnd.upperBound..<match.upperBound])
+            }
+        }
+
+        // Already a path
+        return url
+    }
+
+    /// Clear the signed URL cache
+    public func clearSignedUrlCache() {
+        signedUrlCache.removeAll()
     }
 }

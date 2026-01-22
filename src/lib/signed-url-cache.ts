@@ -74,6 +74,48 @@ export function clearUrlCache(): void {
 }
 
 /**
+ * Get the earliest expiration time for a set of paths.
+ * Returns null if no paths are cached.
+ */
+export function getEarliestExpiration(paths: string[]): number | null {
+  let earliest: number | null = null;
+  for (const path of paths) {
+    const cached = urlCache.get(path);
+    if (cached) {
+      if (earliest === null || cached.expiresAt < earliest) {
+        earliest = cached.expiresAt;
+      }
+    }
+  }
+  return earliest;
+}
+
+/**
+ * Invalidate (remove) cached URLs for specific paths.
+ * This forces them to be re-fetched on next request.
+ */
+export function invalidatePaths(paths: string[]): void {
+  for (const path of paths) {
+    urlCache.delete(path);
+  }
+}
+
+/**
+ * Check if any cached URLs for the given paths will expire soon.
+ * Returns true if at least one URL will expire within the refresh buffer.
+ */
+export function hasExpiringUrls(paths: string[]): boolean {
+  const now = Date.now();
+  for (const path of paths) {
+    const cached = urlCache.get(path);
+    if (cached && now > cached.expiresAt - REFRESH_BUFFER_MS) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Extract the storage path from various URL formats.
  * Handles:
  * - /api/files/{path} (old proxy format)

@@ -469,8 +469,28 @@ exports.deleteFromB2 = (0, https_1.onCall)({
     }
 });
 /**
+ * Extract the container prefix from a file path.
+ * e.g., "notes/abc123/moodboard/image1.jpg" -> "notes/abc123/moodboard/"
+ *       "notes/abc123/music/song1.mp3" -> "notes/abc123/music/"
+ */
+function getContainerPrefix(filePath) {
+    const parts = filePath.split("/");
+    // For paths like "notes/{id}/moodboard/{file}" or "notes/{id}/music/{file}"
+    // Return "notes/{id}/moodboard/" or "notes/{id}/music/"
+    if (parts.length >= 4) {
+        return parts.slice(0, 3).join("/") + "/";
+    }
+    // For shorter paths, use the directory
+    if (parts.length >= 2) {
+        return parts.slice(0, parts.length - 1).join("/") + "/";
+    }
+    // Single file at root
+    return "";
+}
+/**
  * Generate signed URLs for B2 files using B2's native download authorization.
  * Accepts an array of paths and returns authorized URLs valid for 1 hour.
+ * Optimized to use prefix-based authorization (one auth per container).
  * Requires authentication.
  */
 exports.getSignedUrls = (0, https_1.onCall)({
@@ -495,15 +515,22 @@ exports.getSignedUrls = (0, https_1.onCall)({
     try {
         // Get B2 auth (reuses cached auth if valid)
         const auth = await getB2Auth();
-        // Get download authorization for the bucket
         const validDurationInSeconds = 3600; // 1 hour
-        // Generate authorized URLs for all paths
-        const signedUrls = {};
-        // B2 download authorization can be per-prefix, so we'll create one per file
-        // Using the downloadUrl from auth which is the base URL for downloads
-        await Promise.all(paths.map(async (filePath) => {
+        // Group paths by container prefix to minimize API calls
+        // e.g., all moodboard images for a note share the same prefix
+        const prefixToFiles = new Map();
+        for (const filePath of paths) {
+            const prefix = getContainerPrefix(filePath);
+            if (!prefixToFiles.has(prefix)) {
+                prefixToFiles.set(prefix, []);
+            }
+            prefixToFiles.get(prefix).push(filePath);
+        }
+        // Cache for authorization tokens by prefix
+        const prefixToToken = new Map();
+        // Fetch authorization tokens for each unique prefix (much fewer API calls)
+        await Promise.all(Array.from(prefixToFiles.keys()).map(async (prefix) => {
             try {
-                // Get download authorization for this specific file
                 const authResponse = await fetch(`${auth.apiUrl}/b2api/v2/b2_get_download_authorization`, {
                     method: "POST",
                     headers: {
@@ -512,24 +539,31 @@ exports.getSignedUrls = (0, https_1.onCall)({
                     },
                     body: JSON.stringify({
                         bucketId: auth.bucketId,
-                        fileNamePrefix: filePath,
+                        fileNamePrefix: prefix,
                         validDurationInSeconds,
                     }),
                 });
                 if (!authResponse.ok) {
-                    console.error(`Failed to get download auth for ${filePath}:`, await authResponse.text());
+                    console.error(`Failed to get download auth for prefix ${prefix}:`, await authResponse.text());
                     return;
                 }
                 const authData = await authResponse.json();
-                // Construct the authorized download URL
-                // Format: {downloadUrl}/file/{bucketName}/{fileName}?Authorization={token}
-                const downloadUrl = `${auth.downloadUrl}/file/${B2_BUCKET}/${filePath}?Authorization=${authData.authorizationToken}`;
-                signedUrls[filePath] = downloadUrl;
+                prefixToToken.set(prefix, authData.authorizationToken);
             }
             catch (error) {
-                console.error(`Failed to sign URL for ${filePath}:`, error);
+                console.error(`Failed to get auth for prefix ${prefix}:`, error);
             }
         }));
+        // Generate signed URLs using the cached prefix tokens
+        const signedUrls = {};
+        for (const filePath of paths) {
+            const prefix = getContainerPrefix(filePath);
+            const token = prefixToToken.get(prefix);
+            if (token) {
+                signedUrls[filePath] = `${auth.downloadUrl}/file/${B2_BUCKET}/${filePath}?Authorization=${token}`;
+            }
+        }
+        console.log(`Generated ${Object.keys(signedUrls).length} signed URLs using ${prefixToToken.size} prefix auth calls (down from ${paths.length} individual calls)`);
         return {
             urls: signedUrls,
             expiresIn: validDurationInSeconds,
