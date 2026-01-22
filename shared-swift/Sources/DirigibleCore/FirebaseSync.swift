@@ -2,6 +2,7 @@ import Foundation
 import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
+import FirebaseFunctions
 import AuthenticationServices
 import CommonCrypto
 
@@ -1016,53 +1017,37 @@ public class FirebaseSync: ObservableObject {
 
         guard !pathsToFetch.isEmpty else { return result }
 
-        // Call Firebase callable function
-        guard let idToken = currentFirebaseUser?.idToken, !idToken.isEmpty else {
-            print("[SignedURL] Not authenticated")
-            throw NSError(domain: "FirebaseSync", code: 401, userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
+        // Use Firebase Functions SDK to call the callable function
+        // This handles authentication properly via Firebase Auth
+        let functions = Functions.functions()
+        let callable = functions.httpsCallable("getSignedUrls")
+
+        print("[SignedURL] Fetching signed URLs for \(pathsToFetch.count) paths via Firebase SDK")
+
+        do {
+            let callResult = try await callable.call(["paths": pathsToFetch])
+
+            guard let data = callResult.data as? [String: Any],
+                  let urls = data["urls"] as? [String: String],
+                  let expiresAt = data["expiresAt"] as? Double else {
+                print("[SignedURL] Failed to parse response: \(callResult.data)")
+                throw NSError(domain: "FirebaseSync", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response format"])
+            }
+
+            let expiryDate = Date(timeIntervalSince1970: expiresAt / 1000)
+
+            // Cache the results
+            for (path, url) in urls {
+                signedUrlCache[path] = (url: url, expiresAt: expiryDate)
+                result[path] = url
+            }
+
+            print("[SignedURL] Cached \(urls.count) signed URLs, expires at \(expiryDate)")
+            return result
+        } catch {
+            print("[SignedURL] Firebase Functions error: \(error)")
+            throw error
         }
-
-        // Firebase Functions region - us-central1 is default
-        let functionsUrl = "https://us-central1-marcs-blog-6b4e4.cloudfunctions.net/getSignedUrls"
-
-        var request = URLRequest(url: URL(string: functionsUrl)!)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body: [String: Any] = ["data": ["paths": pathsToFetch]]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        print("[SignedURL] Fetching signed URLs for \(pathsToFetch.count) paths")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let httpResponse = response as! HTTPURLResponse
-
-        if httpResponse.statusCode != 200 {
-            let errorBody = String(data: data, encoding: .utf8) ?? "unknown"
-            print("[SignedURL] Error: \(httpResponse.statusCode) - \(errorBody)")
-            throw NSError(domain: "FirebaseSync", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Failed to get signed URLs"])
-        }
-
-        // Parse response
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let resultData = json["result"] as? [String: Any],
-              let urls = resultData["urls"] as? [String: String],
-              let expiresAt = resultData["expiresAt"] as? Double else {
-            print("[SignedURL] Failed to parse response")
-            throw NSError(domain: "FirebaseSync", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response format"])
-        }
-
-        let expiryDate = Date(timeIntervalSince1970: expiresAt / 1000)
-
-        // Cache the results
-        for (path, url) in urls {
-            signedUrlCache[path] = (url: url, expiresAt: expiryDate)
-            result[path] = url
-        }
-
-        print("[SignedURL] Cached \(urls.count) signed URLs, expires at \(expiryDate)")
-        return result
     }
 
     /// Extract the file path from various URL formats

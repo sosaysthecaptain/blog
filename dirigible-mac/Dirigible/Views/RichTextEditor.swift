@@ -182,86 +182,138 @@ struct RichTextEditor: NSViewRepresentable {
             return result
         }
 
+        // Track if current line is a heading (to reset on Enter)
+        private var isInHeading = false
+
         // MARK: - Markdown Shortcuts
 
         func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange, replacementString: String?) -> Bool {
             guard let replacement = replacementString else { return true }
 
-            // Only process space and enter for markdown shortcuts
-            if replacement == " " || replacement == "\n" {
-                let text = textView.string as NSString
-                let lineRange = text.lineRange(for: NSRange(location: affectedCharRange.location, length: 0))
-                let lineText = text.substring(with: lineRange).trimmingCharacters(in: .newlines)
-                let cursorInLine = affectedCharRange.location - lineRange.location
+            let text = textView.string as NSString
+            let lineRange = text.lineRange(for: NSRange(location: affectedCharRange.location, length: 0))
+            let lineText = text.substring(with: lineRange).trimmingCharacters(in: .newlines)
+            let cursorInLine = affectedCharRange.location - lineRange.location
 
-                print("[RichTextEditor] Processing: '\(replacement)' at cursor \(cursorInLine) in line '\(lineText)'")
-
-                if replacement == " " {
-                    // Header shortcuts
-                    if lineText == "###" && cursorInLine == 3 {
-                        print("[RichTextEditor] -> H3")
-                        convertToHeading(textView, lineRange: lineRange, level: 3)
-                        return false
-                    }
-                    if lineText == "##" && cursorInLine == 2 {
-                        print("[RichTextEditor] -> H2")
-                        convertToHeading(textView, lineRange: lineRange, level: 2)
-                        return false
-                    }
-                    if lineText == "#" && cursorInLine == 1 {
-                        print("[RichTextEditor] -> H1")
-                        convertToHeading(textView, lineRange: lineRange, level: 1)
-                        return false
-                    }
-                    // List shortcuts
-                    if (lineText == "-" || lineText == "*") && cursorInLine == 1 {
-                        print("[RichTextEditor] -> bullet list")
-                        convertToListItem(textView, lineRange: lineRange, prefix: "• ")
-                        return false
-                    }
-                    if lineText == "1." && cursorInLine == 2 {
-                        print("[RichTextEditor] -> numbered list")
-                        convertToListItem(textView, lineRange: lineRange, prefix: "1. ")
-                        return false
-                    }
-                    // Blockquote
-                    if lineText == ">" && cursorInLine == 1 {
-                        print("[RichTextEditor] -> blockquote")
-                        convertToBlockquote(textView, lineRange: lineRange)
-                        return false
-                    }
+            // Handle Enter key
+            if replacement == "\n" {
+                // If we're in a heading, reset to body style after pressing Enter
+                if isInHeading {
+                    print("[RichTextEditor] Exiting heading, resetting to body style")
+                    isInHeading = false
+                    // Insert newline with body attributes
+                    let bodyAttrs: [NSAttributedString.Key: Any] = [
+                        .font: bodyFont,
+                        .foregroundColor: NSColor.labelColor
+                    ]
+                    let newline = NSAttributedString(string: "\n", attributes: bodyAttrs)
+                    textView.insertText(newline, replacementRange: affectedCharRange)
+                    textView.typingAttributes = bodyAttrs
+                    return false
                 }
 
-                if replacement == "\n" {
-                    // Horizontal rule
-                    if lineText == "---" {
-                        print("[RichTextEditor] -> hr")
-                        insertHorizontalRule(textView, lineRange: lineRange)
-                        return false
-                    }
-                    // Continue bullet list
-                    if lineText.hasPrefix("• ") {
-                        if lineText == "• " {
-                            // Empty bullet - exit list
+                // Horizontal rule: ---
+                if lineText == "---" {
+                    print("[RichTextEditor] -> hr")
+                    insertHorizontalRule(textView, lineRange: lineRange)
+                    return false
+                }
+
+                // Code block: ```
+                if lineText == "```" {
+                    print("[RichTextEditor] -> code block")
+                    insertCodeBlock(textView, lineRange: lineRange)
+                    return false
+                }
+
+                // Exit empty bullet list
+                if lineText == "• " {
+                    print("[RichTextEditor] Exiting bullet list")
+                    clearLine(textView, lineRange: lineRange)
+                    return false
+                }
+
+                // Continue bullet list
+                if lineText.hasPrefix("• ") && lineText.count > 2 {
+                    print("[RichTextEditor] Continuing bullet list")
+                    continueList(textView, prefix: "• ")
+                    return false
+                }
+
+                // Handle numbered lists: check if line matches "N. " pattern
+                if let match = lineText.range(of: #"^(\d+)\. (.*)$"#, options: .regularExpression) {
+                    // Extract the number
+                    if let dotIndex = lineText.firstIndex(of: ".") {
+                        let numStr = String(lineText[lineText.startIndex..<dotIndex])
+                        let afterPrefix = lineText[lineText.index(dotIndex, offsetBy: 2)...]
+
+                        if afterPrefix.isEmpty {
+                            // Empty numbered list item - exit list
+                            print("[RichTextEditor] Exiting numbered list")
                             clearLine(textView, lineRange: lineRange)
                             return false
-                        }
-                        // Continue list
-                        continueList(textView, prefix: "• ")
-                        return false
-                    }
-                    // Continue numbered list
-                    if let match = lineText.range(of: #"^(\d+)\. "#, options: .regularExpression) {
-                        let numPart = lineText[lineText.startIndex..<lineText.index(before: match.upperBound)]
-                        if lineText == numPart + ". " {
-                            // Empty item - exit list
-                            clearLine(textView, lineRange: lineRange)
-                            return false
-                        }
-                        if let num = Int(numPart.dropLast()) {
+                        } else if let num = Int(numStr) {
+                            // Continue numbered list
+                            print("[RichTextEditor] Continuing numbered list")
                             continueList(textView, prefix: "\(num + 1). ")
                             return false
                         }
+                    }
+                }
+            }
+
+            // Handle Space key
+            if replacement == " " {
+                print("[RichTextEditor] Processing space at cursor \(cursorInLine) in line '\(lineText)'")
+
+                // Header shortcuts
+                if lineText == "###" && cursorInLine == 3 {
+                    print("[RichTextEditor] -> H3")
+                    convertToHeading(textView, lineRange: lineRange, level: 3)
+                    return false
+                }
+                if lineText == "##" && cursorInLine == 2 {
+                    print("[RichTextEditor] -> H2")
+                    convertToHeading(textView, lineRange: lineRange, level: 2)
+                    return false
+                }
+                if lineText == "#" && cursorInLine == 1 {
+                    print("[RichTextEditor] -> H1")
+                    convertToHeading(textView, lineRange: lineRange, level: 1)
+                    return false
+                }
+
+                // List shortcuts
+                if (lineText == "-" || lineText == "*") && cursorInLine == 1 {
+                    print("[RichTextEditor] -> bullet list")
+                    convertToListItem(textView, lineRange: lineRange, prefix: "• ")
+                    return false
+                }
+                if lineText == "1." && cursorInLine == 2 {
+                    print("[RichTextEditor] -> numbered list")
+                    convertToListItem(textView, lineRange: lineRange, prefix: "1. ")
+                    return false
+                }
+
+                // Blockquote
+                if lineText == ">" && cursorInLine == 1 {
+                    print("[RichTextEditor] -> blockquote")
+                    convertToBlockquote(textView, lineRange: lineRange)
+                    return false
+                }
+            }
+
+            // Handle backtick for inline code
+            if replacement == "`" {
+                // Check if we're closing an inline code span
+                let beforeCursor = text.substring(to: affectedCharRange.location)
+                if let lastBacktick = beforeCursor.lastIndex(of: "`") {
+                    let codeContent = String(beforeCursor[beforeCursor.index(after: lastBacktick)...])
+                    // Only convert if there's content between backticks and no newline
+                    if !codeContent.isEmpty && !codeContent.contains("\n") {
+                        print("[RichTextEditor] -> inline code: '\(codeContent)'")
+                        convertToInlineCode(textView, from: beforeCursor.distance(from: beforeCursor.startIndex, to: lastBacktick), content: codeContent)
+                        return false
                     }
                 }
             }
@@ -288,6 +340,9 @@ struct RichTextEditor: NSViewRepresentable {
             ]
             textView.typingAttributes = attrs
             textView.setSelectedRange(NSRange(location: lineRange.location, length: 0))
+
+            // Track that we're in a heading so we can reset on Enter
+            isInHeading = true
         }
 
         private func convertToListItem(_ textView: NSTextView, lineRange: NSRange, prefix: String) {
@@ -342,6 +397,46 @@ struct RichTextEditor: NSViewRepresentable {
             storage.replaceCharacters(in: lineRange, with: "")
             textView.typingAttributes = [.font: bodyFont, .foregroundColor: NSColor.labelColor]
             textView.setSelectedRange(NSRange(location: lineRange.location, length: 0))
+        }
+
+        private func insertCodeBlock(_ textView: NSTextView, lineRange: NSRange) {
+            let storage = textView.textStorage!
+
+            // Create code block with monospace font and background color
+            let codeAttrs: [NSAttributedString.Key: Any] = [
+                .font: codeFont,
+                .foregroundColor: NSColor.labelColor,
+                .backgroundColor: NSColor.quaternaryLabelColor
+            ]
+
+            // Replace ``` with empty code block placeholder
+            let codeBlock = NSAttributedString(string: "\n", attributes: codeAttrs)
+            storage.replaceCharacters(in: lineRange, with: codeBlock)
+            textView.typingAttributes = codeAttrs
+            textView.setSelectedRange(NSRange(location: lineRange.location, length: 0))
+        }
+
+        private func convertToInlineCode(_ textView: NSTextView, from startOffset: Int, content: String) {
+            let storage = textView.textStorage!
+
+            // Range from opening backtick to current cursor (where closing backtick would be)
+            let codeRange = NSRange(location: startOffset, length: content.count + 1)
+
+            // Create inline code with monospace font and subtle background
+            let codeAttrs: [NSAttributedString.Key: Any] = [
+                .font: codeFont,
+                .foregroundColor: NSColor.labelColor,
+                .backgroundColor: NSColor.quaternaryLabelColor
+            ]
+
+            let codeString = NSAttributedString(string: content, attributes: codeAttrs)
+
+            // Replace the `content with styled content (no backticks)
+            storage.replaceCharacters(in: codeRange, with: codeString)
+
+            // Reset to body attributes after the code
+            textView.typingAttributes = [.font: bodyFont, .foregroundColor: NSColor.labelColor]
+            textView.setSelectedRange(NSRange(location: startOffset + content.count, length: 0))
         }
     }
 }
