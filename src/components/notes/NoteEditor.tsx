@@ -20,14 +20,16 @@ export interface NoteEditorRef {
 interface NoteEditorProps {
   note: NoteItem;
   parentFolder: NoteItem | null;
+  folderPath?: NoteItem[]; // Full path from root to parent folder
   onUpdate: (note: NoteItem) => void;
   onBack: () => void;
+  onNavigateToFolder?: (folderId: string | null) => void; // null = root
   isFullWidth: boolean;
   onUnsavedChangesChange?: (hasChanges: boolean) => void;
 }
 
 const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEditor(
-  { note, parentFolder, onUpdate, onBack, isFullWidth, onUnsavedChangesChange },
+  { note, parentFolder, folderPath = [], onUpdate, onBack, onNavigateToFolder, isFullWidth, onUnsavedChangesChange },
   ref
 ) {
   // Local editing state
@@ -443,27 +445,53 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
   return (
     <div className="flex-1 h-full overflow-y-auto bg-[--background]">
       <div className={isFullWidth ? "px-4 py-6 md:px-8 md:py-12" : "max-w-3xl mx-auto px-4 py-6 md:px-8 md:py-12"}>
-        {/* Header row with back button */}
-        <div className="flex items-center justify-between mb-6">
-          {/* Back button */}
+        {/* Breadcrumb navigation */}
+        <nav className="flex items-center gap-1 mb-6 text-sm overflow-x-auto">
+          {/* Root / Notes */}
           <button
             type="button"
-            onClick={handleBack}
-            className="flex items-center gap-2 text-sm text-[--muted] hover:text-[--foreground]"
+            onClick={() => onNavigateToFolder ? onNavigateToFolder(null) : handleBack()}
+            className="breadcrumb-pill"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            {parentFolder ? (
-              <>
-                <span className="hidden sm:inline">Back to {parentFolder.title}</span>
-                <span className="sm:hidden">Back</span>
-              </>
-            ) : (
-              <span>Back</span>
-            )}
+            Notes
           </button>
-        </div>
+
+          {/* Folder path */}
+          {folderPath.map((folder) => (
+            <span key={folder.id} className="flex items-center gap-1">
+              <span className="breadcrumb-separator">›</span>
+              <button
+                type="button"
+                onClick={() => onNavigateToFolder ? onNavigateToFolder(folder.id!) : handleBack()}
+                className="breadcrumb-pill"
+              >
+                {folder.title}
+              </button>
+            </span>
+          ))}
+
+          {/* Parent folder (if not in path) */}
+          {parentFolder && !folderPath.find(f => f.id === parentFolder.id) && (
+            <span className="flex items-center gap-1">
+              <span className="breadcrumb-separator">›</span>
+              <button
+                type="button"
+                onClick={handleBack}
+                className="breadcrumb-pill"
+              >
+                {parentFolder.title}
+              </button>
+            </span>
+          )}
+
+          {/* Current note */}
+          <span className="flex items-center gap-1">
+            <span className="breadcrumb-separator">›</span>
+            <span className="breadcrumb-pill breadcrumb-current">
+              {title || "Untitled"}
+            </span>
+          </span>
+        </nav>
 
         {/* Title */}
         <input

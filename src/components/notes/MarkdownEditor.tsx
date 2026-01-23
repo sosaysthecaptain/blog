@@ -1003,10 +1003,11 @@ export default function MarkdownEditor({
         }
 
         .md-settings-container {
-          position: absolute;
-          top: 0;
-          right: 0;
+          position: sticky;
+          top: 12px;
+          float: right;
           z-index: 10;
+          margin-left: auto;
         }
 
         .md-settings-btn {
