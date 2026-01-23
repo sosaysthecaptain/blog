@@ -429,48 +429,67 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 
-/* Breadcrumb navigation */
+/* Breadcrumb navigation - connected pill bar */
 .breadcrumb-nav {
-  display: flex;
-  align-items: center;
-  font-size: 13px;
+  display: inline-flex;
+  align-items: stretch;
+  font-size: 12px;
 }
 
 .breadcrumb-item {
-  color: #c9a67a;
-  background: none;
+  background: #1a1a1a;
+  color: #ffffff;
   border: none;
-  padding: 0;
+  padding: 5px 10px;
   cursor: pointer;
   white-space: nowrap;
+  transition: opacity 0.15s;
 }
 
 .breadcrumb-item:hover {
-  color: #e0c9a8;
+  opacity: 0.8;
 }
 
 .breadcrumb-item::after {
-  content: " >";
-  margin-right: 6px;
+  content: " ›";
+  opacity: 0.6;
+  margin-left: 4px;
 }
 
-.breadcrumb-current {
-  color: #e8e8e8;
-  background: #3a3a3a;
-  padding: 4px 12px;
-  border-radius: 14px;
-  cursor: default;
+/* First item - rounded left */
+.breadcrumb-item:first-child {
+  border-radius: 6px 0 0 6px;
 }
 
-.breadcrumb-current::after {
+/* Last item - rounded right, no caret */
+.breadcrumb-item:last-child {
+  border-radius: 0 6px 6px 0;
+}
+
+.breadcrumb-item:last-child::after {
   content: none;
 }
 
-.breadcrumb-current:hover {
-  color: #e8e8e8;
+/* Only child - fully rounded */
+.breadcrumb-item:only-child {
+  border-radius: 6px;
 }
 
-/* Hide the old separator - now using ::after */
+.breadcrumb-current {
+  cursor: default;
+}
+
+.breadcrumb-current:hover {
+  opacity: 1;
+}
+
+/* Dark mode - invert colors */
+:root.dark .breadcrumb-item {
+  background: #e5e5e5;
+  color: #1a1a1a;
+}
+
+/* Hide the old separator */
 .breadcrumb-separator {
   display: none;
 }
