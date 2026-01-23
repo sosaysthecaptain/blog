@@ -415,7 +415,14 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Untitled"
-          className="w-full text-2xl md:text-4xl font-bold bg-transparent outline-none text-[--foreground] placeholder:text-[--muted] mb-2 font-mono"
+          className="w-full text-2xl md:text-4xl font-bold bg-transparent outline-none text-[--foreground] placeholder:text-[--muted] mb-2"
+          style={{
+            fontFamily: displayPrefs.font === "mono"
+              ? "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+              : displayPrefs.font === "serif"
+              ? "var(--font-serif), Georgia, serif"
+              : "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+          }}
         />
 
         {/* Date, Time & Tags row */}

@@ -84,6 +84,9 @@ const signedUrlStore = {
   },
 };
 
+// Module-level flag for showing raw markdown (checked by decoration plugin)
+let showRawMarkdown = false;
+
 // Image widget with resize and caption
 class ImageWidget extends WidgetType {
   constructor(
@@ -316,58 +319,201 @@ class UploadPlaceholderWidget extends WidgetType {
   }
 }
 
+// Hidden widget (replaces markdown syntax with nothing)
+class HiddenWidget extends WidgetType {
+  toDOM() {
+    // Return an empty span - the text it replaces disappears
+    const span = document.createElement("span");
+    return span;
+  }
+
+  eq() {
+    return true; // All hidden widgets are equal
+  }
+}
+
 // Create decorations for markdown rendering
 function createDecorations(view: EditorView, onImageClick?: (src: string) => void): DecorationSet {
-  const builder = new RangeSetBuilder<Decoration>();
-  const doc = view.state.doc;
+  if (showRawMarkdown) {
+    return Decoration.none;
+  }
 
-  for (let i = 1; i <= doc.lines; i++) {
-    const line = doc.line(i);
+  const doc = view.state.doc;
+  const decorations: Array<{ from: number; to: number; deco: Decoration }> = [];
+
+  // First pass: find all complete code blocks (opening AND closing ```)
+  const codeBlockRanges: Array<{ startLine: number; endLine: number }> = [];
+  let openCodeBlockLine: number | null = null;
+
+  for (let lineNum = 1; lineNum <= doc.lines; lineNum++) {
+    const text = doc.line(lineNum).text;
+    if (text.trimStart().startsWith("```")) {
+      if (openCodeBlockLine === null) {
+        openCodeBlockLine = lineNum;
+      } else {
+        // Found closing - record the complete block
+        codeBlockRanges.push({ startLine: openCodeBlockLine, endLine: lineNum });
+        openCodeBlockLine = null;
+      }
+    }
+  }
+
+  // Helper to check if a line is inside a code block
+  const isInCodeBlock = (lineNum: number): boolean => {
+    for (const range of codeBlockRanges) {
+      if (lineNum > range.startLine && lineNum < range.endLine) return true;
+    }
+    return false;
+  };
+
+  // Helper to check if line is a code block fence (that's properly closed)
+  const isCodeBlockFence = (lineNum: number): boolean => {
+    for (const range of codeBlockRanges) {
+      if (lineNum === range.startLine || lineNum === range.endLine) return true;
+    }
+    return false;
+  };
+
+  for (let lineNum = 1; lineNum <= doc.lines; lineNum++) {
+    const line = doc.line(lineNum);
     const text = line.text;
 
-    // Images: ![alt](url) or ![alt](url =width) or ![alt](url "caption") or combinations
+    // Hide code block fence lines (only if properly closed)
+    if (isCodeBlockFence(lineNum)) {
+      decorations.push({
+        from: line.from,
+        to: line.to,
+        deco: Decoration.replace({ widget: new HiddenWidget() }),
+      });
+      continue;
+    }
+
+    // Skip content inside code blocks
+    if (isInCodeBlock(lineNum)) continue;
+
+    // Images
     const imageMatch = text.match(/^!\[([^\]]*)\]\(([^\s)"=]+)(?:\s*=(\d+))?(?:\s*"([^"]*)")?\)$/);
     if (imageMatch) {
       const [, alt, src, widthStr, caption] = imageMatch;
       const width = widthStr ? parseInt(widthStr) : null;
-
-      if (src === "uploading") {
-        builder.add(line.from, line.to, Decoration.replace({
-          widget: new UploadPlaceholderWidget(alt || "image"),
-        }));
-      } else {
-        builder.add(line.from, line.to, Decoration.replace({
-          widget: new ImageWidget(src, alt, caption || null, width, line.from, line.to, view, onImageClick),
-        }));
-      }
+      const widget = src === "uploading"
+        ? new UploadPlaceholderWidget(alt || "image")
+        : new ImageWidget(src, alt, caption || null, width, line.from, line.to, view, onImageClick);
+      decorations.push({ from: line.from, to: line.to, deco: Decoration.replace({ widget }) });
       continue;
     }
 
-    // Task lists: - [ ] or - [x] (with optional indentation)
-    const taskMatch = text.match(/^(\s*)- \[([ x])\] (.*)$/);
+    // Task lists: - [ ] or - [x]
+    const taskMatch = text.match(/^(\s*)- \[([ x])\]/);
     if (taskMatch) {
       const [, indent, check] = taskMatch;
-      const isChecked = check === "x";
       const checkStart = line.from + indent.length;
-      // Replace "- [ ] " or "- [x] " with checkbox widget
-      builder.add(checkStart, checkStart + 6, Decoration.replace({
-        widget: new CheckboxWidget(isChecked, checkStart, view),
-      }));
+      decorations.push({
+        from: checkStart,
+        to: checkStart + 6,
+        deco: Decoration.replace({ widget: new CheckboxWidget(check === "x", checkStart, view) }),
+      });
       continue;
     }
 
-    // Unordered lists: - item (with optional indentation, but not task lists)
-    const listMatch = text.match(/^(\s*)- (?!\[[ x]\])(.*)$/);
+    // Unordered lists: - item
+    const listMatch = text.match(/^(\s*)- (?!\[)/);
     if (listMatch) {
-      const [, indent] = listMatch;
-      const bulletStart = line.from + indent.length;
-      // Replace "- " with bullet
-      builder.add(bulletStart, bulletStart + 2, Decoration.replace({
-        widget: new BulletWidget(),
-      }));
+      const bulletStart = line.from + listMatch[1].length;
+      decorations.push({
+        from: bulletStart,
+        to: bulletStart + 2,
+        deco: Decoration.replace({ widget: new BulletWidget() }),
+      });
+      continue;
+    }
+
+    // Headings: hide # marks
+    const headingMatch = text.match(/^(#{1,6}) /);
+    if (headingMatch) {
+      decorations.push({
+        from: line.from,
+        to: line.from + headingMatch[1].length + 1,
+        deco: Decoration.replace({ widget: new HiddenWidget() }),
+      });
+    }
+
+    // Inline formatting - collect positions to hide
+    const hides: Array<{ from: number; to: number }> = [];
+
+    // Bold: **text** - find pairs
+    let pos = 0;
+    while (pos < text.length) {
+      const idx = text.indexOf("**", pos);
+      if (idx === -1) break;
+      const endIdx = text.indexOf("**", idx + 2);
+      if (endIdx === -1) break;
+      hides.push({ from: line.from + idx, to: line.from + idx + 2 });
+      hides.push({ from: line.from + endIdx, to: line.from + endIdx + 2 });
+      pos = endIdx + 2;
+    }
+
+    // Italic: *text* - find single asterisks not part of **
+    // Mark positions already used by bold
+    const boldPositions = new Set<number>();
+    for (const h of hides) {
+      for (let p = h.from; p < h.to; p++) boldPositions.add(p);
+    }
+
+    pos = 0;
+    while (pos < text.length) {
+      const idx = text.indexOf("*", pos);
+      if (idx === -1) break;
+      // Skip if this is part of ** (bold)
+      if (boldPositions.has(line.from + idx)) {
+        pos = idx + 1;
+        continue;
+      }
+      // Find closing * that's not part of **
+      let endIdx = idx + 1;
+      while (endIdx < text.length) {
+        const nextStar = text.indexOf("*", endIdx);
+        if (nextStar === -1) break;
+        // Skip if part of bold
+        if (boldPositions.has(line.from + nextStar)) {
+          endIdx = nextStar + 1;
+          continue;
+        }
+        // Found closing *
+        hides.push({ from: line.from + idx, to: line.from + idx + 1 });
+        hides.push({ from: line.from + nextStar, to: line.from + nextStar + 1 });
+        pos = nextStar + 1;
+        break;
+      }
+      if (endIdx >= text.length || text.indexOf("*", endIdx) === -1) break;
+    }
+
+    // Inline code: `text`
+    pos = 0;
+    while (pos < text.length) {
+      const idx = text.indexOf("`", pos);
+      if (idx === -1) break;
+      const endIdx = text.indexOf("`", idx + 1);
+      if (endIdx === -1) break;
+      hides.push({ from: line.from + idx, to: line.from + idx + 1 });
+      hides.push({ from: line.from + endIdx, to: line.from + endIdx + 1 });
+      pos = endIdx + 1;
+    }
+
+    // Sort by position and add
+    hides.sort((a, b) => a.from - b.from);
+    for (const h of hides) {
+      decorations.push({ from: h.from, to: h.to, deco: Decoration.replace({ widget: new HiddenWidget() }) });
     }
   }
 
+  // Sort decorations by position (required by RangeSetBuilder)
+  decorations.sort((a, b) => a.from - b.from || a.to - b.to);
+
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const d of decorations) {
+    builder.add(d.from, d.to, d.deco);
+  }
   return builder.finish();
 }
 
@@ -387,10 +533,10 @@ const decorationPlugin = (onImageClick?: (src: string) => void) =>
     { decorations: (v) => v.decorations }
   );
 
-// Font families
+// Font families (matching project standards)
 const fontFamilies = {
   mono: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-  serif: "Georgia, Cambria, 'Times New Roman', Times, serif",
+  serif: "var(--font-serif), Georgia, serif",
   sans: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
 };
 
@@ -398,9 +544,9 @@ const fontFamilies = {
 function createEditorTheme(prefs: EditorDisplayPrefs) {
   return EditorView.theme({
     "&": {
-      fontSize: "0.875rem",
-      fontFamily: fontFamilies[prefs.font],
-      lineHeight: "1.6",
+      fontSize: "0.875rem !important",
+      fontFamily: `${fontFamilies[prefs.font]} !important`,
+      lineHeight: "1.6 !important",
       color: "var(--foreground)",
       backgroundColor: "transparent",
     },
@@ -409,10 +555,14 @@ function createEditorTheme(prefs: EditorDisplayPrefs) {
       caretColor: "var(--foreground)",
       padding: "0",
       minHeight: "400px",
-      whiteSpace: prefs.wordWrap ? "pre-wrap" : "pre",
-      wordBreak: prefs.wordWrap ? "break-word" : "normal",
+      whiteSpace: `${prefs.wordWrap ? "pre-wrap" : "pre"} !important`,
+      wordBreak: `${prefs.wordWrap ? "break-word" : "normal"} !important`,
+      overflowWrap: `${prefs.wordWrap ? "break-word" : "normal"} !important`,
     },
-    ".cm-line": { padding: "0" },
+    ".cm-line": {
+      padding: "0",
+      fontFamily: "inherit !important",
+    },
     ".cm-cursor": {
       borderLeftColor: "var(--foreground)",
       borderLeftWidth: "1.5px",
@@ -499,12 +649,28 @@ export default function MarkdownEditor({
   useEffect(() => { onMediaAddedRef.current = onMediaAdded; }, [onMediaAdded]);
   useEffect(() => { onImageClickRef.current = onImageClick; }, [onImageClick]);
 
-  // Update theme when prefs change
+  // Update theme and markdown visibility when prefs change
   useEffect(() => {
-    if (viewRef.current) {
-      viewRef.current.dispatch({
-        effects: themeCompartment.current.reconfigure(createEditorTheme(displayPrefs)),
-      });
+    // Update the module-level flag for decoration plugin
+    showRawMarkdown = displayPrefs.showMarkdownSyntax;
+
+    const view = viewRef.current;
+    if (view) {
+      // Apply font directly to DOM element (bypassing CodeMirror theme system)
+      const editorEl = view.dom;
+      const contentEl = view.contentDOM;
+
+      editorEl.style.fontFamily = fontFamilies[displayPrefs.font];
+      contentEl.style.fontFamily = fontFamilies[displayPrefs.font];
+
+      // Apply word wrap directly
+      contentEl.style.whiteSpace = displayPrefs.wordWrap ? "pre-wrap" : "pre";
+      contentEl.style.wordBreak = displayPrefs.wordWrap ? "break-word" : "normal";
+      contentEl.style.overflowWrap = displayPrefs.wordWrap ? "break-word" : "normal";
+      contentEl.style.maxWidth = displayPrefs.wordWrap ? "100%" : "none";
+
+      // Trigger decoration rebuild for markdown syntax toggle
+      view.dispatch({});
     }
   }, [displayPrefs]);
 
@@ -658,6 +824,14 @@ export default function MarkdownEditor({
     });
 
     viewRef.current = view;
+
+    // Apply initial styles directly to DOM
+    view.dom.style.fontFamily = fontFamilies[displayPrefs.font];
+    view.contentDOM.style.fontFamily = fontFamilies[displayPrefs.font];
+    view.contentDOM.style.whiteSpace = displayPrefs.wordWrap ? "pre-wrap" : "pre";
+    view.contentDOM.style.wordBreak = displayPrefs.wordWrap ? "break-word" : "normal";
+    view.contentDOM.style.overflowWrap = displayPrefs.wordWrap ? "break-word" : "normal";
+
     view.dom.addEventListener("paste", handlePaste);
     view.dom.addEventListener("drop", handleDrop);
 
@@ -772,7 +946,7 @@ export default function MarkdownEditor({
           top: 100%;
           right: 0;
           margin-top: 4px;
-          width: 180px;
+          width: 220px;
           padding: 8px;
           background: var(--sidebar-bg, var(--background));
           border: 1px solid var(--border);
