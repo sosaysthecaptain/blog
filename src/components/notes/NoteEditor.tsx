@@ -447,7 +447,6 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
       <div className={isFullWidth ? "px-4 py-6 md:px-8 md:py-12" : "max-w-3xl mx-auto px-4 py-6 md:px-8 md:py-12"}>
         {/* Breadcrumb navigation */}
         <nav className="breadcrumb-nav mb-6">
-          {/* Root / Notes */}
           <button
             type="button"
             onClick={() => onNavigateToFolder ? onNavigateToFolder(null) : handleBack()}
@@ -455,41 +454,27 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
           >
             Notes
           </button>
-
-          {/* Folder path */}
           {folderPath.map((folder) => (
-            <span key={folder.id} className="flex items-center">
-              <span className="breadcrumb-separator">&gt;</span>
-              <button
-                type="button"
-                onClick={() => onNavigateToFolder ? onNavigateToFolder(folder.id!) : handleBack()}
-                className="breadcrumb-item"
-              >
-                {folder.title}
-              </button>
-            </span>
+            <button
+              key={folder.id}
+              type="button"
+              onClick={() => onNavigateToFolder ? onNavigateToFolder(folder.id!) : handleBack()}
+              className="breadcrumb-item"
+            >
+              {folder.title}
+            </button>
           ))}
-
-          {/* Parent folder (if not in path) */}
           {parentFolder && !folderPath.find(f => f.id === parentFolder.id) && (
-            <span className="flex items-center">
-              <span className="breadcrumb-separator">&gt;</span>
-              <button
-                type="button"
-                onClick={handleBack}
-                className="breadcrumb-item"
-              >
-                {parentFolder.title}
-              </button>
-            </span>
+            <button
+              type="button"
+              onClick={handleBack}
+              className="breadcrumb-item"
+            >
+              {parentFolder.title}
+            </button>
           )}
-
-          {/* Current note */}
-          <span className="flex items-center">
-            <span className="breadcrumb-separator">&gt;</span>
-            <span className="breadcrumb-item breadcrumb-current">
-              {title || "Untitled"}
-            </span>
+          <span className="breadcrumb-item breadcrumb-current">
+            {title || "Untitled"}
           </span>
         </nav>
 

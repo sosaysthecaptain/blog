@@ -433,40 +433,44 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .breadcrumb-nav {
   display: flex;
   align-items: center;
-  gap: 0;
   font-size: 13px;
-  overflow-x: auto;
 }
 
 .breadcrumb-item {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 8px;
-  color: #d4a574;
-  background: transparent;
+  color: #c9a67a;
+  background: none;
   border: none;
+  padding: 0;
   cursor: pointer;
-  transition: all 0.15s;
   white-space: nowrap;
 }
 
 .breadcrumb-item:hover {
-  color: #e8c9a8;
+  color: #e0c9a8;
+}
+
+.breadcrumb-item::after {
+  content: " >";
+  margin-right: 6px;
 }
 
 .breadcrumb-current {
-  color: var(--foreground);
-  background: rgba(128, 128, 128, 0.3);
-  border-radius: 4px;
+  color: #e8e8e8;
+  background: #3a3a3a;
+  padding: 4px 12px;
+  border-radius: 14px;
   cursor: default;
 }
 
-.breadcrumb-current:hover {
-  color: var(--foreground);
+.breadcrumb-current::after {
+  content: none;
 }
 
+.breadcrumb-current:hover {
+  color: #e8e8e8;
+}
+
+/* Hide the old separator - now using ::after */
 .breadcrumb-separator {
-  color: #d4a574;
-  font-size: 13px;
-  padding: 0 2px;
+  display: none;
 }

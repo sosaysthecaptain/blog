@@ -497,14 +497,10 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
             Moodboards
           </button>
           {parentFolder && (
-            <>
-              <span className="breadcrumb-separator">&gt;</span>
-              <button type="button" onClick={onBack} className="breadcrumb-item">
-                {parentFolder.title}
-              </button>
-            </>
+            <button type="button" onClick={onBack} className="breadcrumb-item">
+              {parentFolder.title}
+            </button>
           )}
-          <span className="breadcrumb-separator">&gt;</span>
           <span className="breadcrumb-item breadcrumb-current">
             {title || "Untitled"}
           </span>
