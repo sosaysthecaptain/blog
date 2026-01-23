@@ -40,6 +40,7 @@ interface MarkdownEditorProps {
   noteId: string;
   placeholder?: string;
   onImageClick?: (src: string) => void;
+  onImageDelete?: (src: string, lineFrom: number, lineTo: number) => void;
   onMediaAdded?: (media: MediaInfo) => void;
   displayPrefs?: EditorDisplayPrefs;
   onDisplayPrefsChange?: (prefs: EditorDisplayPrefs) => void;
@@ -89,6 +90,8 @@ let showRawMarkdown = false;
 
 // Image widget with resize and caption
 class ImageWidget extends WidgetType {
+  readonly displayUrl: string | null; // Resolved at creation time, null if needs signing but not ready
+
   constructor(
     readonly src: string,
     readonly alt: string,
@@ -97,62 +100,105 @@ class ImageWidget extends WidgetType {
     readonly lineFrom: number,
     readonly lineTo: number,
     readonly view: EditorView,
-    readonly onClick?: (src: string) => void
+    readonly onClick?: (src: string) => void,
+    readonly onDelete?: (src: string, lineFrom: number, lineTo: number) => void
   ) {
     super();
+    // Resolve display URL at creation time
+    if (needsSigning(src)) {
+      // For B2 URLs, we MUST have a signed URL
+      this.displayUrl = signedUrlStore.get(src);
+    } else {
+      // For direct URLs (Firebase, https), use as-is
+      this.displayUrl = src;
+    }
   }
 
   toDOM() {
-    const wrapper = document.createElement("div");
+    const wrapper = document.createElement("span");
     wrapper.className = "cm-image-wrapper";
 
-    const container = document.createElement("div");
+    const container = document.createElement("span");
     container.className = "cm-image-container";
 
-    // Get signed URL if needed
-    let displayUrl = this.src;
-    const requiresSigning = needsSigning(this.src);
-    if (requiresSigning) {
-      const signed = signedUrlStore.get(this.src);
-      if (signed) {
-        displayUrl = signed;
-      } else {
-        // Show loading state while waiting for signed URL
-        container.innerHTML = `<div class="cm-image-loading">Loading image...</div>`;
-        wrapper.appendChild(container);
-        return wrapper;
-      }
+    // If no display URL yet, show loading
+    if (!this.displayUrl) {
+      container.innerHTML = `<span class="cm-image-loading">Loading...</span>`;
+      wrapper.appendChild(container);
+      return wrapper;
     }
 
     const img = document.createElement("img");
-    img.src = displayUrl;
+    img.src = this.displayUrl;
     img.alt = this.alt;
     if (this.width) {
       img.style.width = `${this.width}px`;
     }
     img.className = "cm-inline-image";
 
+    // Selection state - single click selects, double click opens carousel
+    const selectImage = () => {
+      // Deselect any other selected images
+      document.querySelectorAll('.cm-image-container.cm-image-selected').forEach(el => {
+        el.classList.remove('cm-image-selected');
+      });
+      container.classList.add('cm-image-selected');
+    };
+
+    img.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      selectImage();
+    });
+
+    // Double-click opens carousel (use original src for matching)
     if (this.onClick) {
-      img.addEventListener("click", (e) => {
+      img.addEventListener("dblclick", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        this.onClick!(displayUrl);
+        this.onClick!(this.src);
       });
     }
 
-    img.onload = () => {
-      img.style.opacity = "1";
-    };
-
     img.onerror = () => {
-      container.innerHTML = `<div class="cm-image-error">Failed to load image</div>`;
+      container.innerHTML = `<span class="cm-image-error">Failed to load</span>`;
     };
 
     container.appendChild(img);
 
-    // Resize handle
+    // Toolbar overlay (visible on hover/selection)
+    const toolbar = document.createElement("div");
+    toolbar.className = "cm-image-toolbar";
+
+    // Delete button
+    if (this.onDelete) {
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "cm-image-btn cm-image-delete-btn";
+      deleteBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/>
+      </svg>`;
+      deleteBtn.title = "Delete image";
+      deleteBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.onDelete!(this.src, this.lineFrom, this.lineTo);
+      });
+      toolbar.appendChild(deleteBtn);
+    }
+
+    container.appendChild(toolbar);
+
+    // Resize handle (corner grip)
     const resizeHandle = document.createElement("div");
     resizeHandle.className = "cm-resize-handle";
+    resizeHandle.innerHTML = `<svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+      <circle cx="8" cy="2" r="1.2"/>
+      <circle cx="8" cy="5" r="1.2"/>
+      <circle cx="8" cy="8" r="1.2"/>
+      <circle cx="5" cy="5" r="1.2"/>
+      <circle cx="5" cy="8" r="1.2"/>
+      <circle cx="2" cy="8" r="1.2"/>
+    </svg>`;
 
     let startX = 0;
     let startWidth = 0;
@@ -181,8 +227,8 @@ class ImageWidget extends WidgetType {
     container.appendChild(resizeHandle);
     wrapper.appendChild(container);
 
-    // Caption
-    const captionEl = document.createElement("div");
+    // Caption (on its own line)
+    const captionEl = document.createElement("span");
     captionEl.className = "cm-image-caption";
     captionEl.contentEditable = "true";
     captionEl.textContent = this.caption || "";
@@ -236,8 +282,12 @@ class ImageWidget extends WidgetType {
   }
 
   eq(other: ImageWidget) {
+    // Compare displayUrl to detect when signed URL becomes available
+    // If either is null (waiting for signed URL), they're not equal
+    if (!this.displayUrl || !other.displayUrl) return false;
     return other.src === this.src && other.alt === this.alt &&
-           other.caption === this.caption && other.width === this.width;
+           other.caption === this.caption && other.width === this.width &&
+           other.displayUrl === this.displayUrl;
   }
 
   ignoreEvent(e: Event) {
@@ -349,7 +399,11 @@ class HiddenWidget extends WidgetType {
 }
 
 // Create decorations for markdown rendering
-function createDecorations(view: EditorView, onImageClick?: (src: string) => void): DecorationSet {
+function createDecorations(
+  view: EditorView,
+  onImageClick?: (src: string) => void,
+  onImageDelete?: (src: string, lineFrom: number, lineTo: number) => void
+): DecorationSet {
   if (showRawMarkdown) {
     return Decoration.none;
   }
@@ -380,7 +434,7 @@ function createDecorations(view: EditorView, onImageClick?: (src: string) => voi
       const width = widthStr ? parseInt(widthStr) : null;
       const widget = src === "uploading"
         ? new UploadPlaceholderWidget(alt || "image")
-        : new ImageWidget(src, alt, caption || null, width, line.from, line.to, view, onImageClick);
+        : new ImageWidget(src, alt, caption || null, width, line.from, line.to, view, onImageClick, onImageDelete);
       decorations.push({ from: line.from, to: line.to, deco: Decoration.replace({ widget }) });
       continue;
     }
@@ -536,16 +590,19 @@ function createDecorations(view: EditorView, onImageClick?: (src: string) => voi
 }
 
 // Decoration plugin - always rebuilds to catch signed URL updates
-const decorationPlugin = (onImageClick?: (src: string) => void) =>
+const decorationPlugin = (
+  onImageClick?: (src: string) => void,
+  onImageDelete?: (src: string, lineFrom: number, lineTo: number) => void
+) =>
   ViewPlugin.fromClass(
     class {
       decorations: DecorationSet;
       constructor(view: EditorView) {
-        this.decorations = createDecorations(view, onImageClick);
+        this.decorations = createDecorations(view, onImageClick, onImageDelete);
       }
       update(update: ViewUpdate) {
         // Always rebuild - signed URLs might have changed
-        this.decorations = createDecorations(update.view, onImageClick);
+        this.decorations = createDecorations(update.view, onImageClick, onImageDelete);
       }
     },
     { decorations: (v) => v.decorations }
@@ -618,6 +675,7 @@ export default function MarkdownEditor({
   noteId,
   placeholder = "Start typing...",
   onImageClick,
+  onImageDelete,
   onMediaAdded,
   displayPrefs = defaultDisplayPrefs,
   onDisplayPrefsChange,
@@ -628,6 +686,7 @@ export default function MarkdownEditor({
   const onChangeRef = useRef(onChange);
   const onMediaAddedRef = useRef(onMediaAdded);
   const onImageClickRef = useRef(onImageClick);
+  const onImageDeleteRef = useRef(onImageDelete);
   const themeCompartment = useRef(new Compartment());
   const isInternalChange = useRef(false);
 
@@ -646,15 +705,18 @@ export default function MarkdownEditor({
 
   // Update signed URL store
   useEffect(() => {
+    console.log("[MarkdownEditor] imageUrls:", imageUrls);
     const newUrls: Record<string, string> = {};
     for (const url of imageUrls) {
       const signed = getSignedUrl(url);
+      console.log("[MarkdownEditor] url:", url, "signed:", signed);
       if (signed) {
         newUrls[url] = signed;
         newUrls[extractPathFromUrl(url)] = signed;
       }
     }
     if (Object.keys(newUrls).length > 0) {
+      console.log("[MarkdownEditor] Setting signed URLs:", Object.keys(newUrls).length);
       signedUrlStore.set(newUrls);
       // Refresh decorations
       viewRef.current?.dispatch({});
@@ -666,6 +728,7 @@ export default function MarkdownEditor({
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   useEffect(() => { onMediaAddedRef.current = onMediaAdded; }, [onMediaAdded]);
   useEffect(() => { onImageClickRef.current = onImageClick; }, [onImageClick]);
+  useEffect(() => { onImageDeleteRef.current = onImageDelete; }, [onImageDelete]);
 
   // Update theme and markdown visibility when prefs change
   useEffect(() => {
@@ -828,7 +891,7 @@ export default function MarkdownEditor({
         EditorState.allowMultipleSelections.of(true),
         markdown({ base: markdownLanguage, codeLanguages: languages }),
         syntaxHighlighting(markdownHighlighting),
-        decorationPlugin(onImageClickRef.current),
+        decorationPlugin(onImageClickRef.current, onImageDeleteRef.current),
         themeCompartment.current.of(createEditorTheme(displayPrefs)),
         cmPlaceholder(placeholder),
         keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
@@ -850,12 +913,24 @@ export default function MarkdownEditor({
     view.contentDOM.style.wordBreak = displayPrefs.wordWrap ? "break-word" : "normal";
     view.contentDOM.style.overflowWrap = displayPrefs.wordWrap ? "break-word" : "normal";
 
+    // Deselect images when clicking outside of them
+    const handleEditorClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.cm-image-container')) {
+        document.querySelectorAll('.cm-image-container.cm-image-selected').forEach(el => {
+          el.classList.remove('cm-image-selected');
+        });
+      }
+    };
+
     view.dom.addEventListener("paste", handlePaste);
     view.dom.addEventListener("drop", handleDrop);
+    view.dom.addEventListener("click", handleEditorClick);
 
     return () => {
       view.dom.removeEventListener("paste", handlePaste);
       view.dom.removeEventListener("drop", handleDrop);
+      view.dom.removeEventListener("click", handleEditorClick);
       view.destroy();
       viewRef.current = null;
     };
@@ -1047,8 +1122,11 @@ export default function MarkdownEditor({
 
         /* Image styles */
         .cm-image-wrapper {
-          display: block;
+          display: inline-flex;
+          flex-direction: column;
+          align-items: flex-start;
           margin: 8px 0;
+          max-width: 100%;
         }
 
         .cm-image-container {
@@ -1057,61 +1135,146 @@ export default function MarkdownEditor({
         }
 
         .cm-inline-image {
+          display: block;
           max-width: 100%;
           height: auto;
-          border-radius: 8px;
+          border-radius: 6px;
           cursor: pointer;
-          opacity: 0;
-          transition: opacity 0.2s;
         }
 
-        .cm-resize-handle {
-          position: absolute;
-          right: -4px;
-          bottom: -4px;
-          width: 10px;
-          height: 10px;
-          background: var(--foreground);
-          border: 2px solid var(--background);
-          border-radius: 50%;
-          cursor: se-resize;
-          opacity: 0;
-          transition: opacity 0.15s;
+        .cm-inline-image:hover {
+          opacity: 0.95;
         }
-        .cm-image-container:hover .cm-resize-handle {
+
+        /* Image selection state */
+        .cm-image-container.cm-image-selected {
+          outline: 2px solid var(--foreground);
+          outline-offset: 2px;
+          border-radius: 8px;
+        }
+        .cm-image-container.cm-image-selected .cm-resize-handle,
+        .cm-image-container.cm-image-selected .cm-image-toolbar {
           opacity: 1;
         }
 
-        .cm-image-error {
-          padding: 12px 16px;
-          background: var(--hover);
-          border: 1px dashed var(--border);
-          border-radius: 8px;
-          color: var(--muted);
-          font-size: 13px;
+        /* Image toolbar */
+        .cm-image-toolbar {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          display: flex;
+          gap: 4px;
+          opacity: 0;
+          transition: opacity 0.15s;
+        }
+        .cm-image-container:hover .cm-image-toolbar {
+          opacity: 1;
         }
 
+        .cm-image-btn {
+          width: 28px;
+          height: 28px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .cm-image-delete-btn {
+          background: rgba(0, 0, 0, 0.6);
+          color: white;
+        }
+        .cm-image-delete-btn:hover {
+          background: #dc2626;
+        }
+
+        /* Resize handle - corner grip with dots */
+        .cm-resize-handle {
+          position: absolute;
+          right: 4px;
+          bottom: 4px;
+          width: 16px;
+          height: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: se-resize;
+          opacity: 0;
+          transition: opacity 0.15s;
+          color: var(--foreground);
+          background: rgba(255, 255, 255, 0.8);
+          border-radius: 3px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .cm-resize-handle {
+            background: rgba(0, 0, 0, 0.6);
+          }
+        }
+        .cm-image-container:hover .cm-resize-handle,
+        .cm-image-container.cm-image-selected .cm-resize-handle {
+          opacity: 0.7;
+        }
+        .cm-resize-handle:hover {
+          opacity: 1 !important;
+        }
+
+        .cm-image-error,
         .cm-image-loading {
-          padding: 12px 16px;
+          display: inline-block;
+          padding: 8px 16px;
           background: var(--hover);
           border: 1px dashed var(--border);
-          border-radius: 8px;
+          border-radius: 6px;
           color: var(--muted);
-          font-size: 13px;
+          font-size: 12px;
         }
 
         .cm-image-caption {
+          display: block;
+          width: 100%;
           font-size: 12px;
           color: var(--muted);
-          font-style: italic;
-          text-align: center;
+          text-align: left;
           margin-top: 4px;
+          padding: 2px 6px;
           outline: none;
-          min-height: 1.4em;
+          border-radius: 4px;
+        }
+        .cm-image-caption:hover,
+        .cm-image-caption:focus {
+          background: var(--hover);
         }
         .cm-image-caption:empty::before {
           content: attr(data-placeholder);
-          opacity: 0.5;
+          opacity: 0.4;
+          font-style: italic;
+        }
+
+        /* Upload placeholder */
+        .cm-upload-placeholder {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 20px;
+          background: var(--hover);
+          border: 1px dashed var(--border);
+          border-radius: 6px;
+          color: var(--muted);
+          font-size: 12px;
+        }
+
+        .cm-upload-spinner {
+          width: 14px;
+          height: 14px;
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
         }
 
         /* Checkbox styles */
@@ -1155,31 +1318,6 @@ export default function MarkdownEditor({
         .cm-bullet {
           display: inline;
           margin-right: 8px;
-        }
-
-        /* Upload placeholder */
-        .cm-upload-placeholder {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 12px;
-          background: var(--hover);
-          border: 1px dashed var(--border);
-          border-radius: 6px;
-          margin: 8px 0;
-          color: var(--muted);
-          font-size: 13px;
-        }
-
-        .cm-upload-spinner {
-          width: 16px;
-          height: 16px;
-          animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
         }
       `}</style>
     </div>

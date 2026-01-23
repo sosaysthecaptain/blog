@@ -6,6 +6,7 @@ import { findRemovedFiles, deleteFileByUrl } from "@/lib/notes-storage";
 import { getCurrentUser, isAdminEmail } from "@/lib/auth";
 import { useAutosave } from "@/hooks/useAutosave";
 import { useFocusSync } from "@/hooks/useFocusSync";
+import { useSignedUrls } from "@/hooks/useSignedUrls";
 import MarkdownEditor from "./MarkdownEditor";
 import TagInput from "./TagInput";
 import ImageLightbox, { extractImagesFromHtml } from "@/components/ImageLightbox";
@@ -55,6 +56,13 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
   // File cleanup state
   const [pendingDeleteFiles, setPendingDeleteFiles] = useState<string[]>([]);
   const [showDeleteFilesDialog, setShowDeleteFilesDialog] = useState(false);
+
+  // Image delete state
+  const [pendingImageDelete, setPendingImageDelete] = useState<{
+    src: string;
+    lineFrom: number;
+    lineTo: number;
+  } | null>(null);
 
   // Lightbox state
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -128,17 +136,65 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
   const isSaving = autosaveStatus === "saving";
 
   // Extract images for lightbox
-  const allImages = useMemo(() => extractImagesFromHtml(content), [content]);
+  const allImageUrls = useMemo(() => extractImagesFromHtml(content), [content]);
+
+  // Sign URLs that need signing (B2 storage URLs)
+  const { getSignedUrl } = useSignedUrls(allImageUrls);
+
+  // Get signed versions of all images for the lightbox
+  const signedImages = useMemo(() => {
+    return allImageUrls.map(url => {
+      // Check if this URL needs signing
+      if (url.startsWith("/api/files/")) {
+        return getSignedUrl(url) || url; // Fall back to original if not yet signed
+      }
+      return url;
+    });
+  }, [allImageUrls, getSignedUrl]);
 
   const openLightbox = useCallback((src: string) => {
-    const index = allImages.indexOf(src);
+    // Find by original URL
+    const index = allImageUrls.indexOf(src);
     setLightboxIndex(index >= 0 ? index : 0);
     setLightboxOpen(true);
-  }, [allImages]);
+  }, [allImageUrls]);
 
   const closeLightbox = useCallback(() => setLightboxOpen(false), []);
-  const nextImage = useCallback(() => setLightboxIndex((i) => (i + 1) % allImages.length), [allImages.length]);
-  const prevImage = useCallback(() => setLightboxIndex((i) => (i - 1 + allImages.length) % allImages.length), [allImages.length]);
+  const nextImage = useCallback(() => setLightboxIndex((i) => (i + 1) % signedImages.length), [signedImages.length]);
+  const prevImage = useCallback(() => setLightboxIndex((i) => (i - 1 + signedImages.length) % signedImages.length), [signedImages.length]);
+
+  // Image delete handlers
+  const handleImageDeleteRequest = useCallback((src: string, lineFrom: number, lineTo: number) => {
+    setPendingImageDelete({ src, lineFrom, lineTo });
+  }, []);
+
+  const handleImageDeleteConfirm = useCallback(async () => {
+    if (!pendingImageDelete) return;
+
+    const { src } = pendingImageDelete;
+
+    try {
+      // Delete from Backblaze
+      await deleteFileByUrl(src);
+
+      // Remove from content - find the line with this image
+      const lines = content.split("\n");
+      const newLines = lines.filter(line => {
+        // Check if this line contains the image markdown
+        const imageMatch = line.match(/^!\[[^\]]*\]\(([^\s)"=]+)/);
+        return !(imageMatch && imageMatch[1] === src);
+      });
+      setContent(newLines.join("\n"));
+    } catch (error) {
+      console.error("Failed to delete image:", error);
+    }
+
+    setPendingImageDelete(null);
+  }, [pendingImageDelete, content]);
+
+  const handleImageDeleteCancel = useCallback(() => {
+    setPendingImageDelete(null);
+  }, []);
 
   // Load available tags and tag colors
   useEffect(() => {
@@ -511,6 +567,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
           content={content}
           onChange={setContent}
           onImageClick={openLightbox}
+          onImageDelete={handleImageDeleteRequest}
           noteId={note.id!}
           onMediaAdded={handleMediaAdded}
           displayPrefs={displayPrefs}
@@ -519,9 +576,9 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
       </div>
 
       {/* Lightbox */}
-      {lightboxOpen && allImages.length > 0 && (
+      {lightboxOpen && signedImages.length > 0 && (
         <ImageLightbox
-          images={allImages}
+          images={signedImages}
           currentIndex={lightboxIndex}
           onClose={closeLightbox}
           onNext={nextImage}
@@ -551,6 +608,18 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
         variant="danger"
         onConfirm={handleConfirmDeleteFiles}
         onCancel={handleSkipDeleteFiles}
+      />
+
+      {/* Image Delete Confirmation */}
+      <ConfirmDialog
+        open={!!pendingImageDelete}
+        title="Delete Image"
+        message="This will permanently delete the image from storage. This cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleImageDeleteConfirm}
+        onCancel={handleImageDeleteCancel}
       />
     </div>
   );
