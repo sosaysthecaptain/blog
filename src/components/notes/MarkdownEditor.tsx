@@ -17,7 +17,7 @@ import {
 import { RangeSetBuilder } from "@codemirror/state";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import { uploadNoteImage, uploadNoteFile } from "@/lib/notes-storage";
@@ -266,6 +266,7 @@ class CheckboxWidget extends WidgetType {
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = this.isChecked;
+    checkbox.tabIndex = -1; // Don't capture Tab key
     checkbox.className = `cm-checkbox ${this.isChecked ? "cm-checkbox-checked" : ""}`;
 
     checkbox.addEventListener("click", (e) => {
@@ -830,7 +831,7 @@ export default function MarkdownEditor({
         decorationPlugin(onImageClickRef.current),
         themeCompartment.current.of(createEditorTheme(displayPrefs)),
         cmPlaceholder(placeholder),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
+        keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
         updateListener,
       ],
     });
