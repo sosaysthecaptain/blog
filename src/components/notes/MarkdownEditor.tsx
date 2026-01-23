@@ -1107,10 +1107,12 @@ export default function MarkdownEditor({
         }
 
         /* Image styles */
+        .cm-line:has(.cm-image-wrapper) {
+          caret-color: transparent;
+        }
+
         .cm-image-wrapper {
-          display: inline-flex;
-          flex-direction: column;
-          align-items: flex-start;
+          display: block;
           margin: 8px 0;
           max-width: 100%;
         }
@@ -1118,6 +1120,7 @@ export default function MarkdownEditor({
         .cm-image-container {
           position: relative;
           display: inline-block;
+          line-height: 0;
         }
 
         .cm-inline-image {
@@ -1169,27 +1172,25 @@ export default function MarkdownEditor({
           background: #dc2626;
         }
 
-        /* Resize handle - diagonal lines */
+        /* Resize handle - simple square */
         .cm-resize-handle {
           position: absolute;
-          right: 2px;
-          bottom: 2px;
-          width: 12px;
-          height: 12px;
+          right: -4px;
+          bottom: -4px;
+          width: 8px;
+          height: 8px;
           cursor: se-resize;
           opacity: 0;
           transition: opacity 0.15s;
-          background:
-            linear-gradient(135deg, transparent 30%, var(--foreground) 30%, var(--foreground) 35%, transparent 35%),
-            linear-gradient(135deg, transparent 50%, var(--foreground) 50%, var(--foreground) 55%, transparent 55%),
-            linear-gradient(135deg, transparent 70%, var(--foreground) 70%, var(--foreground) 75%, transparent 75%);
+          background: var(--foreground);
+          border-radius: 1px;
         }
         .cm-image-container:hover .cm-resize-handle,
         .cm-image-container.cm-image-selected .cm-resize-handle {
-          opacity: 0.4;
+          opacity: 0.6;
         }
         .cm-resize-handle:hover {
-          opacity: 0.8 !important;
+          opacity: 1 !important;
         }
 
         .cm-image-error,
