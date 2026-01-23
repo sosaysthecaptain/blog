@@ -16,9 +16,10 @@ Tracking document at: `/Users/marcauger/Documents/blog/MARKDOWN_EDITOR_FIXES.md`
 - [ ] Code blocks - DEFERRED (reverted to plain text, skip inline formatting inside)
 
 ## Images
-- [ ] Resize handles not working
-- [ ] Captions not working (asked 3+ times)
-- [ ] Carousel/lightbox broken
+- [x] Resize handles - improved visibility (corner triangle grip)
+- [x] Captions - improved styling, hover/focus states
+- [x] Upload placeholder - better centered styling
+- [ ] Carousel/lightbox - needs testing
 
 ## Lists
 - [x] Checkbox alignment - fixed with `top: 2px`

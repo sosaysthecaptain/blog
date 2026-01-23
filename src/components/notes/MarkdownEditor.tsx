@@ -616,9 +616,10 @@ function createEditorTheme(prefs: EditorDisplayPrefs) {
       caretColor: "var(--foreground)",
       padding: "0",
       minHeight: "400px",
-      whiteSpace: `${prefs.wordWrap ? "pre-wrap" : "pre"} !important`,
-      wordBreak: `${prefs.wordWrap ? "break-word" : "normal"} !important`,
-      overflowWrap: `${prefs.wordWrap ? "break-word" : "normal"} !important`,
+      whiteSpace: "pre-wrap !important",
+      wordBreak: "break-word !important",
+      overflowWrap: "break-word !important",
+      maxWidth: "100%",
     },
     ".cm-line": {
       padding: "0",
@@ -731,10 +732,10 @@ export default function MarkdownEditor({
       contentEl.style.fontFamily = fontFamilies[displayPrefs.font];
 
       // Apply word wrap directly
-      contentEl.style.whiteSpace = displayPrefs.wordWrap ? "pre-wrap" : "pre";
-      contentEl.style.wordBreak = displayPrefs.wordWrap ? "break-word" : "normal";
-      contentEl.style.overflowWrap = displayPrefs.wordWrap ? "break-word" : "normal";
-      contentEl.style.maxWidth = displayPrefs.wordWrap ? "100%" : "none";
+      contentEl.style.whiteSpace = "pre-wrap";
+      contentEl.style.wordBreak = "break-word";
+      contentEl.style.overflowWrap = "break-word";
+      contentEl.style.maxWidth = "100%";
 
       // Trigger decoration rebuild for markdown syntax toggle
       view.dispatch({});
@@ -774,11 +775,24 @@ export default function MarkdownEditor({
         fileSize: result.size,
       });
 
+      // Get image dimensions to decide if we should constrain the size
+      const imgWidth = await new Promise<number | null>((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(img.naturalWidth);
+        img.onerror = () => resolve(null);
+        // Use blob URL to get dimensions before signed URL
+        img.src = URL.createObjectURL(blob);
+      });
+
+      // If image is small (under 500px), preserve its width
+      // Otherwise, let it be full-width (no width specified)
+      const widthSuffix = imgWidth && imgWidth < 500 ? ` =${imgWidth}` : "";
+
       const currentContent = view.state.doc.toString();
       const idx = currentContent.indexOf(placeholderText);
       if (idx !== -1) {
         view.dispatch({
-          changes: { from: idx, to: idx + placeholderText.length, insert: `![](${result.url})` },
+          changes: { from: idx, to: idx + placeholderText.length, insert: `![](${result.url}${widthSuffix})` },
         });
       }
     } catch (error) {
@@ -895,9 +909,10 @@ export default function MarkdownEditor({
     // Apply initial styles directly to DOM
     view.dom.style.fontFamily = fontFamilies[displayPrefs.font];
     view.contentDOM.style.fontFamily = fontFamilies[displayPrefs.font];
-    view.contentDOM.style.whiteSpace = displayPrefs.wordWrap ? "pre-wrap" : "pre";
-    view.contentDOM.style.wordBreak = displayPrefs.wordWrap ? "break-word" : "normal";
-    view.contentDOM.style.overflowWrap = displayPrefs.wordWrap ? "break-word" : "normal";
+    view.contentDOM.style.whiteSpace = "pre-wrap";
+    view.contentDOM.style.wordBreak = "break-word";
+    view.contentDOM.style.overflowWrap = "break-word";
+    view.contentDOM.style.maxWidth = "100%";
 
     // Deselect images when clicking outside of them
     const handleEditorClick = (e: MouseEvent) => {
@@ -954,17 +969,6 @@ export default function MarkdownEditor({
 
           {menuOpen && (
             <div className="md-settings-menu">
-              <label className="md-menu-item">
-                <input
-                  type="checkbox"
-                  checked={displayPrefs.wordWrap}
-                  onChange={(e) => onDisplayPrefsChange({ ...displayPrefs, wordWrap: e.target.checked })}
-                />
-                <span>Word wrap</span>
-              </label>
-
-              <div className="md-menu-divider" />
-
               <div className="md-menu-label">Font</div>
               <div className="md-font-buttons">
                 {(["mono", "serif", "sans"] as const).map((font) => (
