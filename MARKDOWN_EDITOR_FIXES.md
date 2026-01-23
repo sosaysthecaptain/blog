@@ -13,7 +13,7 @@ Tracking document at: `/Users/marcauger/Documents/blog/MARKDOWN_EDITOR_FIXES.md`
 - [x] Bold - `**` hidden
 - [x] Inline code - backticks hidden
 - [x] Italic - `*` hidden (skip positions used by bold)
-- [x] Code blocks - only hide fences when both open/close exist
+- [ ] Code blocks - DEFERRED (reverted to plain text, skip inline formatting inside)
 
 ## Images
 - [ ] Resize handles not working
@@ -21,13 +21,17 @@ Tracking document at: `/Users/marcauger/Documents/blog/MARKDOWN_EDITOR_FIXES.md`
 - [ ] Carousel/lightbox broken
 
 ## Lists
-- [ ] Checkbox alignment with text is wrong
-- [ ] Unwanted checkmark graphic added - remove or fix
-- [ ] List spacing too wide (unordered lists and checklists)
-- [ ] Hierarchical/nested lists not working
+- [x] Checkbox alignment - fixed with `top: 2px`
+- [x] Unwanted checkmark - fixed with `-webkit-appearance: none`
+- [x] Inline formatting (bold/italic) now works in list items
+- [x] List spacing - working
+- [x] Hierarchical/nested lists - fixed (2 spaces per level, 20px margin per level)
 
 ## Text Formatting
 - [ ] Bold text renders as italic (might be related to asterisks showing)
+
+## Slash Menu
+- [ ] Notion-style slash command menu (type / to open)
 
 ## Other
 - Font: Crimson Pro via `var(--font-serif)`

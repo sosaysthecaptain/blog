@@ -250,7 +250,8 @@ class CheckboxWidget extends WidgetType {
   constructor(
     readonly isChecked: boolean,
     readonly checkboxPos: number,
-    readonly view: EditorView
+    readonly view: EditorView,
+    readonly indentLevel: number = 0
   ) {
     super();
   }
@@ -258,6 +259,9 @@ class CheckboxWidget extends WidgetType {
   toDOM() {
     const span = document.createElement("span");
     span.className = "cm-checkbox-wrapper";
+    if (this.indentLevel > 0) {
+      span.style.marginLeft = `${this.indentLevel * 20}px`;
+    }
 
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
@@ -278,7 +282,7 @@ class CheckboxWidget extends WidgetType {
   }
 
   eq(other: CheckboxWidget) {
-    return other.isChecked === this.isChecked && other.checkboxPos === this.checkboxPos;
+    return other.isChecked === this.isChecked && other.checkboxPos === this.checkboxPos && other.indentLevel === this.indentLevel;
   }
 
   ignoreEvent() {
@@ -288,11 +292,22 @@ class CheckboxWidget extends WidgetType {
 
 // Bullet widget
 class BulletWidget extends WidgetType {
+  constructor(readonly indentLevel: number = 0) {
+    super();
+  }
+
   toDOM() {
     const span = document.createElement("span");
     span.className = "cm-bullet";
+    if (this.indentLevel > 0) {
+      span.style.marginLeft = `${this.indentLevel * 20}px`;
+    }
     span.textContent = "•";
     return span;
+  }
+
+  eq(other: BulletWidget) {
+    return other.indentLevel === this.indentLevel;
   }
 }
 
@@ -341,55 +356,21 @@ function createDecorations(view: EditorView, onImageClick?: (src: string) => voi
   const doc = view.state.doc;
   const decorations: Array<{ from: number; to: number; deco: Decoration }> = [];
 
-  // First pass: find all complete code blocks (opening AND closing ```)
-  const codeBlockRanges: Array<{ startLine: number; endLine: number }> = [];
-  let openCodeBlockLine: number | null = null;
-
-  for (let lineNum = 1; lineNum <= doc.lines; lineNum++) {
-    const text = doc.line(lineNum).text;
-    if (text.trimStart().startsWith("```")) {
-      if (openCodeBlockLine === null) {
-        openCodeBlockLine = lineNum;
-      } else {
-        // Found closing - record the complete block
-        codeBlockRanges.push({ startLine: openCodeBlockLine, endLine: lineNum });
-        openCodeBlockLine = null;
-      }
-    }
-  }
-
-  // Helper to check if a line is inside a code block
-  const isInCodeBlock = (lineNum: number): boolean => {
-    for (const range of codeBlockRanges) {
-      if (lineNum > range.startLine && lineNum < range.endLine) return true;
-    }
-    return false;
-  };
-
-  // Helper to check if line is a code block fence (that's properly closed)
-  const isCodeBlockFence = (lineNum: number): boolean => {
-    for (const range of codeBlockRanges) {
-      if (lineNum === range.startLine || lineNum === range.endLine) return true;
-    }
-    return false;
-  };
+  // Track if we're inside a code block (to skip inline formatting)
+  let inCodeBlock = false;
 
   for (let lineNum = 1; lineNum <= doc.lines; lineNum++) {
     const line = doc.line(lineNum);
     const text = line.text;
 
-    // Hide code block fence lines (only if properly closed)
-    if (isCodeBlockFence(lineNum)) {
-      decorations.push({
-        from: line.from,
-        to: line.to,
-        deco: Decoration.replace({ widget: new HiddenWidget() }),
-      });
+    // Toggle code block state on ``` lines, but don't decorate them
+    if (text.trimStart().startsWith("```")) {
+      inCodeBlock = !inCodeBlock;
       continue;
     }
 
-    // Skip content inside code blocks
-    if (isInCodeBlock(lineNum)) continue;
+    // Skip all processing inside code blocks
+    if (inCodeBlock) continue;
 
     // Images
     const imageMatch = text.match(/^!\[([^\]]*)\]\(([^\s)"=]+)(?:\s*=(\d+))?(?:\s*"([^"]*)")?\)$/);
@@ -406,26 +387,31 @@ function createDecorations(view: EditorView, onImageClick?: (src: string) => voi
     // Task lists: - [ ] or - [x]
     const taskMatch = text.match(/^(\s*)- \[([ x])\]/);
     if (taskMatch) {
-      const [, indent, check] = taskMatch;
-      const checkStart = line.from + indent.length;
+      const [fullMatch, indent, check] = taskMatch;
+      const indentLevel = Math.floor(indent.length / 2); // 2 spaces per level
+      // Replace entire prefix including whitespace
       decorations.push({
-        from: checkStart,
-        to: checkStart + 6,
-        deco: Decoration.replace({ widget: new CheckboxWidget(check === "x", checkStart, view) }),
+        from: line.from,
+        to: line.from + fullMatch.length,
+        deco: Decoration.replace({ widget: new CheckboxWidget(check === "x", line.from + indent.length, view, indentLevel) }),
       });
-      continue;
+      // Don't continue - allow inline formatting in list items
     }
 
-    // Unordered lists: - item
-    const listMatch = text.match(/^(\s*)- (?!\[)/);
-    if (listMatch) {
-      const bulletStart = line.from + listMatch[1].length;
-      decorations.push({
-        from: bulletStart,
-        to: bulletStart + 2,
-        deco: Decoration.replace({ widget: new BulletWidget() }),
-      });
-      continue;
+    // Unordered lists: - item (only if not a task list)
+    if (!taskMatch) {
+      const listMatch = text.match(/^(\s*)- /);
+      if (listMatch) {
+        const [fullMatch, indent] = listMatch;
+        const indentLevel = Math.floor(indent.length / 2); // 2 spaces per level
+        // Replace entire prefix including whitespace
+        decorations.push({
+          from: line.from,
+          to: line.from + fullMatch.length,
+          deco: Decoration.replace({ widget: new BulletWidget(indentLevel) }),
+        });
+        // Don't continue - allow inline formatting in list items
+      }
     }
 
     // Headings: hide # marks
@@ -488,16 +474,47 @@ function createDecorations(view: EditorView, onImageClick?: (src: string) => voi
       if (endIdx >= text.length || text.indexOf("*", endIdx) === -1) break;
     }
 
-    // Inline code: `text`
+    // Inline code: `text` - but skip ``` sequences (code block fences)
+    // First find all ``` positions to avoid
+    const tripleBacktickPositions = new Set<number>();
+    let triplePos = 0;
+    while (triplePos < text.length) {
+      const idx = text.indexOf("```", triplePos);
+      if (idx === -1) break;
+      tripleBacktickPositions.add(idx);
+      tripleBacktickPositions.add(idx + 1);
+      tripleBacktickPositions.add(idx + 2);
+      triplePos = idx + 3;
+    }
+
+    // Now find inline code, skipping positions in ```
     pos = 0;
     while (pos < text.length) {
       const idx = text.indexOf("`", pos);
       if (idx === -1) break;
-      const endIdx = text.indexOf("`", idx + 1);
-      if (endIdx === -1) break;
-      hides.push({ from: line.from + idx, to: line.from + idx + 1 });
-      hides.push({ from: line.from + endIdx, to: line.from + endIdx + 1 });
-      pos = endIdx + 1;
+      // Skip if part of ```
+      if (tripleBacktickPositions.has(idx)) {
+        pos = idx + 1;
+        continue;
+      }
+      // Find closing ` that's not part of ```
+      let endIdx = idx + 1;
+      let found = false;
+      while (endIdx < text.length) {
+        const nextTick = text.indexOf("`", endIdx);
+        if (nextTick === -1) break;
+        if (tripleBacktickPositions.has(nextTick)) {
+          endIdx = nextTick + 1;
+          continue;
+        }
+        // Found valid closing `
+        hides.push({ from: line.from + idx, to: line.from + idx + 1 });
+        hides.push({ from: line.from + nextTick, to: line.from + nextTick + 1 });
+        pos = nextTick + 1;
+        found = true;
+        break;
+      }
+      if (!found) break;
     }
 
     // Sort by position and add
@@ -1098,43 +1115,45 @@ export default function MarkdownEditor({
 
         /* Checkbox styles */
         .cm-checkbox-wrapper {
-          display: inline-flex;
-          align-items: center;
-          margin-right: 6px;
-          vertical-align: baseline;
+          display: inline;
+          margin-right: 8px;
         }
 
         .cm-checkbox {
+          -webkit-appearance: none;
+          -moz-appearance: none;
           appearance: none;
-          width: 14px;
-          height: 14px;
+          width: 13px;
+          height: 13px;
           border: 1.5px solid var(--foreground);
           border-radius: 3px;
           background: transparent;
           cursor: pointer;
-          vertical-align: text-bottom;
           position: relative;
+          top: 2px;
           margin: 0;
         }
+        .cm-checkbox:checked,
         .cm-checkbox-checked {
           background: var(--foreground);
         }
+        .cm-checkbox:checked::after,
         .cm-checkbox-checked::after {
           content: "";
           position: absolute;
           left: 3px;
           top: 0px;
           width: 4px;
-          height: 8px;
+          height: 7px;
           border: solid var(--background);
-          border-width: 0 2px 2px 0;
+          border-width: 0 1.5px 1.5px 0;
           transform: rotate(45deg);
         }
 
         /* Bullet styles */
         .cm-bullet {
-          color: var(--foreground);
-          margin-right: 6px;
+          display: inline;
+          margin-right: 8px;
         }
 
         /* Upload placeholder */
