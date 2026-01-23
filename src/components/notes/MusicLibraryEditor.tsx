@@ -450,27 +450,29 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
         onDrop={handleDrop}
         onDragOver={handleDragOver}
       >
-        {/* Header with search */}
+        {/* Header with breadcrumb and search */}
         <div className="flex items-center justify-between px-4 py-1 border-b border-[--border] bg-[--sidebar-bg]">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <button
-              type="button"
-              onClick={onBack}
-              className="p-1 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            {parentFolder && (
-              <span className="text-xs text-[--muted]">{parentFolder.title} /</span>
-            )}
+          <div className="flex items-center gap-0 flex-1 min-w-0">
+            <nav className="breadcrumb-nav" style={{ fontSize: "12px" }}>
+              <button type="button" onClick={onBack} className="breadcrumb-item">
+                Music
+              </button>
+              {parentFolder && (
+                <>
+                  <span className="breadcrumb-separator">&gt;</span>
+                  <button type="button" onClick={onBack} className="breadcrumb-item">
+                    {parentFolder.title}
+                  </button>
+                </>
+              )}
+              <span className="breadcrumb-separator">&gt;</span>
+            </nav>
             <input
               type="text"
               value={localLibrary.title}
               onChange={(e) => handleTitleChange(e.target.value)}
               placeholder="Untitled"
-              className="text-base font-semibold text-[--foreground] bg-transparent border-none outline-none flex-1 min-w-0"
+              className="text-sm font-medium text-[--foreground] bg-transparent border-none outline-none flex-1 min-w-0 ml-1"
               style={{ fontFamily: "'Lucida Grande', 'Lucida Sans Unicode', sans-serif" }}
             />
           </div>

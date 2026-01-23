@@ -491,26 +491,27 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
       }}
     >
       <div className={isFullWidth ? "px-4 py-6 md:px-8 md:py-12" : "max-w-4xl mx-auto px-4 py-6 md:px-8 md:py-12"}>
-        {/* Header row with back button and controls */}
-        <div className="flex items-center justify-between mb-6">
-          {/* Back button */}
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex items-center gap-2 text-sm text-[--muted] hover:text-[--foreground]"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            {parentFolder ? (
-              <>
-                <span className="hidden sm:inline">Back to {parentFolder.title}</span>
-                <span className="sm:hidden">Back</span>
-              </>
-            ) : (
-              <span>Back</span>
-            )}
+        {/* Breadcrumb navigation */}
+        <nav className="breadcrumb-nav mb-4">
+          <button type="button" onClick={onBack} className="breadcrumb-item">
+            Moodboards
           </button>
+          {parentFolder && (
+            <>
+              <span className="breadcrumb-separator">&gt;</span>
+              <button type="button" onClick={onBack} className="breadcrumb-item">
+                {parentFolder.title}
+              </button>
+            </>
+          )}
+          <span className="breadcrumb-separator">&gt;</span>
+          <span className="breadcrumb-item breadcrumb-current">
+            {title || "Untitled"}
+          </span>
+        </nav>
+
+        {/* Header row with controls */}
+        <div className="flex items-center justify-end mb-6">
 
           {/* Action buttons and controls */}
           <div className="flex items-center gap-2">
