@@ -166,16 +166,12 @@ class ImageWidget extends WidgetType {
 
     container.appendChild(img);
 
-    // Toolbar overlay (visible on hover/selection)
-    const toolbar = document.createElement("div");
-    toolbar.className = "cm-image-toolbar";
-
-    // Delete button
+    // Delete button (top-right corner)
     if (this.onDelete) {
       const deleteBtn = document.createElement("button");
-      deleteBtn.className = "cm-image-btn cm-image-delete-btn";
-      deleteBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/>
+      deleteBtn.className = "cm-image-delete-btn";
+      deleteBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+        <path d="M2 2l8 8M10 2l-8 8"/>
       </svg>`;
       deleteBtn.title = "Delete image";
       deleteBtn.addEventListener("click", (e) => {
@@ -183,22 +179,12 @@ class ImageWidget extends WidgetType {
         e.stopPropagation();
         this.onDelete!(this.src, this.lineFrom, this.lineTo);
       });
-      toolbar.appendChild(deleteBtn);
+      container.appendChild(deleteBtn);
     }
 
-    container.appendChild(toolbar);
-
-    // Resize handle (corner grip)
+    // Resize handle (bottom-right corner, diagonal lines)
     const resizeHandle = document.createElement("div");
     resizeHandle.className = "cm-resize-handle";
-    resizeHandle.innerHTML = `<svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-      <circle cx="8" cy="2" r="1.2"/>
-      <circle cx="8" cy="5" r="1.2"/>
-      <circle cx="8" cy="8" r="1.2"/>
-      <circle cx="5" cy="5" r="1.2"/>
-      <circle cx="5" cy="8" r="1.2"/>
-      <circle cx="2" cy="8" r="1.2"/>
-    </svg>`;
 
     let startX = 0;
     let startWidth = 0;
@@ -1153,72 +1139,57 @@ export default function MarkdownEditor({
           border-radius: 8px;
         }
         .cm-image-container.cm-image-selected .cm-resize-handle,
-        .cm-image-container.cm-image-selected .cm-image-toolbar {
+        .cm-image-container.cm-image-selected .cm-image-delete-btn {
           opacity: 1;
         }
 
-        /* Image toolbar */
-        .cm-image-toolbar {
+        /* Delete button */
+        .cm-image-delete-btn {
           position: absolute;
-          top: 8px;
-          right: 8px;
-          display: flex;
-          gap: 4px;
-          opacity: 0;
-          transition: opacity 0.15s;
-        }
-        .cm-image-container:hover .cm-image-toolbar {
-          opacity: 1;
-        }
-
-        .cm-image-btn {
-          width: 28px;
-          height: 28px;
+          top: 6px;
+          right: 6px;
+          width: 20px;
+          height: 20px;
           display: flex;
           align-items: center;
           justify-content: center;
           border: none;
-          border-radius: 6px;
+          border-radius: 50%;
+          background: rgba(0, 0, 0, 0.5);
+          color: white;
           cursor: pointer;
+          opacity: 0;
           transition: all 0.15s;
         }
-
-        .cm-image-delete-btn {
-          background: rgba(0, 0, 0, 0.6);
-          color: white;
+        .cm-image-container:hover .cm-image-delete-btn {
+          opacity: 0.7;
         }
         .cm-image-delete-btn:hover {
+          opacity: 1 !important;
           background: #dc2626;
         }
 
-        /* Resize handle - corner grip with dots */
+        /* Resize handle - diagonal lines */
         .cm-resize-handle {
           position: absolute;
-          right: 4px;
-          bottom: 4px;
-          width: 16px;
-          height: 16px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          right: 2px;
+          bottom: 2px;
+          width: 12px;
+          height: 12px;
           cursor: se-resize;
           opacity: 0;
           transition: opacity 0.15s;
-          color: var(--foreground);
-          background: rgba(255, 255, 255, 0.8);
-          border-radius: 3px;
-        }
-        @media (prefers-color-scheme: dark) {
-          .cm-resize-handle {
-            background: rgba(0, 0, 0, 0.6);
-          }
+          background:
+            linear-gradient(135deg, transparent 30%, var(--foreground) 30%, var(--foreground) 35%, transparent 35%),
+            linear-gradient(135deg, transparent 50%, var(--foreground) 50%, var(--foreground) 55%, transparent 55%),
+            linear-gradient(135deg, transparent 70%, var(--foreground) 70%, var(--foreground) 75%, transparent 75%);
         }
         .cm-image-container:hover .cm-resize-handle,
         .cm-image-container.cm-image-selected .cm-resize-handle {
-          opacity: 0.7;
+          opacity: 0.4;
         }
         .cm-resize-handle:hover {
-          opacity: 1 !important;
+          opacity: 0.8 !important;
         }
 
         .cm-image-error,
