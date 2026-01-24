@@ -1127,7 +1127,8 @@ export default function MarkdownEditor({
         }
 
         .cm-image-wrapper {
-          display: inline-block;
+          display: inline-flex;
+          flex-direction: column;
           margin: 8px 0;
           max-width: 100%;
         }
@@ -1221,6 +1222,7 @@ export default function MarkdownEditor({
 
         .cm-image-caption {
           display: block;
+          max-width: 100%;
           font-size: 12px;
           color: var(--muted);
           text-align: left;
@@ -1228,6 +1230,8 @@ export default function MarkdownEditor({
           padding: 2px 6px;
           outline: none;
           border-radius: 4px;
+          word-wrap: break-word;
+          overflow-wrap: break-word;
         }
         .cm-image-caption:hover,
         .cm-image-caption:focus {

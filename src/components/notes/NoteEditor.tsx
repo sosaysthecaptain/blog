@@ -500,39 +500,35 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
 
         {/* Date, Time & Tags row */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4 text-sm text-[--muted]">
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="bg-transparent outline-none italic cursor-pointer"
-            style={{ colorScheme: 'light dark' }}
-          />
-          <div className="flex items-center gap-1 group/time">
+          <div className="flex items-center gap-2 group/datetime">
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="bg-transparent outline-none italic cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden"
+            />
             {time ? (
-              <>
+              <span className="group/time inline-flex items-center gap-1">
                 <input
                   type="time"
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
-                  className="bg-transparent outline-none italic cursor-pointer"
-                  style={{ colorScheme: 'light dark' }}
+                  className="bg-transparent outline-none italic cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden"
                 />
                 <button
                   type="button"
                   onClick={() => setTime("")}
-                  className="p-0.5 hover:bg-[--hover] rounded text-[--muted] hover:text-[--foreground] opacity-0 group-hover/time:opacity-100 transition-opacity"
+                  className="text-[--muted] hover:text-[--foreground] opacity-0 group-hover/time:opacity-100 transition-opacity"
                   title="Clear time"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  ×
                 </button>
-              </>
+              </span>
             ) : (
               <button
                 type="button"
                 onClick={() => setTime(new Date().toTimeString().slice(0, 5))}
-                className="px-2 py-0.5 text-xs border border-dashed border-[--border] rounded hover:border-[--accent] hover:text-[--accent] italic"
+                className="px-2 py-0.5 text-xs border border-dashed border-[--border] rounded hover:border-[--accent] hover:text-[--accent] italic opacity-0 group-hover/datetime:opacity-100 transition-opacity"
               >
                 + time
               </button>
