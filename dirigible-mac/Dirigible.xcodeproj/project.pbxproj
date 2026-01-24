@@ -20,6 +20,8 @@
 		A100000B /* MarkdownTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D /* MarkdownTextView.swift */; };
 		A100000C /* MoodboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000E /* MoodboardView.swift */; };
 		A100000D /* MusicLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000F /* MusicLibraryView.swift */; };
+		D18992DF2F25450A0033C0E9 /* MarkdownEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D18992DE2F25450A0033C0E9 /* MarkdownEditorView.swift */; };
+		D18992E22F2545190033C0E9 /* index.html in Resources */ = {isa = PBXBuildFile; fileRef = D18992E02F2545190033C0E9 /* index.html */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -38,6 +40,8 @@
 		A200000D /* MarkdownTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTextView.swift; sourceTree = "<group>"; };
 		A200000E /* MoodboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoodboardView.swift; sourceTree = "<group>"; };
 		A200000F /* MusicLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicLibraryView.swift; sourceTree = "<group>"; };
+		D18992DE2F25450A0033C0E9 /* MarkdownEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEditorView.swift; sourceTree = "<group>"; };
+		D18992E02F2545190033C0E9 /* index.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = index.html; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -85,6 +89,8 @@
 		A5000004 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				D18992E12F2545190033C0E9 /* Resources */,
+				D18992DE2F25450A0033C0E9 /* MarkdownEditorView.swift */,
 				A2000002 /* MainView.swift */,
 				A2000003 /* OnboardingView.swift */,
 				A2000004 /* LoginView.swift */,
@@ -95,6 +101,14 @@
 				A200000F /* MusicLibraryView.swift */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		D18992E12F2545190033C0E9 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				D18992E02F2545190033C0E9 /* index.html */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -161,6 +175,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D18992E22F2545190033C0E9 /* index.html in Resources */,
 				A1000006 /* Assets.xcassets in Resources */,
 				A1000008 /* GoogleService-Info.plist in Resources */,
 			);
@@ -177,6 +192,7 @@
 				A1000009 /* DirigibleStyle.swift in Sources */,
 				A1000002 /* MainView.swift in Sources */,
 				A1000003 /* OnboardingView.swift in Sources */,
+				D18992DF2F25450A0033C0E9 /* MarkdownEditorView.swift in Sources */,
 				A1000004 /* LoginView.swift in Sources */,
 				A1000005 /* SettingsView.swift in Sources */,
 				A100000A /* HTMLContentView.swift in Sources */,
