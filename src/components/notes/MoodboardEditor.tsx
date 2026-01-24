@@ -492,9 +492,9 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
     >
       <div className={isFullWidth ? "px-4 py-6 md:px-8 md:py-12" : "max-w-4xl mx-auto px-4 py-6 md:px-8 md:py-12"}>
         {/* Breadcrumb navigation */}
-        <nav className="breadcrumb-nav mb-4">
+        <nav className="breadcrumb-nav mb-3">
           <button type="button" onClick={onBack} className="breadcrumb-item">
-            Moodboards
+            root
           </button>
           {parentFolder && (
             <button type="button" onClick={onBack} className="breadcrumb-item">

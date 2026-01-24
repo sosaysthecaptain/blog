@@ -429,50 +429,38 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 
-/* Breadcrumb navigation - connected pill bar */
+/* Breadcrumb navigation - pill tags with gaps */
 .breadcrumb-nav {
   display: inline-flex;
-  align-items: stretch;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
 }
 
 .breadcrumb-item {
-  background: #1a1a1a;
-  color: #ffffff;
-  border: none;
-  padding: 5px 10px;
+  background: var(--background);
+  color: var(--foreground);
+  border: 1px solid var(--foreground);
+  border-radius: 6px;
+  padding: 4px 10px;
   cursor: pointer;
   white-space: nowrap;
-  transition: opacity 0.15s;
+  transition: all 0.15s;
 }
 
 .breadcrumb-item:hover {
-  opacity: 0.8;
+  background: var(--foreground);
+  color: var(--background);
 }
 
 .breadcrumb-item::after {
   content: " ›";
-  opacity: 0.6;
+  opacity: 0.5;
   margin-left: 4px;
-}
-
-/* First item - rounded left */
-.breadcrumb-item:first-child {
-  border-radius: 6px 0 0 6px;
-}
-
-/* Last item - rounded right, no caret */
-.breadcrumb-item:last-child {
-  border-radius: 0 6px 6px 0;
 }
 
 .breadcrumb-item:last-child::after {
   content: none;
-}
-
-/* Only child - fully rounded */
-.breadcrumb-item:only-child {
-  border-radius: 6px;
 }
 
 .breadcrumb-current {
@@ -480,13 +468,8 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 .breadcrumb-current:hover {
-  opacity: 1;
-}
-
-/* Dark mode - invert colors */
-:root.dark .breadcrumb-item {
-  background: #e5e5e5;
-  color: #1a1a1a;
+  background: var(--background);
+  color: var(--foreground);
 }
 
 /* Hide the old separator */

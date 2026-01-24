@@ -446,13 +446,13 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
     <div className="flex-1 h-full overflow-y-auto bg-[--background]">
       <div className={isFullWidth ? "px-4 py-6 md:px-8 md:py-12" : "max-w-3xl mx-auto px-4 py-6 md:px-8 md:py-12"}>
         {/* Breadcrumb navigation */}
-        <nav className="breadcrumb-nav mb-6">
+        <nav className="breadcrumb-nav mb-4">
           <button
             type="button"
             onClick={() => onNavigateToFolder ? onNavigateToFolder(null) : handleBack()}
             className="breadcrumb-item"
           >
-            Notes
+            root
           </button>
           {folderPath.map((folder) => (
             <button

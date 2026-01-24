@@ -51,12 +51,14 @@ export function sortItems(items: NoteItem[], sortOption: SortOption): NoteItem[]
 
 interface FolderViewProps {
   folder: NoteItem | null;
+  folderPath?: NoteItem[]; // Full path from root to current folder
   items: NoteItem[];
   searchQuery: string;
   sortOption: SortOption;
   onSortChange: (sort: SortOption) => void;
   onSelect: (item: NoteItem) => void;
   onBack: () => void;
+  onNavigateToFolder?: (folderId: string | null) => void;
   onCreateNote: (parentId: string | null) => void;
   onCreateFolder?: (parentId: string | null) => void;
   onCreateMoodboard?: (parentId: string | null) => void;
@@ -76,12 +78,14 @@ interface ContextMenuState {
 
 export default function FolderView({
   folder,
+  folderPath = [],
   items,
   searchQuery,
   sortOption,
   onSortChange,
   onSelect,
   onBack,
+  onNavigateToFolder,
   onCreateNote,
   onCreateFolder,
   onCreateMoodboard,
@@ -124,27 +128,33 @@ export default function FolderView({
       {/* Header - hidden on mobile since parent has mobile header */}
       <div className="hidden md:flex items-center justify-between px-4 py-2 border-b border-[--border] bg-[--sidebar-bg]">
         <div className="flex items-center gap-2">
-          {folder && (
+          {/* Breadcrumb navigation */}
+          <nav className="breadcrumb-nav">
             <button
               type="button"
-              onClick={onBack}
-              className="p-1 text-[--muted] hover:text-[--foreground] hover:bg-[--hover] rounded"
+              onClick={() => onNavigateToFolder ? onNavigateToFolder(null) : onBack()}
+              className="breadcrumb-item"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
+              root
             </button>
-          )}
-          <div className="flex items-center gap-1.5">
-            <svg className="w-4 h-4 text-[--muted]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
-            </svg>
-            <h1 className="text-base font-semibold text-[--foreground]">
-              {folder?.title || "All Notes"}
-            </h1>
-          </div>
+            {folderPath.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => onNavigateToFolder ? onNavigateToFolder(f.id!) : onBack()}
+                className="breadcrumb-item"
+              >
+                {f.title}
+              </button>
+            ))}
+            {folder && (
+              <span className="breadcrumb-item breadcrumb-current">
+                {folder.title}
+              </span>
+            )}
+          </nav>
           {searchQuery && (
-            <span className="text-xs text-[--muted]">
+            <span className="text-xs text-[--muted] ml-2">
               &quot;{searchQuery}&quot;
             </span>
           )}

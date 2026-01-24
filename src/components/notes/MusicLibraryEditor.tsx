@@ -455,7 +455,7 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
           <div className="flex items-center gap-0 flex-1 min-w-0">
             <nav className="breadcrumb-nav" style={{ fontSize: "12px" }}>
               <button type="button" onClick={onBack} className="breadcrumb-item">
-                Music
+                root
               </button>
               {parentFolder && (
                 <button type="button" onClick={onBack} className="breadcrumb-item">
