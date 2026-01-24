@@ -295,9 +295,9 @@ class CheckboxWidget extends WidgetType {
   toDOM() {
     const span = document.createElement("span");
     span.className = "cm-checkbox-wrapper";
-    if (this.indentLevel > 0) {
-      span.style.marginLeft = `${this.indentLevel * 20}px`;
-    }
+    // For nested lists, add extra left margin (base -24px + 24px per level)
+    const totalMargin = -24 + (this.indentLevel * 24);
+    span.style.marginLeft = `${totalMargin}px`;
 
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
@@ -336,10 +336,9 @@ class BulletWidget extends WidgetType {
   toDOM() {
     const span = document.createElement("span");
     span.className = "cm-bullet";
-    if (this.indentLevel > 0) {
-      span.style.marginLeft = `${this.indentLevel * 20}px`;
-    }
-    span.textContent = "•";
+    // For nested lists, add extra left margin (base -24px + 24px per level)
+    const totalMargin = -24 + (this.indentLevel * 24);
+    span.style.marginLeft = `${totalMargin}px`;
     return span;
   }
 
@@ -1117,7 +1116,7 @@ export default function MarkdownEditor({
         }
 
         .cm-image-wrapper {
-          display: block;
+          display: inline-block;
           margin: 8px 0;
           max-width: 100%;
         }
@@ -1211,7 +1210,6 @@ export default function MarkdownEditor({
 
         .cm-image-caption {
           display: block;
-          width: 100%;
           font-size: 12px;
           color: var(--muted);
           text-align: left;
@@ -1252,6 +1250,12 @@ export default function MarkdownEditor({
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
+        }
+
+        /* List line indentation - wrapped lines stay indented */
+        .cm-line:has(.cm-bullet),
+        .cm-line:has(.cm-checkbox-wrapper) {
+          padding-left: 24px;
         }
 
         /* Checkbox styles */
