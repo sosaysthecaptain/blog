@@ -116,12 +116,25 @@ class MainViewModel: ObservableObject {
             expandedFolders.insert(parentId)
         }
 
+        // Write to LocalCache immediately (write-through)
+        Task {
+            do {
+                try await LocalCache.shared.upsertNote(note)
+                print("[MainView] Note saved to local cache: \(note.id)")
+            } catch {
+                print("[MainView] Failed to save to local cache: \(error)")
+            }
+        }
+
+        // Sync to Firestore
         Task {
             do {
                 try await FirebaseSync.shared.createNote(note)
-                print("[MainView] Note created successfully in Firebase")
+                print("[MainView] Note synced to Firestore: \(note.id)")
             } catch {
-                print("[MainView] Failed to create note: \(error)")
+                print("[MainView] Failed to sync note to Firestore: \(error)")
+                syncError = "Failed to create: \(error.localizedDescription)"
+                lastSyncErrorTime = Date()
             }
         }
     }
@@ -137,24 +150,52 @@ class MainViewModel: ObservableObject {
             expandedFolders.insert(parentId)
         }
 
+        // Write to LocalCache immediately (write-through)
+        Task {
+            do {
+                try await LocalCache.shared.upsertNote(folder)
+                print("[MainView] Folder saved to local cache: \(folder.id)")
+            } catch {
+                print("[MainView] Failed to save folder to local cache: \(error)")
+            }
+        }
+
+        // Sync to Firestore
         Task {
             do {
                 try await FirebaseSync.shared.createNote(folder)
-                print("[MainView] Folder created successfully in Firebase")
+                print("[MainView] Folder synced to Firestore: \(folder.id)")
             } catch {
-                print("[MainView] Failed to create folder: \(error)")
+                print("[MainView] Failed to sync folder to Firestore: \(error)")
+                syncError = "Failed to create: \(error.localizedDescription)"
+                lastSyncErrorTime = Date()
             }
         }
     }
 
     func updateNote(_ note: NoteItem) {
+        // 1. Update local items array immediately
         if let index = items.firstIndex(where: { $0.id == note.id }) {
             items[index] = note
         }
 
+        // 2. Write to LocalCache immediately (write-through)
+        // This prevents the Firestore listener from overwriting our changes
+        // when it triggers loadNotes()
+        Task {
+            do {
+                try await LocalCache.shared.upsertNote(note)
+                print("[MainView] Updated note in local cache: \(note.id) - \(note.title)")
+            } catch {
+                print("[MainView] Failed to update local cache: \(error)")
+            }
+        }
+
+        // 3. Sync to Firestore (async, may fail)
         Task {
             do {
                 try await FirebaseSync.shared.updateNote(note)
+                print("[MainView] Synced note to Firestore: \(note.id)")
                 syncError = nil
             } catch {
                 print("[MainView] Failed to sync update: \(error)")
@@ -176,9 +217,21 @@ class MainViewModel: ObservableObject {
             selectedId = nil
         }
 
+        // Delete from LocalCache immediately (write-through)
+        Task {
+            do {
+                try await LocalCache.shared.deleteNote(id)
+                print("[MainView] Deleted note from local cache: \(id)")
+            } catch {
+                print("[MainView] Failed to delete from local cache: \(error)")
+            }
+        }
+
+        // Sync to Firestore
         Task {
             do {
                 try await FirebaseSync.shared.deleteNote(id)
+                print("[MainView] Deleted note from Firestore: \(id)")
                 syncError = nil
             } catch {
                 print("[MainView] Failed to sync delete: \(error)")
