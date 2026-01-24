@@ -43,15 +43,17 @@ export interface MusicLibraryEditorRef {
 interface MusicLibraryEditorProps {
   library: NoteItem;
   parentFolder: NoteItem | null;
+  folderPath?: NoteItem[];
   onUpdate: (library: NoteItem) => void;
   onBack: () => void;
+  onNavigateToFolder?: (folderId: string | null) => void;
   isFullWidth: boolean;
   onUnsavedChangesChange?: (hasUnsaved: boolean) => void;
 }
 
 const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorProps>(
   function MusicLibraryEditor(
-    { library, parentFolder, onUpdate, onBack, isFullWidth, onUnsavedChangesChange },
+    { library, parentFolder, folderPath = [], onUpdate, onBack, onNavigateToFolder, isFullWidth, onUnsavedChangesChange },
     ref
   ) {
     // Local state
@@ -451,27 +453,38 @@ const MusicLibraryEditor = forwardRef<MusicLibraryEditorRef, MusicLibraryEditorP
         onDragOver={handleDragOver}
       >
         {/* Header with breadcrumb and search */}
-        <div className="flex items-center justify-between px-4 py-1 border-b border-[--border] bg-[--sidebar-bg]">
-          <div className="flex items-center gap-0 flex-1 min-w-0">
-            <nav className="breadcrumb-nav" style={{ fontSize: "12px" }}>
-              <button type="button" onClick={onBack} className="breadcrumb-item">
-                root
+        <div className="flex items-center justify-between px-4 py-2 border-b border-[--border] bg-[--sidebar-bg]">
+          <nav className="breadcrumb-nav">
+            <button
+              type="button"
+              onClick={() => onNavigateToFolder ? onNavigateToFolder(null) : onBack()}
+              className="breadcrumb-item"
+            >
+              root
+            </button>
+            {folderPath.map((folder) => (
+              <button
+                key={folder.id}
+                type="button"
+                onClick={() => onNavigateToFolder ? onNavigateToFolder(folder.id!) : onBack()}
+                className="breadcrumb-item"
+              >
+                {folder.title}
               </button>
-              {parentFolder && (
-                <button type="button" onClick={onBack} className="breadcrumb-item">
-                  {parentFolder.title}
-                </button>
-              )}
-            </nav>
-            <input
-              type="text"
-              value={localLibrary.title}
-              onChange={(e) => handleTitleChange(e.target.value)}
-              placeholder="Untitled"
-              className="text-sm font-medium text-[--foreground] bg-transparent border-none outline-none flex-1 min-w-0 ml-1"
-              style={{ fontFamily: "'Lucida Grande', 'Lucida Sans Unicode', sans-serif" }}
-            />
-          </div>
+            ))}
+            {parentFolder && !folderPath.find(f => f.id === parentFolder.id) && (
+              <button
+                type="button"
+                onClick={onBack}
+                className="breadcrumb-item"
+              >
+                {parentFolder.title}
+              </button>
+            )}
+            <span className="breadcrumb-item breadcrumb-current">
+              {localLibrary.title || "Untitled"}
+            </span>
+          </nav>
           <div className="flex items-center gap-3">
             {/* Record button */}
             <button

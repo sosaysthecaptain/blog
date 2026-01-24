@@ -434,13 +434,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   display: inline-flex;
   align-items: stretch;
   font-size: 12px;
+  gap: 2px;
 }
 
 .breadcrumb-item {
   background: var(--background);
   color: var(--foreground);
   border: 1px solid var(--foreground);
-  border-right: none;
   padding: 4px 10px;
   cursor: pointer;
   white-space: nowrap;
@@ -462,10 +462,9 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   border-radius: 6px 0 0 6px;
 }
 
-/* Last item - rounded right only, restore right border, no caret */
+/* Last item - rounded right only, no caret */
 .breadcrumb-item:last-child {
   border-radius: 0 6px 6px 0;
-  border-right: 1px solid var(--foreground);
 }
 
 .breadcrumb-item:last-child::after {
@@ -475,7 +474,6 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 /* Only child - fully rounded */
 .breadcrumb-item:only-child {
   border-radius: 6px;
-  border-right: 1px solid var(--foreground);
 }
 
 .breadcrumb-current {
