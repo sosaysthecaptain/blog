@@ -295,9 +295,7 @@ class CheckboxWidget extends WidgetType {
   toDOM() {
     const span = document.createElement("span");
     span.className = "cm-checkbox-wrapper";
-    // For nested lists, add extra left margin (base -24px + 24px per level)
-    const totalMargin = -24 + (this.indentLevel * 24);
-    span.style.marginLeft = `${totalMargin}px`;
+    span.style.marginLeft = "-24px";
 
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
@@ -336,9 +334,8 @@ class BulletWidget extends WidgetType {
   toDOM() {
     const span = document.createElement("span");
     span.className = "cm-bullet";
-    // For nested lists, add extra left margin (base -24px + 24px per level)
-    const totalMargin = -24 + (this.indentLevel * 24);
-    span.style.marginLeft = `${totalMargin}px`;
+    span.style.marginLeft = "-24px";
+    span.textContent = "•";
     return span;
   }
 
@@ -429,6 +426,13 @@ function createDecorations(
     if (taskMatch) {
       const [fullMatch, indent, check] = taskMatch;
       const indentLevel = Math.floor(indent.length / 2); // 2 spaces per level
+      // Add line decoration for padding based on indent level
+      const paddingLeft = 24 + (indentLevel * 24);
+      decorations.push({
+        from: line.from,
+        to: line.from,
+        deco: Decoration.line({ attributes: { style: `padding-left: ${paddingLeft}px` } }),
+      });
       // Replace entire prefix including whitespace
       decorations.push({
         from: line.from,
@@ -444,6 +448,13 @@ function createDecorations(
       if (listMatch) {
         const [fullMatch, indent] = listMatch;
         const indentLevel = Math.floor(indent.length / 2); // 2 spaces per level
+        // Add line decoration for padding based on indent level
+        const paddingLeft = 24 + (indentLevel * 24);
+        decorations.push({
+          from: line.from,
+          to: line.from,
+          deco: Decoration.line({ attributes: { style: `padding-left: ${paddingLeft}px` } }),
+        });
         // Replace entire prefix including whitespace
         decorations.push({
           from: line.from,
@@ -1252,16 +1263,12 @@ export default function MarkdownEditor({
           to { transform: rotate(360deg); }
         }
 
-        /* List line indentation - wrapped lines stay indented */
-        .cm-line:has(.cm-bullet),
-        .cm-line:has(.cm-checkbox-wrapper) {
-          padding-left: 24px;
-        }
-
-        /* Checkbox styles */
+        /* Checkbox styles - fixed width box so text aligns with wrapped lines */
         .cm-checkbox-wrapper {
-          display: inline;
-          margin-right: 8px;
+          display: inline-block;
+          width: 24px;
+          margin-right: 0;
+          text-align: left;
         }
 
         .cm-checkbox {
@@ -1295,10 +1302,12 @@ export default function MarkdownEditor({
           transform: rotate(45deg);
         }
 
-        /* Bullet styles */
+        /* Bullet styles - fixed width box so text aligns with wrapped lines */
         .cm-bullet {
-          display: inline;
-          margin-right: 8px;
+          display: inline-block;
+          width: 24px;
+          margin-right: 0;
+          text-align: left;
         }
       `}</style>
     </div>
