@@ -39,16 +39,16 @@ export function useCachedNotes() {
           // Subscribe to cache updates (Firestore listener updates cache)
           unsubscribe = subscribeToCachedNotes((updatedNotes) => {
             if (mounted) {
-              // Sort by sortOrder first, then by createdAt
+              // Sort by sortOrder first, then alphabetically by title
               const sorted = [...updatedNotes].sort((a, b) => {
                 if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
                   return a.sortOrder - b.sortOrder;
                 }
                 if (a.sortOrder !== undefined) return -1;
                 if (b.sortOrder !== undefined) return 1;
-                const aTime = a.createdAt?.toMillis?.() || 0;
-                const bTime = b.createdAt?.toMillis?.() || 0;
-                return aTime - bTime;
+                const aTitle = a.title || "";
+                const bTitle = b.title || "";
+                return aTitle.localeCompare(bTitle);
               });
               setNotes(sorted);
               setIsLoading(false);

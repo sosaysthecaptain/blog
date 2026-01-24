@@ -308,7 +308,7 @@ export class LocalCache {
    * Get all notes (instant local read)
    */
   getAllNotes(): NoteItem[] {
-    const stmt = this.db.prepare("SELECT * FROM notes ORDER BY sortOrder ASC, createdAt ASC");
+    const stmt = this.db.prepare("SELECT * FROM notes ORDER BY sortOrder ASC, title COLLATE NOCASE ASC");
 
     const notes: NoteItem[] = [];
     while (stmt.step()) {
@@ -324,8 +324,8 @@ export class LocalCache {
   getNotesByParent(parentId: string | null): NoteItem[] {
     const stmt = this.db.prepare(
       parentId === null
-        ? "SELECT * FROM notes WHERE parentId IS NULL ORDER BY sortOrder ASC, createdAt ASC"
-        : "SELECT * FROM notes WHERE parentId = ? ORDER BY sortOrder ASC, createdAt ASC"
+        ? "SELECT * FROM notes WHERE parentId IS NULL ORDER BY sortOrder ASC, title COLLATE NOCASE ASC"
+        : "SELECT * FROM notes WHERE parentId = ? ORDER BY sortOrder ASC, title COLLATE NOCASE ASC"
     );
     if (parentId !== null) {
       stmt.bind([parentId]);

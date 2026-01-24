@@ -93,7 +93,9 @@ export async function getAllNotes(): Promise<NoteItem[]> {
     if (a.sortOrder !== undefined) return -1;
     if (b.sortOrder !== undefined) return 1;
     // Fall back to alphabetical by title
-    return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
+    const aTitle = a.title || "";
+    const bTitle = b.title || "";
+    return aTitle.localeCompare(bTitle);
   });
 }
 

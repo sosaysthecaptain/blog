@@ -22,15 +22,13 @@ export function sortItems(items: NoteItem[], sortOption: SortOption): NoteItem[]
     const bTitle = b.title || "";
     switch (sortOption) {
       case "manual":
-        // Sort by sortOrder (lower = earlier), then by createdAt for items without sortOrder
+        // Sort by sortOrder (lower = earlier), then alphabetically by title
         if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
           return a.sortOrder - b.sortOrder;
         }
         if (a.sortOrder !== undefined) return -1;
         if (b.sortOrder !== undefined) return 1;
-        const aCreated = a.createdAt?.toMillis?.() || 0;
-        const bCreated = b.createdAt?.toMillis?.() || 0;
-        return aCreated - bCreated;
+        return aTitle.localeCompare(bTitle);
       case "date-desc":
         return (b.date || "").localeCompare(a.date || "");
       case "date-asc":
