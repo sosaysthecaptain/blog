@@ -607,8 +607,6 @@ struct NoteDetailView: View {
 
     @State private var title: String = ""
     @State private var content: String = ""
-    @State private var processedContent: String = ""  // Content with signed URLs
-    @State private var isProcessingImages = false
     @FocusState private var isTitleFocused: Bool
 
     var body: some View {
@@ -655,10 +653,10 @@ struct NoteDetailView: View {
             Divider()
                 .background(DirigibleStyle.Colors.border)
 
-            // Editable content area with markdown shortcuts
-            HTMLContentView(
-                html: processedContent,
-                isEditable: true,
+            // Markdown editor (same as web app)
+            MarkdownEditorView(
+                content: $content,
+                noteId: item.id,
                 onContentChange: { newContent in
                     saveContentChange(newContent)
                 }
@@ -670,7 +668,6 @@ struct NoteDetailView: View {
         .onAppear {
             title = item.title
             content = item.content ?? ""
-            processImageUrls(content)
         }
         .onChange(of: item.id) { _, _ in
             // Save current title before switching
@@ -679,55 +676,10 @@ struct NoteDetailView: View {
             }
             title = item.title
             content = item.content ?? ""
-            processImageUrls(content)
         }
         .onChange(of: isTitleFocused) { _, focused in
             if !focused {
                 saveTitleChange()
-            }
-        }
-    }
-
-    /// Process HTML to replace /api/files/ URLs with signed URLs
-    private func processImageUrls(_ html: String) {
-        // Always set content immediately so it displays right away
-        processedContent = html
-
-        guard !html.isEmpty else { return }
-
-        // Find all /api/files/ URLs in the HTML
-        let pattern = #"/api/files/[^"'\s]+"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
-
-        let range = NSRange(html.startIndex..., in: html)
-        let matches = regex.matches(in: html, range: range)
-
-        if matches.isEmpty { return }
-
-        // Extract unique paths
-        var paths: [String] = []
-        for match in matches {
-            if let matchRange = Range(match.range, in: html) {
-                let path = String(html[matchRange])
-                if !paths.contains(path) {
-                    paths.append(path)
-                }
-            }
-        }
-
-        // Fetch signed URLs and replace (async - content already displayed)
-        Task {
-            do {
-                let signedUrls = try await FirebaseSync.shared.getSignedUrls(for: paths)
-                var result = html
-                for (path, signedUrl) in signedUrls {
-                    result = result.replacingOccurrences(of: path, with: signedUrl)
-                }
-                await MainActor.run {
-                    processedContent = result
-                }
-            } catch {
-                print("[NoteDetailView] Failed to get signed URLs: \(error)")
             }
         }
     }
