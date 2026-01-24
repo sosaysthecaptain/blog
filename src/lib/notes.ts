@@ -84,7 +84,7 @@ export async function getAllNotes(): Promise<NoteItem[]> {
     id: doc.id,
     ...doc.data(),
   })) as NoteItem[];
-  // Sort by sortOrder first (if present), then by createdAt
+  // Sort by sortOrder first (if present), then alphabetically by title
   return notes.sort((a, b) => {
     // Items with sortOrder come first, sorted by sortOrder
     if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
@@ -92,10 +92,8 @@ export async function getAllNotes(): Promise<NoteItem[]> {
     }
     if (a.sortOrder !== undefined) return -1;
     if (b.sortOrder !== undefined) return 1;
-    // Fall back to createdAt
-    const aTime = a.createdAt?.toMillis?.() || 0;
-    const bTime = b.createdAt?.toMillis?.() || 0;
-    return aTime - bTime;
+    // Fall back to alphabetical by title
+    return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
   });
 }
 

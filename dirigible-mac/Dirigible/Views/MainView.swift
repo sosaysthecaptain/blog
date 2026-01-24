@@ -47,6 +47,8 @@ class MainViewModel: ObservableObject {
     @Published var items: [NoteItem] = []
     @Published var selectedId: String?
     @Published var expandedFolders: Set<String> = []
+    @Published var syncError: String?
+    @Published var lastSyncErrorTime: Date?
 
     var rootItems: [NoteItem] {
         items.filter { $0.parentId == nil }.sorted(by: sortItems)
@@ -69,14 +71,15 @@ class MainViewModel: ObservableObject {
     }
 
     private func sortItems(_ a: NoteItem, _ b: NoteItem) -> Bool {
-        // Folders first
-        if a.type == .folder && b.type != .folder { return true }
-        if a.type != .folder && b.type == .folder { return false }
-        // Then by sortOrder if available
+        // Sort by sortOrder first (if present), then by title alphabetically
+        // This matches the web app's sorting logic
         if let aOrder = a.sortOrder, let bOrder = b.sortOrder {
             return aOrder < bOrder
         }
-        // Then by title
+        // Items with sortOrder come before items without
+        if a.sortOrder != nil { return true }
+        if b.sortOrder != nil { return false }
+        // Fall back to alphabetical by title
         return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
     }
 
@@ -150,7 +153,14 @@ class MainViewModel: ObservableObject {
         }
 
         Task {
-            try? await FirebaseSync.shared.updateNote(note)
+            do {
+                try await FirebaseSync.shared.updateNote(note)
+                syncError = nil
+            } catch {
+                print("[MainView] Failed to sync update: \(error)")
+                syncError = "Failed to sync: \(error.localizedDescription)"
+                lastSyncErrorTime = Date()
+            }
         }
     }
 
@@ -167,7 +177,14 @@ class MainViewModel: ObservableObject {
         }
 
         Task {
-            try? await FirebaseSync.shared.deleteNote(id)
+            do {
+                try await FirebaseSync.shared.deleteNote(id)
+                syncError = nil
+            } catch {
+                print("[MainView] Failed to sync delete: \(error)")
+                syncError = "Failed to sync: \(error.localizedDescription)"
+                lastSyncErrorTime = Date()
+            }
         }
     }
 }
@@ -232,6 +249,21 @@ struct SidebarView: View {
 
             Divider()
                 .background(DirigibleStyle.Colors.border)
+
+            // Sync status (subtle, only shows on error)
+            if let error = viewModel.syncError {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 10))
+                    Text("Sync error")
+                        .font(DirigibleStyle.Typography.tiny)
+                    Spacer()
+                }
+                .foregroundColor(DirigibleStyle.Colors.danger)
+                .padding(.horizontal, DirigibleStyle.Spacing.lg)
+                .padding(.vertical, DirigibleStyle.Spacing.xs)
+                .help(error)
+            }
 
             // User menu at bottom
             UserMenuButton(showUserMenu: $showUserMenu)

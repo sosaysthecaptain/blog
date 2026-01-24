@@ -844,14 +844,33 @@ public class FirebaseSync: ObservableObject {
         "https://firestore.googleapis.com/v1/projects/\(firestoreProjectId)/databases/(default)/documents"
     }
 
+    /// Get a fresh ID token, refreshing if needed
+    private func getFreshIdToken() async throws -> String {
+        // First, try to get a fresh token from the Firebase Auth SDK
+        if let user = Auth.auth().currentUser {
+            do {
+                let token = try await user.getIDToken()
+                print("[AUTH] Got fresh token from Firebase SDK")
+                return token
+            } catch {
+                print("[AUTH] Failed to get fresh token from SDK: \(error)")
+            }
+        }
+
+        // Fall back to cached token (may be expired)
+        if let token = currentFirebaseUser?.idToken, !token.isEmpty {
+            print("[AUTH] Using cached token (may be expired)")
+            return token
+        }
+
+        throw NSError(domain: "FirebaseSync", code: 401, userInfo: [NSLocalizedDescriptionKey: "Not authenticated - please sign out and sign in again"])
+    }
+
     /// Create a new note using REST API (bypasses keychain issues)
     public func createNote(_ note: NoteItem) async throws {
         print("[WRITE] Creating note \(note.id) via REST API")
 
-        guard let idToken = currentFirebaseUser?.idToken, !idToken.isEmpty else {
-            print("[WRITE] ERROR: No Firebase ID token available")
-            throw NSError(domain: "FirebaseSync", code: 401, userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
-        }
+        let idToken = try await getFreshIdToken()
 
         let url = URL(string: "\(firestoreBaseUrl)/notes/\(note.id)")!
         var request = URLRequest(url: url)
@@ -878,9 +897,7 @@ public class FirebaseSync: ObservableObject {
     public func updateNote(_ note: NoteItem) async throws {
         print("[WRITE] Updating note \(note.id) via REST API")
 
-        guard let idToken = currentFirebaseUser?.idToken, !idToken.isEmpty else {
-            throw NSError(domain: "FirebaseSync", code: 401, userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
-        }
+        let idToken = try await getFreshIdToken()
 
         let url = URL(string: "\(firestoreBaseUrl)/notes/\(note.id)")!
         var request = URLRequest(url: url)
@@ -909,9 +926,7 @@ public class FirebaseSync: ObservableObject {
     public func deleteNote(_ id: String) async throws {
         print("[WRITE] Deleting note \(id) via REST API")
 
-        guard let idToken = currentFirebaseUser?.idToken, !idToken.isEmpty else {
-            throw NSError(domain: "FirebaseSync", code: 401, userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
-        }
+        let idToken = try await getFreshIdToken()
 
         let url = URL(string: "\(firestoreBaseUrl)/notes/\(id)")!
         var request = URLRequest(url: url)
