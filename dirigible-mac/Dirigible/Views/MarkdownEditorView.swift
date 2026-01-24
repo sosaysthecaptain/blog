@@ -29,13 +29,29 @@ struct MarkdownEditorView: NSViewRepresentable {
         context.coordinator.pendingFontSize = fontSize
 
         // Load the bundled editor HTML
-        if let htmlPath = Bundle.main.path(forResource: "index", ofType: "html", inDirectory: "Resources") {
+        // Try multiple paths since Xcode can organize resources differently
+        let possiblePaths = [
+            Bundle.main.path(forResource: "index", ofType: "html", inDirectory: "Resources"),
+            Bundle.main.path(forResource: "index", ofType: "html"),
+            Bundle.main.url(forResource: "index", withExtension: "html")?.path
+        ]
+
+        if let htmlPath = possiblePaths.compactMap({ $0 }).first {
+            print("[MarkdownEditorView] Loading editor from: \(htmlPath)")
             let htmlURL = URL(fileURLWithPath: htmlPath)
             webView.loadFileURL(htmlURL, allowingReadAccessTo: htmlURL.deletingLastPathComponent())
         } else {
+            // Debug: list what's in the bundle
             print("[MarkdownEditorView] ERROR: Could not find bundled editor HTML")
+            print("[MarkdownEditorView] Bundle path: \(Bundle.main.bundlePath)")
+            if let resourcePath = Bundle.main.resourcePath {
+                print("[MarkdownEditorView] Resource path: \(resourcePath)")
+                if let contents = try? FileManager.default.contentsOfDirectory(atPath: resourcePath) {
+                    print("[MarkdownEditorView] Bundle contents: \(contents)")
+                }
+            }
             // Fallback: show error message
-            webView.loadHTMLString("<html><body><h1>Editor not found</h1><p>The bundled editor could not be loaded.</p></body></html>", baseURL: nil)
+            webView.loadHTMLString("<html><body><h1>Editor not found</h1><p>The bundled editor could not be loaded. Check console for debug info.</p></body></html>", baseURL: nil)
         }
 
         return webView
