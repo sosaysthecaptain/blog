@@ -136,12 +136,17 @@ struct MarkdownEditorView: NSViewRepresentable {
                 guard let dict = message.body as? [String: Any],
                       let type = dict["type"] as? String,
                       type == "content",
-                      let markdown = dict["markdown"] as? String else { return }
+                      let markdown = dict["markdown"] as? String else {
+                    print("[MarkdownEditorView] contentChanged: INVALID message format")
+                    return
+                }
 
+                print("[MarkdownEditorView] contentChanged received, length=\(markdown.count)")
                 lastContent = markdown
                 DispatchQueue.main.async {
                     self.parent.content = markdown
                     self.parent.onContentChange?(markdown)
+                    print("[MarkdownEditorView] onContentChange callback invoked")
                 }
             }
         }

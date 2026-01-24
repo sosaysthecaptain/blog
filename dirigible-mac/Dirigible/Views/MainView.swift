@@ -27,6 +27,7 @@ struct MainView: View {
             await viewModel.loadNotes()
         }
         .onChange(of: firebaseSync.lastSyncTime) {
+            viewModel.logDebug("⚡ Firestore listener fired - will reload from LocalCache")
             Task {
                 await viewModel.loadNotes()
             }
@@ -49,6 +50,18 @@ class MainViewModel: ObservableObject {
     @Published var expandedFolders: Set<String> = []
     @Published var syncError: String?
     @Published var lastSyncErrorTime: Date?
+
+    // DIAGNOSTIC: Track save pipeline status
+    @Published var debugStatus: String = "idle"
+    @Published var debugLog: [String] = []
+
+    func logDebug(_ message: String) {
+        let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+        let entry = "[\(timestamp)] \(message)"
+        print("[DEBUG] \(message)")
+        debugLog.append(entry)
+        if debugLog.count > 20 { debugLog.removeFirst() }
+    }
 
     var rootItems: [NoteItem] {
         items.filter { $0.parentId == nil }.sorted(by: sortItems)
@@ -84,12 +97,13 @@ class MainViewModel: ObservableObject {
     }
 
     func loadNotes() async {
+        logDebug("loadNotes() called - REPLACING items array from LocalCache")
         do {
+            let oldCount = items.count
             items = try await LocalCache.shared.getAllNotes()
-            print("[MainView] Loaded \(items.count) notes from cache")
-            print("[MainView] Root items: \(rootItems.count)")
+            logDebug("loadNotes: \(oldCount) → \(items.count) items")
         } catch {
-            print("[MainView] Failed to load notes: \(error)")
+            logDebug("loadNotes FAILED: \(error)")
         }
     }
 
@@ -174,20 +188,25 @@ class MainViewModel: ObservableObject {
     }
 
     func updateNote(_ note: NoteItem) {
+        let contentPreview = (note.content ?? "").prefix(50)
+        logDebug("UPDATE called: \(note.title) content='\(contentPreview)...'")
+        debugStatus = "saving..."
+
         // 1. Update local items array immediately
         if let index = items.firstIndex(where: { $0.id == note.id }) {
             items[index] = note
+            logDebug("  ✓ items array updated")
+        } else {
+            logDebug("  ✗ NOT FOUND in items array!")
         }
 
         // 2. Write to LocalCache immediately (write-through)
-        // This prevents the Firestore listener from overwriting our changes
-        // when it triggers loadNotes()
         Task {
             do {
                 try await LocalCache.shared.upsertNote(note)
-                print("[MainView] Updated note in local cache: \(note.id) - \(note.title)")
+                logDebug("  ✓ LocalCache updated")
             } catch {
-                print("[MainView] Failed to update local cache: \(error)")
+                logDebug("  ✗ LocalCache FAILED: \(error)")
             }
         }
 
@@ -195,10 +214,12 @@ class MainViewModel: ObservableObject {
         Task {
             do {
                 try await FirebaseSync.shared.updateNote(note)
-                print("[MainView] Synced note to Firestore: \(note.id)")
+                logDebug("  ✓ Firestore synced")
+                debugStatus = "saved"
                 syncError = nil
             } catch {
-                print("[MainView] Failed to sync update: \(error)")
+                logDebug("  ✗ Firestore FAILED: \(error)")
+                debugStatus = "SYNC ERROR"
                 syncError = "Failed to sync: \(error.localizedDescription)"
                 lastSyncErrorTime = Date()
             }
@@ -664,22 +685,62 @@ struct ItemRowView: View {
 
 struct DetailView: View {
     @ObservedObject var viewModel: MainViewModel
+    @State private var showDebugPanel = true  // Toggle with Cmd+D
 
     var body: some View {
-        if let selectedId = viewModel.selectedId,
-           let item = viewModel.getItem(id: selectedId) {
-            switch item.type {
-            case .note:
-                NoteDetailView(item: item, onUpdate: { viewModel.updateNote($0) })
-            case .folder:
-                FolderDetailView(item: item, viewModel: viewModel)
-            case .moodboard:
-                MoodboardDetailView(item: item, onUpdate: { viewModel.updateNote($0) })
-            case .music:
-                MusicLibraryDetailView(item: item, onUpdate: { viewModel.updateNote($0) })
+        VStack(spacing: 0) {
+            // DEBUG PANEL - shows save pipeline status
+            if showDebugPanel {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("DEBUG")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        Spacer()
+                        Text("Status: \(viewModel.debugStatus)")
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundColor(viewModel.debugStatus == "SYNC ERROR" ? .red :
+                                           viewModel.debugStatus == "saved" ? .green : .orange)
+                        Button("×") { showDebugPanel = false }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 12, weight: .bold))
+                    }
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(viewModel.debugLog, id: \.self) { entry in
+                                Text(entry)
+                                    .font(.system(size: 9, design: .monospaced))
+                                    .foregroundColor(entry.contains("✗") ? .red :
+                                                   entry.contains("✓") ? .green : .primary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(height: 80)
+                }
+                .padding(8)
+                .background(Color.black.opacity(0.1))
+                .border(Color.gray, width: 1)
             }
-        } else {
-            EmptyStateView()
+
+            // Main content
+            if let selectedId = viewModel.selectedId,
+               let item = viewModel.getItem(id: selectedId) {
+                switch item.type {
+                case .note:
+                    NoteDetailView(item: item, onUpdate: { viewModel.updateNote($0) })
+                case .folder:
+                    FolderDetailView(item: item, viewModel: viewModel)
+                case .moodboard:
+                    MoodboardDetailView(item: item, onUpdate: { viewModel.updateNote($0) })
+                case .music:
+                    MusicLibraryDetailView(item: item, onUpdate: { viewModel.updateNote($0) })
+                }
+            } else {
+                EmptyStateView()
+            }
+        }
+        .onAppear {
+            viewModel.logDebug("DetailView appeared")
         }
     }
 }
@@ -776,12 +837,18 @@ struct NoteDetailView: View {
     }
 
     private func saveContentChange(_ newContent: String) {
-        guard newContent != item.content else { return }
+        print("[NoteDetailView] saveContentChange called, length=\(newContent.count)")
+        guard newContent != item.content else {
+            print("[NoteDetailView] SKIPPED - content unchanged")
+            return
+        }
+        print("[NoteDetailView] Content CHANGED, calling onUpdate")
         content = newContent
         var updated = item
         updated.content = newContent.isEmpty ? nil : newContent
         updated.updatedAt = Date()
         onUpdate(updated)
+        print("[NoteDetailView] onUpdate called")
     }
 }
 
