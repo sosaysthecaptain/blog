@@ -443,10 +443,10 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
   }, [handleSave]);
 
   return (
-    <div className="flex-1 h-full overflow-y-auto bg-[--background]">
-      <div className={isFullWidth ? "px-4 py-6 md:px-8 md:py-12" : "max-w-3xl mx-auto px-4 py-6 md:px-8 md:py-12"}>
-        {/* Breadcrumb navigation */}
-        <nav className="breadcrumb-nav mb-4">
+    <div className="flex-1 h-full flex flex-col overflow-hidden bg-[--background]">
+      {/* Header with breadcrumbs */}
+      <div className="hidden md:flex items-center px-4 py-2 border-b border-[--border] bg-[--sidebar-bg]">
+        <nav className="breadcrumb-nav">
           <button
             type="button"
             onClick={() => onNavigateToFolder ? onNavigateToFolder(null) : handleBack()}
@@ -477,7 +477,11 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
             {title || "Untitled"}
           </span>
         </nav>
+      </div>
 
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto">
+      <div className={isFullWidth ? "px-4 py-6 md:px-8 md:py-8" : "max-w-3xl mx-auto px-4 py-6 md:px-8 md:py-8"}>
         {/* Title */}
         <input
           type="text"
@@ -586,6 +590,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
           displayPrefs={displayPrefs}
           onDisplayPrefsChange={setDisplayPrefs}
         />
+      </div>
       </div>
 
       {/* Lightbox */}

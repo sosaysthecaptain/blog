@@ -490,9 +490,9 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
         handleDrop(e);
       }}
     >
-      <div className={isFullWidth ? "px-4 py-6 md:px-8 md:py-12" : "max-w-4xl mx-auto px-4 py-6 md:px-8 md:py-12"}>
-        {/* Breadcrumb navigation */}
-        <nav className="breadcrumb-nav mb-3">
+      {/* Header with breadcrumbs */}
+      <div className="hidden md:flex items-center justify-between px-4 py-2 border-b border-[--border] bg-[--sidebar-bg]">
+        <nav className="breadcrumb-nav">
           <button type="button" onClick={onBack} className="breadcrumb-item">
             root
           </button>
@@ -505,9 +505,11 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
             {title || "Untitled"}
           </span>
         </nav>
+      </div>
 
+      <div className={isFullWidth ? "px-4 py-6 md:px-8 md:py-8" : "max-w-4xl mx-auto px-4 py-6 md:px-8 md:py-8"}>
         {/* Header row with controls */}
-        <div className="flex items-center justify-end mb-6">
+        <div className="flex items-center justify-end mb-4">
 
           {/* Action buttons and controls */}
           <div className="flex items-center gap-2">

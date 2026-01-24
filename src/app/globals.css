@@ -429,11 +429,10 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 
-/* Breadcrumb navigation - pill tags with gaps */
+/* Breadcrumb navigation - connected pill bar */
 .breadcrumb-nav {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  align-items: stretch;
   font-size: 12px;
 }
 
@@ -441,7 +440,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   background: var(--background);
   color: var(--foreground);
   border: 1px solid var(--foreground);
-  border-radius: 6px;
+  border-right: none;
   padding: 4px 10px;
   cursor: pointer;
   white-space: nowrap;
@@ -449,8 +448,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 .breadcrumb-item:hover {
-  background: var(--foreground);
-  color: var(--background);
+  background: var(--hover);
 }
 
 .breadcrumb-item::after {
@@ -459,8 +457,25 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   margin-left: 4px;
 }
 
+/* First item - rounded left only */
+.breadcrumb-item:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+/* Last item - rounded right only, restore right border, no caret */
+.breadcrumb-item:last-child {
+  border-radius: 0 6px 6px 0;
+  border-right: 1px solid var(--foreground);
+}
+
 .breadcrumb-item:last-child::after {
   content: none;
+}
+
+/* Only child - fully rounded */
+.breadcrumb-item:only-child {
+  border-radius: 6px;
+  border-right: 1px solid var(--foreground);
 }
 
 .breadcrumb-current {
@@ -469,7 +484,6 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 
 .breadcrumb-current:hover {
   background: var(--background);
-  color: var(--foreground);
 }
 
 /* Hide the old separator */
