@@ -40,6 +40,7 @@ export interface EmbeddedMedia {
 export interface EditorDisplayPrefs {
   wordWrap: boolean;
   font: "mono" | "serif" | "sans";
+  fontSize?: "xs" | "sm" | "base" | "lg" | "xl"; // Relative size steps
   showMarkdownSyntax: boolean;
 }
 

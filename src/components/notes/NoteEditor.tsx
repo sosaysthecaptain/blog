@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useRef, useMemo, useImperativeHandle,
 import { NoteItem, EmbeddedMedia, EditorDisplayPrefs, updateNote, getAllNoteTags, getTagColors, setTagColor, TagColorsMap, generateSlug, blogSlugExists, recipeSlugExists } from "@/lib/notes";
 import { findRemovedFiles, deleteFileByUrl } from "@/lib/notes-storage";
 import { getCurrentUser, isAdminEmail } from "@/lib/auth";
-import { migrateContentIfNeeded } from "@/lib/html-to-markdown";
 import { useAutosave } from "@/hooks/useAutosave";
 import { useFocusSync } from "@/hooks/useFocusSync";
 import { useSignedUrls } from "@/hooks/useSignedUrls";
@@ -35,11 +34,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
 ) {
   // Local editing state
   const [title, setTitle] = useState(note.title);
-  // Migrate HTML content to markdown on initial load
-  const [content, setContent] = useState(() => {
-    const { content: migratedContent } = migrateContentIfNeeded(note.content || "");
-    return migratedContent;
-  });
+  const [content, setContent] = useState(note.content || "");
   const [date, setDate] = useState(note.date || new Date().toISOString().split("T")[0]);
   const [time, setTime] = useState(note.time || "");
   const [tags, setTags] = useState<string[]>(note.tags || []);
@@ -214,11 +209,8 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
 
   // Initialize state when note changes
   useEffect(() => {
-    // Migrate HTML content to markdown if needed
-    const { content: migratedContent } = migrateContentIfNeeded(note.content || "");
-
     setTitle(note.title);
-    setContent(migratedContent);
+    setContent(note.content || "");
     setDate(note.date || new Date().toISOString().split("T")[0]);
     setTime(note.time || "");
     setTags(note.tags || []);
@@ -229,10 +221,10 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
     setSlugError(null);
     setRemoteNote(null);
 
-    // Store the saved version for comparison (use migrated content)
+    // Store the saved version for comparison
     savedVersionRef.current = {
       title: note.title,
-      content: migratedContent,
+      content: note.content || "",
       date: note.date || new Date().toISOString().split("T")[0],
       time: note.time || "",
       tags: note.tags || [],
@@ -245,11 +237,8 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
 
   // Handle remote update when no local changes (auto-apply)
   const handleRemoteUpdate = useCallback((remoteDoc: NoteItem) => {
-    // Migrate HTML content to markdown if needed
-    const { content: migratedContent } = migrateContentIfNeeded(remoteDoc.content || "");
-
     setTitle(remoteDoc.title);
-    setContent(migratedContent);
+    setContent(remoteDoc.content || "");
     setDate(remoteDoc.date || new Date().toISOString().split("T")[0]);
     setTime(remoteDoc.time || "");
     setTags(remoteDoc.tags || []);
@@ -260,7 +249,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
 
     savedVersionRef.current = {
       title: remoteDoc.title,
-      content: migratedContent,
+      content: remoteDoc.content || "",
       date: remoteDoc.date || new Date().toISOString().split("T")[0],
       time: remoteDoc.time || "",
       tags: remoteDoc.tags || [],
@@ -352,11 +341,8 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
   const handleDiscardLocal = useCallback(() => {
     if (!remoteNote) return;
 
-    // Migrate HTML content to markdown if needed
-    const { content: migratedContent } = migrateContentIfNeeded(remoteNote.content || "");
-
     setTitle(remoteNote.title);
-    setContent(migratedContent);
+    setContent(remoteNote.content || "");
     setDate(remoteNote.date || new Date().toISOString().split("T")[0]);
     setTime(remoteNote.time || "");
     setTags(remoteNote.tags || []);
@@ -367,7 +353,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
 
     savedVersionRef.current = {
       title: remoteNote.title,
-      content: migratedContent,
+      content: remoteNote.content || "",
       date: remoteNote.date || new Date().toISOString().split("T")[0],
       time: remoteNote.time || "",
       tags: remoteNote.tags || [],

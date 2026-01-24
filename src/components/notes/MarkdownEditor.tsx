@@ -611,11 +611,31 @@ const fontFamilies = {
   sans: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
 };
 
+// Base font sizes for each font type (serif/sans are larger than mono)
+const baseFontSizes = {
+  mono: 0.875,   // 14px
+  serif: 1.0625, // 17px
+  sans: 1.0,     // 16px
+};
+
+// Font size multipliers for each size step
+const fontSizeMultipliers = {
+  xs: 0.85,
+  sm: 0.925,
+  base: 1,
+  lg: 1.1,
+  xl: 1.25,
+};
+
 // Create theme
 function createEditorTheme(prefs: EditorDisplayPrefs) {
+  const baseSize = baseFontSizes[prefs.font];
+  const multiplier = fontSizeMultipliers[prefs.fontSize || "base"];
+  const fontSize = `${baseSize * multiplier}rem`;
+
   return EditorView.theme({
     "&": {
-      fontSize: "0.875rem !important",
+      fontSize: `${fontSize} !important`,
       fontFamily: `${fontFamilies[prefs.font]} !important`,
       lineHeight: "1.6 !important",
       color: "var(--foreground)",
@@ -639,8 +659,8 @@ function createEditorTheme(prefs: EditorDisplayPrefs) {
       borderLeftColor: "var(--foreground)",
       borderLeftWidth: "1.5px",
     },
-    ".cm-selectionBackground": { backgroundColor: "rgba(128, 128, 128, 0.3) !important" },
-    "&.cm-focused .cm-selectionBackground": { backgroundColor: "rgba(128, 128, 128, 0.4) !important" },
+    ".cm-selectionBackground": { backgroundColor: "rgba(0, 102, 204, 0.3) !important" },
+    "&.cm-focused .cm-selectionBackground": { backgroundColor: "rgba(0, 102, 204, 0.4) !important" },
     ".cm-placeholder": { color: "var(--muted)", fontStyle: "italic" },
   });
 }
@@ -663,6 +683,7 @@ const markdownHighlighting = HighlightStyle.define([
 const defaultDisplayPrefs: EditorDisplayPrefs = {
   wordWrap: true,
   font: "mono",
+  fontSize: "base",
   showMarkdownSyntax: false,
 };
 
@@ -994,6 +1015,21 @@ export default function MarkdownEditor({
                 ))}
               </div>
 
+              <div className="md-menu-label" style={{ marginTop: 8 }}>Size</div>
+              <div className="md-size-buttons">
+                {(["xs", "sm", "base", "lg", "xl"] as const).map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => onDisplayPrefsChange({ ...displayPrefs, fontSize: size })}
+                    className={`md-size-btn ${(displayPrefs.fontSize || "base") === size ? "md-size-btn-active" : ""}`}
+                    title={size === "base" ? "Default" : size}
+                  >
+                    A
+                  </button>
+                ))}
+              </div>
+
               <div className="md-menu-divider" />
 
               <label className="md-menu-item">
@@ -1102,6 +1138,36 @@ export default function MarkdownEditor({
           border-color: var(--foreground);
         }
         .md-font-btn-active {
+          background: var(--foreground);
+          color: var(--background);
+          border-color: var(--foreground);
+        }
+
+        .md-size-buttons {
+          display: flex;
+          gap: 2px;
+          padding: 0 4px 4px;
+          align-items: baseline;
+        }
+
+        .md-size-btn {
+          padding: 2px 6px;
+          border: 1px solid var(--border);
+          border-radius: 3px;
+          background: transparent;
+          color: var(--foreground);
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .md-size-btn:nth-child(1) { font-size: 10px; }
+        .md-size-btn:nth-child(2) { font-size: 12px; }
+        .md-size-btn:nth-child(3) { font-size: 14px; }
+        .md-size-btn:nth-child(4) { font-size: 16px; }
+        .md-size-btn:nth-child(5) { font-size: 18px; }
+        .md-size-btn:hover {
+          border-color: var(--foreground);
+        }
+        .md-size-btn-active {
           background: var(--foreground);
           color: var(--background);
           border-color: var(--foreground);

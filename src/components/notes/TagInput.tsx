@@ -141,7 +141,7 @@ export default function TagInput({
   };
 
   return (
-    <div className="relative" ref={containerRef}>
+    <div className="relative group/tags" ref={containerRef}>
       <div className="flex flex-wrap items-center gap-1.5">
         {tags.map((tag) => {
           const color = getTagColor(tag, tagColors);
@@ -184,7 +184,7 @@ export default function TagInput({
           onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
           onKeyDown={handleKeyDown}
           placeholder={tags.length === 0 ? "Add tags..." : "+"}
-          className="min-w-[60px] bg-transparent outline-none text-sm text-[--foreground] placeholder:text-[--muted]"
+          className={`min-w-[60px] bg-transparent outline-none text-sm text-[--foreground] placeholder:text-[--muted] ${tags.length === 0 ? "placeholder:opacity-0 group-hover/tags:placeholder:opacity-100 focus:placeholder:opacity-100 transition-opacity" : ""}`}
         />
       </div>
 
