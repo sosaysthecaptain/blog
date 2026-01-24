@@ -614,7 +614,7 @@ const fontFamilies = {
 // Base font sizes for each font type (serif/sans are larger than mono)
 const baseFontSizes = {
   mono: 0.875,   // 14px
-  serif: 1.0625, // 17px
+  serif: 1.1875, // 19px
   sans: 1.0,     // 16px
 };
 
@@ -1011,21 +1011,6 @@ export default function MarkdownEditor({
                     style={{ fontFamily: fontFamilies[font] }}
                   >
                     {font}
-                  </button>
-                ))}
-              </div>
-
-              <div className="md-menu-label" style={{ marginTop: 8 }}>Size</div>
-              <div className="md-size-buttons">
-                {(["xs", "sm", "base", "lg", "xl"] as const).map((size) => (
-                  <button
-                    key={size}
-                    type="button"
-                    onClick={() => onDisplayPrefsChange({ ...displayPrefs, fontSize: size })}
-                    className={`md-size-btn ${(displayPrefs.fontSize || "base") === size ? "md-size-btn-active" : ""}`}
-                    title={size === "base" ? "Default" : size}
-                  >
-                    A
                   </button>
                 ))}
               </div>
