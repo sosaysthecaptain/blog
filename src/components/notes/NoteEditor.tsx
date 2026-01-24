@@ -445,7 +445,7 @@ const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(function NoteEdito
   return (
     <div className="flex-1 h-full flex flex-col overflow-hidden bg-[--background]">
       {/* Header with breadcrumbs */}
-      <div className="hidden md:flex items-center px-4 py-2 border-b border-[--border] bg-[--sidebar-bg]">
+      <div className="hidden md:flex items-center px-4 py-2 bg-[--sidebar-bg]">
         <nav className="breadcrumb-nav">
           <button
             type="button"

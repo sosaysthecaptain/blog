@@ -491,7 +491,7 @@ const MoodboardEditor = forwardRef<MoodboardEditorRef, MoodboardEditorProps>(fun
       }}
     >
       {/* Header with breadcrumbs */}
-      <div className="hidden md:flex items-center justify-between px-4 py-2 border-b border-[--border] bg-[--sidebar-bg]">
+      <div className="hidden md:flex items-center justify-between px-4 py-2 bg-[--sidebar-bg]">
         <nav className="breadcrumb-nav">
           <button type="button" onClick={onBack} className="breadcrumb-item">
             root
