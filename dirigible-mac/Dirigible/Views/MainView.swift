@@ -702,10 +702,8 @@ struct NoteDetailView: View {
             content = item.content ?? ""
         }
         .onChange(of: item.id) { _, _ in
-            // Save current title before switching
-            if title != item.title {
-                saveTitleChange()
-            }
+            // Just update local state - don't save, as item has already changed to the new note
+            // Saving here would overwrite the new note with the old note's data!
             title = item.title
             content = item.content ?? ""
         }
