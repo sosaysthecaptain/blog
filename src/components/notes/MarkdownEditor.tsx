@@ -921,19 +921,22 @@ export default function MarkdownEditor({
       const lineText = line.text;
 
       // Check if line starts with a checklist pattern (with optional leading whitespace)
-      const checklistMatch = lineText.match(/^(\s*)- \[([ x])\] (.*)$/);
+      // Pattern: optional indent, "- [ ]" or "- [x]", optional space and content
+      const checklistMatch = lineText.match(/^(\s*)- \[([ x])\](.*)$/);
       if (checklistMatch) {
-        const [, indent, , content] = checklistMatch;
+        const [, indent, , rest] = checklistMatch;
+        const content = rest.startsWith(" ") ? rest.slice(1) : rest;
         // If content is empty, remove the checklist marker (like most editors do)
         if (content.trim() === "") {
           view.dispatch({
             changes: { from: line.from, to: line.to, insert: "" },
           });
         } else {
-          // Insert new checklist item
+          // Insert new checklist item at cursor position
+          const insertText = `\n${indent}- [ ] `;
           view.dispatch({
-            changes: { from, insert: `\n${indent}- [ ] ` },
-            selection: { anchor: from + indent.length + 7 },
+            changes: { from, insert: insertText },
+            selection: { anchor: from + insertText.length },
           });
         }
         return true;
@@ -1365,7 +1368,7 @@ export default function MarkdownEditor({
           appearance: none;
           width: 13px;
           height: 13px;
-          border: 1.5px solid var(--foreground);
+          border: 1px solid var(--foreground);
           border-radius: 3px;
           background: transparent;
           cursor: pointer;

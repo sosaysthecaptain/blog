@@ -238,6 +238,15 @@ export default function NotesPage() {
   } | null>(null);
   const [unsavedDialog, setUnsavedDialog] = useState(false);
 
+  // Update page title based on selected item
+  useEffect(() => {
+    if (selectedItem?.title) {
+      document.title = `${selectedItem.title} - Dirigible`;
+    } else {
+      document.title = "Dirigible";
+    }
+  }, [selectedItem?.title]);
+
   // Auth
   useEffect(() => {
     const unsubscribe = onAuthChange((u) => {
