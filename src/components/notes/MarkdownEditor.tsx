@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useCallback, useMemo, useState } from "react";
-import { EditorState, Compartment } from "@codemirror/state";
+import { EditorState, Compartment, Prec } from "@codemirror/state";
 import {
   EditorView,
   keymap,
@@ -913,6 +913,38 @@ export default function MarkdownEditor({
       }
     });
 
+    // Custom Enter handler for checklists - continues with checkbox instead of bullet
+    const handleEnterInList = (view: EditorView): boolean => {
+      const { state } = view;
+      const { from } = state.selection.main;
+      const line = state.doc.lineAt(from);
+      const lineText = line.text;
+
+      // Check if line starts with a checklist pattern (with optional leading whitespace)
+      const checklistMatch = lineText.match(/^(\s*)- \[([ x])\] (.*)$/);
+      if (checklistMatch) {
+        const [, indent, , content] = checklistMatch;
+        // If content is empty, remove the checklist marker (like most editors do)
+        if (content.trim() === "") {
+          view.dispatch({
+            changes: { from: line.from, to: line.to, insert: "" },
+          });
+        } else {
+          // Insert new checklist item
+          view.dispatch({
+            changes: { from, insert: `\n${indent}- [ ] ` },
+            selection: { anchor: from + indent.length + 7 },
+          });
+        }
+        return true;
+      }
+      return false;
+    };
+
+    const checklistEnterKeymap = Prec.high(keymap.of([
+      { key: "Enter", run: handleEnterInList },
+    ]));
+
     const startState = EditorState.create({
       doc: content,
       extensions: [
@@ -925,6 +957,7 @@ export default function MarkdownEditor({
         decorationPlugin(onImageClickRef.current, onImageDeleteRef.current),
         themeCompartment.current.of(createEditorTheme(displayPrefs)),
         cmPlaceholder(placeholder),
+        checklistEnterKeymap,
         keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
         updateListener,
       ],

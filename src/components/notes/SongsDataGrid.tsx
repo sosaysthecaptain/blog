@@ -591,11 +591,10 @@ export default function SongsDataGrid({
             <>
               <div className="fixed inset-0 z-40" onClick={closeContextMenu} />
               <div
-                className="fixed z-50 py-1 rounded shadow-lg border border-[--border] min-w-[160px]"
+                className="fixed z-50 py-1 min-w-[160px] context-menu-container"
                 style={{
                   left: contextMenu.x,
                   top: contextMenu.y,
-                  backgroundColor: "var(--background)",
                   fontFamily: FONT_FAMILY,
                 }}
               >
@@ -623,7 +622,7 @@ export default function SongsDataGrid({
                     Add to Queue{count > 1 ? ` (${count})` : ""}
                   </button>
                 )}
-                <div className="h-px my-1" style={{ backgroundColor: "var(--border)" }} />
+                <div className="context-menu-divider" />
                 {onEditMetadata && (
                   <button
                     type="button"
@@ -663,7 +662,7 @@ export default function SongsDataGrid({
                     Export Entire Library
                   </button>
                 )}
-                <div className="h-px my-1" style={{ backgroundColor: "var(--border)" }} />
+                <div className="context-menu-divider" />
                 <button
                   type="button"
                   onClick={() => {
@@ -688,11 +687,10 @@ export default function SongsDataGrid({
           <>
             <div className="fixed inset-0 z-40" onClick={closeHeaderContextMenu} />
             <div
-              className="fixed z-50 py-1 rounded shadow-lg border border-[--border] min-w-[140px]"
+              className="fixed z-50 py-1 min-w-[140px] context-menu-container"
               style={{
                 left: headerContextMenu.x,
                 top: headerContextMenu.y,
-                backgroundColor: "var(--background)",
                 fontFamily: FONT_FAMILY,
               }}
             >

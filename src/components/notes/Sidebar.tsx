@@ -232,8 +232,7 @@ export default function Sidebar({
           </button>
           {collapsedNewMenu && (
             <div
-              className="absolute left-full top-0 ml-1 rounded shadow-lg py-1 z-50 min-w-[160px]"
-              style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)' }}
+              className="absolute left-full top-0 ml-1 py-1 z-50 min-w-[160px] context-menu-container"
             >
               <button
                 type="button"
@@ -282,8 +281,7 @@ export default function Sidebar({
           </button>
           {collapsedUserMenu && (
             <div
-              className="absolute left-full bottom-0 ml-1 rounded shadow-lg py-1 z-50 min-w-[220px]"
-              style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)' }}
+              className="absolute left-full bottom-0 ml-1 py-1 z-50 min-w-[220px] context-menu-container"
             >
               {/* Account section */}
               <button
@@ -294,7 +292,7 @@ export default function Sidebar({
                 <UserIcon className="w-3.5 h-3.5" />
                 Account
               </button>
-              <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
+              <div className="context-menu-divider" />
               <button
                 type="button"
                 onClick={() => { onToggleDarkMode(); setCollapsedUserMenu(false); }}
@@ -327,7 +325,7 @@ export default function Sidebar({
                 )}
                 {isFullWidth ? "Constrain width" : "Full width"}
               </button>
-              <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
+              <div className="context-menu-divider" />
               <button
                 type="button"
                 onClick={() => { onSignOut(); setCollapsedUserMenu(false); }}
@@ -402,8 +400,7 @@ export default function Sidebar({
             </button>
             {showNewMenu && (
               <div
-                className="absolute right-0 top-full mt-1 rounded shadow-lg py-1 z-50 min-w-[160px]"
-                style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)' }}
+                className="absolute right-0 top-full mt-1 py-1 z-50 min-w-[160px] context-menu-container"
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
@@ -544,8 +541,7 @@ export default function Sidebar({
         {/* User menu dropdown */}
         {showUserMenu && (
           <div
-            className="absolute bottom-full left-0 mb-1 rounded shadow-lg py-1 z-50 min-w-[220px]"
-            style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)' }}
+            className="absolute bottom-full left-0 mb-1 py-1 z-50 min-w-[220px] context-menu-container"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Account section */}
@@ -557,7 +553,7 @@ export default function Sidebar({
               <UserIcon className="w-3.5 h-3.5" />
               Account
             </button>
-            <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
+            <div className="context-menu-divider" />
             <button
               type="button"
               onClick={() => { onToggleDarkMode(); setShowUserMenu(false); }}
@@ -590,7 +586,7 @@ export default function Sidebar({
               )}
               {isFullWidth ? "Constrain width" : "Full width"}
             </button>
-            <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
+            <div className="context-menu-divider" />
             <button
               type="button"
               onClick={() => { onSignOut(); setShowUserMenu(false); }}
@@ -608,12 +604,10 @@ export default function Sidebar({
       {/* Context Menu */}
       {contextMenu && (
         <div
-          className="fixed rounded shadow-lg py-1 z-50 min-w-[160px]"
+          className="fixed py-1 z-50 min-w-[160px] context-menu-container"
           style={{
             left: contextMenu.x,
             top: contextMenu.y,
-            backgroundColor: 'var(--background)',
-            border: '1px solid var(--border)'
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -677,7 +671,7 @@ export default function Sidebar({
 
           {/* Folder: show both item actions and "new" actions */}
           {contextMenu.item?.type === "folder" && (
-            <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
+            <div className="context-menu-divider" />
           )}
 
           {/* "New" actions - show when clicking background OR on a folder */}

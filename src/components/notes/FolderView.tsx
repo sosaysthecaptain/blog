@@ -316,11 +316,10 @@ export default function FolderView({
         <>
           <div className="fixed inset-0 z-40" onClick={closeContextMenu} />
           <div
-            className="fixed z-50 py-1 rounded shadow-lg border border-[--border] min-w-[160px]"
+            className="fixed z-50 py-1 min-w-[160px] context-menu-container"
             style={{
               left: contextMenu.x,
               top: contextMenu.y,
-              backgroundColor: 'var(--background)',
             }}
           >
             {/* Item-specific actions (when clicking on an item) */}
@@ -389,7 +388,7 @@ export default function FolderView({
 
             {/* Folder: show both item actions and "new" actions */}
             {contextMenu.item?.type === "folder" && (
-              <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
+              <div className="context-menu-divider" />
             )}
 
             {/* "New" actions - show when clicking background OR on a folder */}

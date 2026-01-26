@@ -488,3 +488,31 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .breadcrumb-separator {
   display: none;
 }
+
+/* Context menu container - dark mode aware */
+.context-menu-container {
+  background-color: #ffffff;
+  border: 1px solid #e0e0e0;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  font-family: ui-monospace, monospace;
+  border-radius: 0.375rem;
+}
+
+:root.dark .context-menu-container,
+.dark .context-menu-container {
+  background-color: #252525;
+  border-color: #333333;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+
+/* Context menu divider */
+.context-menu-divider {
+  height: 1px;
+  margin: 0.25rem 0;
+  background-color: #e0e0e0;
+}
+
+:root.dark .context-menu-divider,
+.dark .context-menu-divider {
+  background-color: #333333;
+}
